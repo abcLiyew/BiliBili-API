@@ -28,6 +28,12 @@ Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java�
     <version>0.9.13.1-beta</version>
 </dependency>
 ```
+**由于目前项目尚未发布到中央仓库，需要有以下两种方式导入本地仓库：**
+- 1 克隆仓库到本地，然后执行以下命令：
+```bash
+mvn install
+```
+- 2 在[Release](https://github.com/abcLiyew/BiliBili-API/releases/tag/beta)中下载最新版本的jar包，并将其复制到本地Maven仓库中。
 ## 快速开始
 
 ### 获取用户信息
