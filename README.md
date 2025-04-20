@@ -76,9 +76,8 @@ Card card = cardInfo.getCard(uid);
 System.out.println("完整用户信息: " + card);
 ```
 ### 获取用户动态信息
-<div style="color:red;"><strong>由于动态截图功能需要Chrome浏览器，请先安装Chrome浏览器。并且获取动态列表和图片耗时较长，建议在多线程中获取动态列表和图片。
-</strong>
-</div>
+<div style="color:red;"><strong>由于动态截图功能需要Chrome浏览器，请先安装Chrome浏览器。并且获取动态列表和图片耗时较长，建议在多线程中获取动态列表和图片。</strong></div>
+
 ```java
 // 初始化Dynamic对象
 Dynamic dynamic = new Dynamic();
