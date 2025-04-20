@@ -42,11 +42,11 @@ public class Dynamic {
          */
         private String dynamicId;
         /**
-         * 标签
+         * 标签，只有置顶动态有值，并且值为“置顶"
          */
         private String tag;
         /**
-         * 发布时间
+         * 发布时间+动作，如“04月20日 · 发布了动态视频”，“04月20日 · 投稿了视频”，如果是直播动态则值为“直播了”
          */
         private String time;
         /**
@@ -58,7 +58,7 @@ public class Dynamic {
          */
         private String desc;
         /**
-         * 图片链接，如果为null，则该条动态不是图文投稿
+         * 图片链接，如果为空数组，则该条动态不是图文投稿
          */
         private List<String> imageUrl;
         /**
@@ -337,7 +337,7 @@ public class Dynamic {
                             if (!src.contains("i0.hdslb.com/bfs/")){
                                 continue;
                             }
-                            if (src.contains("emote")){
+                            if (src.contains("emote")||src.contains("face")){
                                 continue;
                             }
                             imageUrl.add(src);
