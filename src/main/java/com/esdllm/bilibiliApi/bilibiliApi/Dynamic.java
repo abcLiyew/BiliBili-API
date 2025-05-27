@@ -275,8 +275,13 @@ public class Dynamic {
         try {
             driver.get(url);
             // 等待页面加载完成
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-item")));
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            try {
+                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list")));
+            } catch (Exception e) {
+                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list__items")));
+
+            }
 
             // 获取页面源代码
             String pageSource = driver.getPageSource();
