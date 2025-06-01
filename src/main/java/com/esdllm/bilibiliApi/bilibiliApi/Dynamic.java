@@ -246,6 +246,7 @@ public class Dynamic {
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
+            driver.close();
             driver.quit();
         }
     }
@@ -285,6 +286,7 @@ public class Dynamic {
                 pageSource = driver.getPageSource();
 
                 //关闭 ChromeDriver
+                driver.close();
                 driver.quit();
                 log.info("正在解析页面...");
             }
