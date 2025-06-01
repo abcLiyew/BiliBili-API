@@ -117,7 +117,6 @@ public class Dynamic {
         WebDriver driver = new ChromeDriver(options);
         Thread.sleep(0);
         log.info("正在加载页面...");
-
         try {
             driver.get(BilibiliConfig.dynamicInfoUrl + dynamicId);
 
@@ -272,6 +271,7 @@ public class Dynamic {
 
         // 创建 ChromeDriver
         WebDriver driver = new ChromeDriver(options);
+        String pageSource;
         try {
             driver.get(url);
             // 等待页面加载完成
@@ -281,14 +281,13 @@ public class Dynamic {
             } catch (Exception e) {
                 wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list__items")));
 
+            } finally {  // 获取页面源代码
+                pageSource = driver.getPageSource();
+
+                //关闭 ChromeDriver
+                driver.quit();
+                log.info("正在解析页面...");
             }
-
-            // 获取页面源代码
-            String pageSource = driver.getPageSource();
-
-            //关闭 ChromeDriver
-            driver.quit();
-            log.info("正在解析页面...");
 
             // 使用 Jsoup 解析页面
             Document doc = null;

@@ -7,7 +7,7 @@
 
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.13.2-beta</version>
+    <version>0.9.13.3-beta</version>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
