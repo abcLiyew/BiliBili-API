@@ -117,7 +117,6 @@ public class Dynamic {
         WebDriver driver = new ChromeDriver(options);
         Thread.sleep(0);
         log.info("正在加载页面...");
-
         try {
             driver.get(BilibiliConfig.dynamicInfoUrl + dynamicId);
 
@@ -132,6 +131,9 @@ public class Dynamic {
 
             // 使用JavaScript移除评论区和其他不需要的元素，并展开所有折叠内容
             ((JavascriptExecutor) driver).executeScript(
+                    "var style = document.createElement('style'); " +
+                            "style.innerHTML = 'body { font-family: \"WenQuanYi Zen Hei\", \"DejaVu Sans\", sans-serif !important; }'; " +
+                            "document.head.appendChild(style);"+
                     "var comments = document.querySelector('.opus-module-section.comment-container'); " +
                             "if(comments) comments.remove(); " +
                             "var header = document.querySelector('.z-top-container'); " +
@@ -155,10 +157,6 @@ public class Dynamic {
             Long scrollHeight = (Long) ((JavascriptExecutor) driver).executeScript(
                     "return arguments[0].scrollHeight", dynamicContent);
 
-            // 获取动态内容的宽度和位置
-            int contentWidth = dynamicContent.getRect().width;
-            int contentX = dynamicContent.getRect().x;
-            dynamicContent.getRect();
             // 使用JavaScript调整内容区域的样式，确保文字不重叠
             ((JavascriptExecutor) driver).executeScript(
                     "var textElements = document.querySelectorAll('.opus-module-content p, .opus-module-content span, .opus-module-content div');" +
@@ -168,13 +166,17 @@ public class Dynamic {
                             "  el.style.letterSpacing = '0.5px';" +
                             "  el.style.position = 'static';" +
                             "}");
+            // 获取动态内容的宽度和位置
+            int contentWidth = dynamicContent.getRect().width;
+            int contentX = dynamicContent.getRect().x;
+            dynamicContent.getRect();
 
 
             // 使用新方法：直接设置窗口大小为内容大小，然后一次性截图
             Dimension originalSize = driver.manage().window().getSize();
             // 增加额外的高度余量，宽度也增加以容纳右移的内容
             if (scrollHeight != null) {
-                driver.manage().window().setSize(new Dimension(contentX + contentWidth + 150, scrollHeight.intValue() + 400));
+                driver.manage().window().setSize(new Dimension(contentX + contentWidth-10, scrollHeight.intValue() + 300));
             }
 
 
@@ -221,7 +223,7 @@ public class Dynamic {
             }
 
             // 计算裁剪的起始位置，确保包含右移后的内容
-            int cropX = Math.max(0, contentX-50); // 左边界留一些余量
+            int cropX = Math.max(0, contentX-100); // 左边界留一些余量
             int cropWidth = Math.min(contentWidth+800, fullImg.getWidth() - cropX); // 宽度加一些余量
             int cropHeight = 0;
             if (scrollHeight != null) {
@@ -232,8 +234,9 @@ public class Dynamic {
             if (cropX + cropWidth > fullImg.getWidth()) {
                 cropWidth = fullImg.getWidth() - cropX;
             }
-
-            BufferedImage croppedImg = fullImg.getSubimage(cropX+125, 0, cropWidth, cropHeight-500);
+            log.info("Full image size: {} x {}", fullImg.getWidth(), fullImg.getHeight());
+            log.info("Crop region: x={}, y=0, width={}, height={}", cropX, cropWidth, cropHeight);
+            BufferedImage croppedImg = fullImg.getSubimage(cropX, 0, cropWidth, cropHeight-100);
 
 
 
@@ -243,6 +246,7 @@ public class Dynamic {
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
+            driver.close();
             driver.quit();
         }
     }
@@ -268,17 +272,19 @@ public class Dynamic {
 
         // 创建 ChromeDriver
         WebDriver driver = new ChromeDriver(options);
+        String pageSource;
         try {
             driver.get(url);
             // 等待页面加载完成
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-item")));
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            try {
+                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list")));
+            } catch (Exception e) {
+                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list__items")));
 
-            // 获取页面源代码
-            String pageSource = driver.getPageSource();
+            }  // 获取页面源代码
+            pageSource = driver.getPageSource();
 
-            //关闭 ChromeDriver
-            driver.quit();
             log.info("正在解析页面...");
 
             // 使用 Jsoup 解析页面
@@ -366,6 +372,10 @@ public class Dynamic {
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }finally {
+            //关闭 ChromeDriver
+            driver.close();
+            driver.quit();
         }
         return dynamicInfoList;
     }

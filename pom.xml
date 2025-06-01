@@ -7,7 +7,7 @@
 
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.13.1-beta</version>
+    <version>0.9.13.3-beta</version>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -82,7 +82,11 @@
             <artifactId>cssbox</artifactId>
             <version>5.0.2</version>
         </dependency>
-
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-devtools-v129</artifactId>
+            <version>4.25.0</version>
+        </dependency>
     </dependencies>
 
 
