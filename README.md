@@ -25,7 +25,7 @@ Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java�
 <dependency>
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.13.1-beta</version>
+    <version>0.9.13.3-beta</version>
 </dependency>
 ```
 **由于目前项目尚未发布到中央仓库，需要有以下两种方式导入本地仓库：**
