@@ -282,14 +282,10 @@ public class Dynamic {
             } catch (Exception e) {
                 wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list__items")));
 
-            } finally {  // 获取页面源代码
-                pageSource = driver.getPageSource();
+            }  // 获取页面源代码
+            pageSource = driver.getPageSource();
 
-                //关闭 ChromeDriver
-                driver.close();
-                driver.quit();
-                log.info("正在解析页面...");
-            }
+            log.info("正在解析页面...");
 
             // 使用 Jsoup 解析页面
             Document doc = null;
@@ -376,6 +372,10 @@ public class Dynamic {
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }finally {
+            //关闭 ChromeDriver
+            driver.close();
+            driver.quit();
         }
         return dynamicInfoList;
     }
