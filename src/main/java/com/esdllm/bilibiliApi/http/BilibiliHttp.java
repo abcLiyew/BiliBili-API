@@ -15,6 +15,8 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClientBuilder;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * 统一的 GET 出口：<b>伪装 + 指纹 + 限流 + 重试退避 + 身份轮换 + 代理</b>全在这一处。
@@ -65,6 +67,35 @@ public final class BilibiliHttp {
      * 改成 {@code http://127.0.0.1:8080/x/web-interface/view?bvid=BV1xx}，让本地 server 返回 fixture。
      */
     private static volatile String testBaseUrl;
+
+    static {
+        // —————————— 关闭 Unirest 的 cookie 自动管理（2026-09-13 实测定位的真 bug）——————————
+        //
+        // Unirest 3.13.2 的 Config 默认 getEnabledCookieManagement() == true，即它自带一个
+        // cookie 罐：任何响应里的 Set-Cookie 都会被存下来，并在后续请求里自动回放。
+        //
+        // 本类是"Cookie 唯一出口"（见 composeCookie：用户 Cookie 优先 + 匿名指纹补缺），
+        // 若再叠加 cookie 罐，后续请求的 Cookie 头就会变成
+        // "我们显式拼的那串 + 罐里回放的那串"，出现同名键重复 / 身份串味。
+        //
+        // 实测后果（XatiiBot 推送链路，2026-09-13）：
+        //   先调直播接口（其响应带 Set-Cookie）→ 紧接着调动态 feed →
+        //   **稳定 HTTP 412**（B 站风控页），Cookie 有效也没用；
+        //   关闭 cookie 管理后同一序列立刻恢复正常（13 条动态 + 长图渲染成功）。
+        //
+        // 必须在**任何请求发出前**执行：Unirest 的 Config 在客户端建好后再改会抛
+        // UnirestConfigException。库内所有出站都汇聚到本类，因此类初始化就是最早时机。
+        try {
+            if (Unirest.config().getEnabledCookieManagement()) {
+                Unirest.config().enableCookieManagement(false);
+                log.info("已关闭 Unirest 的 cookie 自动管理：Cookie 一律由 BilibiliHttp 显式组装");
+            }
+        } catch (Exception e) {
+            // 已有其它代码先建好了客户端 —— 不致命，但要留下痕迹，否则又会变成"Cookie 分明对却 412"
+            log.warn("关闭 Unirest cookie 管理失败（可能已有客户端先行建立），Cookie 头可能被 cookie 罐叠加：{}",
+                    e.toString());
+        }
+    }
 
     /** 设置测试 base URL（{@code null} 表示关闭）。生产代码不应调用。 */
     public static void setTestBaseUrl(String baseUrl) {
@@ -160,14 +191,144 @@ public final class BilibiliHttp {
                 .connectTimeout(HttpPolicy.getConnectTimeoutMs())
                 .socketTimeout(HttpPolicy.getSocketTimeoutMs());
 
-        String cookie = identity.cookie();
+        String cookie = composeCookie(identity.cookie());
         if (cookie != null && !cookie.isEmpty()) {
             request.header("Cookie", cookie);
         }
+        logOutgoingIdentity(identity, cookie);
         if (HttpPolicy.hasProxy()) {
             request.proxy(HttpPolicy.getProxyHost(), HttpPolicy.getProxyPort());
         }
         return request.asString();
+    }
+
+    /** 上一次打印过的出站身份签名：只在"身份构成变化"时打一行，避免每轮刷屏 */
+    private static final java.util.concurrent.atomic.AtomicReference<String> LAST_IDENTITY_SIGNATURE =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /**
+     * 打印一次"这一次到底以什么身份出站"（<b>只打印键名，值一律不出</b>）。
+     *
+     * <p><b>为什么值得专门打这一行</b>（2026-09-13 排障教训）：服务端持续 412 时，
+     * 日志里只有 {@code HttpPolicy.describe()} 那句"Cookie=已注入(buvid3,buvid4,SESSDATA)"——
+     * 它证明的是<b>配置里有</b>，而不是<b>请求真的带上了</b>。两者之间隔着合并、代理、
+     * 连接层好几道，排障时极易把时间花在"Cookie 是不是失效"上。
+     * 本行直接把"实际发出的键名 + 指纹来源"写进日志，一次就能分辨：
+     * <ul>
+     *   <li>{@code 未携带任何 Cookie} → 是拼装/注入的问题，与风控无关；</li>
+     *   <li>{@code 键=[buvid3,buvid4,SESSDATA]，来源=登录 Cookie} → 请求形状没问题，
+     *       412 只能归因于出口 IP / 指纹本身被标记。</li>
+     * </ul>
+     *
+     * <p>只在签名变化时打印（首次必然打印），因此长期运行不会刷屏。
+     *
+     * @param identity       本代身份（提供匿名指纹与 UA）
+     * @param composedCookie 实际写进 {@code Cookie} 头的内容，可为 {@code null}
+     */
+    private static void logOutgoingIdentity(AnonymousSession.Identity identity, String composedCookie) {
+        boolean hasCookie = composedCookie != null && !composedCookie.isEmpty();
+        String source = HttpPolicy.cookieProvidesDeviceId()
+                ? "登录 Cookie"
+                : (identity.hasCookie() ? "匿名指纹" : "无");
+        String signature = keysOf(composedCookie) + "|" + source;
+        if (signature.equals(LAST_IDENTITY_SIGNATURE.getAndSet(signature))) {
+            return;
+        }
+        if (!hasCookie) {
+            log.warn("出站身份：未携带任何 Cookie（匿名端点会被判 412）；指纹来源={}", source);
+            return;
+        }
+        log.info("出站身份：Cookie 键=[{}]，设备指纹来源={}，UA=\"{}\"",
+                keysOf(composedCookie), source, brief(identity.userAgent(), 40));
+    }
+
+    /** 取 Cookie 的键名（逗号分隔，值不出），纯日志用 */
+    private static String keysOf(String cookie) {
+        if (cookie == null || cookie.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String pair : cookie.split(";")) {
+            String trimmed = pair.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            int eq = trimmed.indexOf('=');
+            String key = (eq < 0 ? trimmed : trimmed.substring(0, eq)).trim();
+            if (key.isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(key);
+        }
+        return sb.toString();
+    }
+
+    /** 截断长文本，避免 UA 之类的长串把日志撑爆 */
+    private static String brief(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() <= max ? text : text.substring(0, max) + "...";
+    }
+
+    /**
+     * 组装最终发给 B 站的 {@code Cookie} 头。
+     *
+     * <p>规则：<b>调用方注入的真实登录 Cookie 优先</b>（见 {@link HttpPolicy#setCookie(String)}），
+     * 指纹 Cookie（{@code buvid3}/{@code buvid4}）只用来<b>补用户没带的键</b>。
+     *
+     * <p>为什么不是简单拼接：两串里可能都有 {@code buvid3}。直接粘成
+     * {@code buvid3=A; ...; buvid3=B} 后，B 站取到哪个由服务端实现决定，
+     * 可能出现"用户 Cookie 明明带对了却被指纹值覆盖"的诡异风控 —— 必须按键去重。
+     *
+     * @param anonymousCookie 匿名指纹 Cookie，可为 {@code null}
+     * @return 合并后的 Cookie 头；两串都为空时返回 {@code null}
+     */
+    static String composeCookie(String anonymousCookie) {
+        String userCookie = HttpPolicy.getCookie();
+        boolean hasUser = userCookie != null && !userCookie.isEmpty();
+        boolean hasAnonymous = anonymousCookie != null && !anonymousCookie.isEmpty();
+        if (!hasUser) {
+            return hasAnonymous ? anonymousCookie : null;
+        }
+        if (!hasAnonymous) {
+            return userCookie;
+        }
+
+        Map<String, String> merged = new LinkedHashMap<>();
+        putCookiePairs(merged, userCookie, false);
+        // 只补用户没有的键：putIfAbsent 语义
+        putCookiePairs(merged, anonymousCookie, true);
+        return String.join("; ", merged.values());
+    }
+
+    /**
+     * 把一串 Cookie 拆成 {@code key=value} 放进 map。
+     *
+     * @param target       目标 map（保持插入顺序）
+     * @param raw          Cookie 字符串
+     * @param keepExisting 为 {@code true} 时只补不覆盖（匿名指纹用），否则覆盖（用户 Cookie 用）
+     */
+    private static void putCookiePairs(Map<String, String> target, String raw, boolean keepExisting) {
+        for (String pair : raw.split(";")) {
+            String trimmed = pair.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            int eq = trimmed.indexOf('=');
+            String key = (eq < 0 ? trimmed : trimmed.substring(0, eq)).trim();
+            if (key.isEmpty()) {
+                continue;
+            }
+            if (keepExisting) {
+                target.putIfAbsent(key, trimmed);
+            } else {
+                target.put(key, trimmed);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ 关重定向（短链专用）
@@ -198,7 +359,7 @@ public final class BilibiliHttp {
         request.setHeader("User-Agent", AnonymousSession.userAgent());
         request.setHeader("Accept", BilibiliEndpoint.accept);
         request.setHeader("Referer", BilibiliEndpoint.referer);
-        String cookie = AnonymousSession.cookieHeader();
+        String cookie = composeCookie(AnonymousSession.cookieHeader());
         if (cookie != null && !cookie.isEmpty()) {
             request.setHeader("Cookie", cookie);
         }

@@ -20,6 +20,14 @@ import java.util.concurrent.ThreadLocalRandom;
  *   <li><b>代理</b>：默认直连。可用 {@link #setProxy(String, int)} 显式指定，
  *       或启动时用系统属性 {@code -Dbili.proxy.host=} / {@code -Dbili.proxy.port=} 注入。
  *       本库<b>不内置任何代理地址</b>（保持"零凭据"定位）。</li>
+ *   <li><b>Cookie</b>：默认只有匿名指纹。部分端点匿名已无法通过 —— 实测
+ *       {@code x/polymer/web-dynamic/v1/feed/space} 不带指纹 Cookie 返回 <b>HTTP 412</b>，
+ *       带上 {@code buvid3/buvid4} 后变成 {@code code=-352}（风控），补全套
+ *       {@code dm_img_*}/{@code web_location} 客户端指纹参数、换代理出口也都过不去。
+ *       此时可用 {@link #setCookie(String)} 或启动时系统属性 {@code -Dbili.cookie=}
+ *       注入<b>真实登录 Cookie</b>（浏览器里的 {@code SESSDATA} 等）。
+ *       注入后与指纹 Cookie 合并，<b>用户 Cookie 的键优先</b>。
+ *       本库<b>不内置任何凭据</b>，也不落盘。</li>
  * </ul>
  *
  * <p>所有字段都是 {@code volatile}，可运行期调整，线程安全。
@@ -51,6 +59,8 @@ public final class HttpPolicy {
     public static final String PROP_PROXY_HOST = "bili.proxy.host";
     /** 系统属性名：代理端口 */
     public static final String PROP_PROXY_PORT = "bili.proxy.port";
+    /** 系统属性名：真实登录 Cookie（可选；为空表示只用匿名指纹） */
+    public static final String PROP_COOKIE = "bili.cookie";
 
     // ---------------------------------------------------------------- 可变配置
 
@@ -68,6 +78,14 @@ public final class HttpPolicy {
 
     private static volatile String proxyHost = readStringProperty(PROP_PROXY_HOST);
     private static volatile int proxyPort = readIntProperty(PROP_PROXY_PORT);
+
+    /**
+     * 调用方注入的<b>真实登录 Cookie</b>（如 {@code SESSDATA=xxx; bili_jct=xxx}）。
+     *
+     * <p>为空表示只走匿名指纹；非空时由 {@code BilibiliHttp} 与指纹 Cookie 合并成最终
+     * {@code Cookie} 头，且<b>本值里的键优先</b>。
+     */
+    private static volatile String cookie = normalizeCookie(readStringProperty(PROP_COOKIE));
 
     private HttpPolicy() {
     }
@@ -254,9 +272,100 @@ public final class HttpPolicy {
         proxyPort = 0;
     }
 
+    // ---------------------------------------------------------------- Cookie
+
+    /**
+     * 当前注入的真实登录 Cookie（未注入时为 {@code null}）。
+     *
+     * @return 归一化后的 Cookie 字符串，形如 {@code SESSDATA=xxx; bili_jct=xxx}
+     */
+    public static String getCookie() {
+        return cookie;
+    }
+
+    /**
+     * 注入真实登录 Cookie。
+     *
+     * <p><b>什么时候需要</b>：调用某端点持续拿到 {@code -352} 或 412，且确认不是网络问题时。
+     * 实测 {@code v1/feed/space} 就属于这种 —— 匿名指纹只能把 412 变成 200+(-352)。
+     * Cookie 从浏览器开发者工具里复制（Cookie 请求头整串），至少含 {@code SESSDATA}。
+     *
+     * <p>注入后本值会与匿名指纹 Cookie 合并，<b>本值里的键优先</b>；
+     * 传 {@code null} 或空白等价于 {@link #clearCookie()}。
+     *
+     * @param rawCookie 完整 Cookie 字符串
+     */
+    public static void setCookie(String rawCookie) {
+        cookie = normalizeCookie(rawCookie);
+    }
+
+    /** 清空注入的 Cookie，回到"只用匿名指纹" */
+    public static void clearCookie() {
+        cookie = null;
+    }
+
+    /** 是否已注入真实登录 Cookie */
+    public static boolean hasCookie() {
+        String value = cookie;
+        return value != null && !value.isEmpty();
+    }
+
+    /**
+     * 注入的登录 Cookie 里是否带了某个键（键名不区分大小写）。
+     *
+     * <p>给"要不要再去领匿名指纹"用：见 {@link #cookieProvidesDeviceId()}。
+     *
+     * @param key Cookie 键名，如 {@code buvid3} / {@code SESSDATA}
+     * @return 是否包含该键
+     */
+    public static boolean hasCookieKey(String key) {
+        String value = cookie;
+        if (value == null || value.isEmpty() || key == null || key.isEmpty()) {
+            return false;
+        }
+        for (String pair : value.split(";")) {
+            String trimmed = pair.trim();
+            int eq = trimmed.indexOf('=');
+            String name = (eq < 0 ? trimmed : trimmed.substring(0, eq)).trim();
+            if (name.equalsIgnoreCase(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 注入的 Cookie 是否<b>自带设备指纹</b>（{@code buvid3} 或 {@code buvid4}）。
+     *
+     * <p><b>为什么需要这个判断</b>（2026-09-13 实测）：{@code AnonymousSession} 领来的匿名指纹
+     * 在合并时是"只补用户没有的键"（用户 Cookie 优先），所以当用户 Cookie 已经带 {@code buvid3} 时，
+     * 那一次指纹请求<b>拿到的值根本不会被用到</b> —— 纯属白打一次请求，而且它恰好排在业务请求前
+     * 几百毫秒，正是 B 站风控最敏感的"连发"形态（实测 1 秒内 3 个请求即 412）。
+     *
+     * <p>注意本判断只说"要不要去领"：<b>最终发出的 Cookie 与领不领完全无关</b>
+     * （带上/不带都在合并结果里表现为用户自己的 buvid），因此跳过不改变请求内容。
+     *
+     * @return 是否需要由匿名指纹来提供设备指纹（{@code true} 表示用户 Cookie 已提供，可跳过领取）
+     */
+    public static boolean cookieProvidesDeviceId() {
+        return hasCookieKey("buvid3") || hasCookieKey("buvid4");
+    }
+
+    /**
+     * 当前注入 Cookie 的<b>键名</b>列表（逗号分隔，值一律不出），未注入时为空串。
+     *
+     * <p>供出站身份日志使用：排障时"到底发了哪几个键"比"配置里写了哪几个键"更有价值
+     * （典型误判是把"配置已注入"当成"请求真的带上了"）。
+     *
+     * @return 形如 {@code buvid3,buvid4,SESSDATA}
+     */
+    public static String cookieKeys() {
+        return hasCookie() ? maskCookie(cookie) : "";
+    }
+
     // ---------------------------------------------------------------- 整体
 
-    /** 把全部参数恢复为默认值（注意：代理会重新按系统属性读取，而非默认直连） */
+    /** 把全部参数恢复为默认值（注意：代理与 Cookie 会重新按系统属性读取，而非强制清空） */
     public static void reset() {
         maxAttempts = DEFAULT_MAX_ATTEMPTS;
         baseDelayMs = DEFAULT_BASE_DELAY_MS;
@@ -271,6 +380,7 @@ public final class HttpPolicy {
         socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
         proxyHost = readStringProperty(PROP_PROXY_HOST);
         proxyPort = readIntProperty(PROP_PROXY_PORT);
+        cookie = normalizeCookie(readStringProperty(PROP_COOKIE));
     }
 
     /** 一行摘要，便于排障时确认实际生效的策略 */
@@ -283,10 +393,58 @@ public final class HttpPolicy {
                 + ", 空列表轮换=" + rotateOnEmptyFeed
                 + ", 超时=" + connectTimeoutMs + "/" + socketTimeoutMs + "ms"
                 + ", 代理=" + (hasProxy() ? proxyHost + ":" + proxyPort : "直连")
+                + ", Cookie=" + (hasCookie() ? "已注入(" + maskCookie(cookie) + ")" : "仅匿名指纹")
                 + "}";
     }
 
     // ---------------------------------------------------------------- 内部
+
+    /**
+     * 归一化 Cookie：去首尾空白、去掉空片段。
+     *
+     * @param raw 原始 Cookie 字符串
+     * @return 归一化结果；空白输入返回 {@code null}
+     */
+    private static String normalizeCookie(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String pair : raw.split(";")) {
+            String trimmed = pair.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append("; ");
+            }
+            sb.append(trimmed);
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /**
+     * 只暴露 Cookie 的键名，值一律打码 —— 日志里不能出现凭据。
+     *
+     * @param raw Cookie 字符串
+     * @return 形如 {@code SESSDATA,bili_jct}（没有 {@code =} 的片段原样保留）
+     */
+    private static String maskCookie(String raw) {
+        StringBuilder sb = new StringBuilder();
+        for (String pair : raw.split(";")) {
+            String trimmed = pair.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            int eq = trimmed.indexOf('=');
+            String key = eq < 0 ? trimmed : trimmed.substring(0, eq).trim();
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(key);
+        }
+        return sb.toString();
+    }
 
     private static String readStringProperty(String key) {
         try {

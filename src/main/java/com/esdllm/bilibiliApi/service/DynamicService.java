@@ -117,6 +117,13 @@ public class DynamicService {
         if (!HttpPolicy.isRotateOnEmptyFeed()) {
             return first;
         }
+        // 注入的登录 Cookie 里带了 buvid3/buvid4 时，轮换匿名身份**根本改不了出站身份**
+        // （合并规则是用户 Cookie 优先），这次重试只会拿同一副面孔再打一次同样的请求 ——
+        // 既不可能拿到不同的结果，又白白把请求数翻倍。直接返回空列表。
+        if (HttpPolicy.cookieProvidesDeviceId()) {
+            log.debug("动态列表为空（uid={}）：登录 Cookie 已固定设备指纹，换身份重试无意义，不再重试", uid);
+            return first;
+        }
         AnonymousSession.Identity rotated = AnonymousSession.rotate();
         log.warn("动态列表为空（uid={}）：可能是『code=0 但 items 为空』的静默风控，"
                 + "已轮换匿名身份至第 {} 代并重试一次", uid, rotated.generation());

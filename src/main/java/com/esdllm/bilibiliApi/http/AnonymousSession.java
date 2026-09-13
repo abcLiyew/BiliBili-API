@@ -126,11 +126,32 @@ public final class AnonymousSession {
             int next = (previous == null ? 1 : previous.generation()) + 1;
             Identity rotated = obtain(next);
             identity = rotated;
-            log.info("匿名身份已轮换：第 {} 代 → 第 {} 代（指纹{}}",
+            log.info("匿名身份已轮换：第 {} 代 → 第 {} 代（指纹{}）",
                     previous == null ? 0 : previous.generation(), rotated.generation(),
-                    rotated.hasCookie() ? "已领取" : "未取得，退化为无 Cookie");
+                    fingerprintState(rotated));
             return rotated;
         }
+    }
+
+    /**
+     * 一张身份里"指纹从哪来"的一句话描述，仅用于日志。
+     *
+     * <p>三种形态要分清楚，否则排障时会误以为"轮换没生效"：
+     * <ul>
+     *   <li>{@code 已领取} —— 真的向指纹接口领到了；</li>
+     *   <li>{@code 由登录 Cookie 提供} —— 用户注入的 Cookie 自带 buvid，<b>按设计</b>跳过了领取，
+     *       此时轮换不会改变出站身份（要换指纹得先把 Cookie 里的 buvid 去掉）；</li>
+     *   <li>{@code 未取得，退化为无 Cookie} —— 指纹接口异常，请求会不带指纹（更易被风控）。</li>
+     * </ul>
+     */
+    private static String fingerprintState(Identity identity) {
+        if (identity.hasCookie()) {
+            return "已领取";
+        }
+        if (HttpPolicy.cookieProvidesDeviceId()) {
+            return "由登录 Cookie 提供（轮换不改变出站身份）";
+        }
+        return "未取得，退化为无 Cookie";
     }
 
     /**
@@ -148,6 +169,22 @@ public final class AnonymousSession {
 
     private static Identity obtain(int generation) {
         String agent = UserAgentPool.at(generation - 1);
+
+        // —————————— 登录 Cookie 已自带设备指纹时，不必再领 anonymous 指纹 ——————————
+        //
+        // 合并规则是"用户 Cookie 优先，指纹只补缺"（见 BilibiliHttp.composeCookie），
+        // 所以用户 Cookie 已经带 buvid3 时，这次领来的指纹根本进不了最终 Cookie 头 ——
+        // 唯一的效果是**多打一次请求**，而且它排在业务请求前几百毫秒，
+        // 正是 B 站风控最敏感的连发形态（2026-09-13 实测：1 秒内 3 个请求即触发 412，
+        // 而服务端每轮轮询都吃 412 的场景正是"指纹 + feed"贴在一起）。
+        //
+        // 跳过不改变出站内容：最终 Cookie 仍是用户那几对键；这里只是不再白跑一趟。
+        if (HttpPolicy.cookieProvidesDeviceId()) {
+            log.info("注入的登录 Cookie 已自带设备指纹（{}），跳过匿名指纹领取（第 {} 代）",
+                    HttpPolicy.cookieKeys(), generation);
+            return new Identity("", agent, generation, System.currentTimeMillis());
+        }
+
         String cookie = "";
         try {
             // 指纹接口本身也是一次出站请求，纳入限流，避免与业务请求叠加把密度打高

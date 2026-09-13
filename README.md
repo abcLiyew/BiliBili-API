@@ -33,7 +33,7 @@ mvn install
 <dependency>
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.20-beta</version>
+    <version>0.9.23-beta</version>
 </dependency>
 ```
 
@@ -136,8 +136,68 @@ System.out.println("直播信息: " + resp);
 3. 使用本项目请遵守B站用户协议和相关法律法规。
 4. 请合理控制请求频率，避免对B站服务器造成过大压力。
 
+## 动态列表返回 -352 / 412 怎么办
+
+`Dynamic.getDynamicInfoList(uid)`（桌面端 `x/polymer/web-dynamic/v1/feed/space`）
+**匿名已经过不去**。2026-09-13 实测：
+
+| 请求方式 | 结果 |
+|---|---|
+| 不带任何 Cookie | HTTP 412（风控页，不是 JSON） |
+| 带匿名指纹 `buvid3/buvid4` | HTTP 200，业务码 `-352` |
+| 再补 `web_location` + `dm_img_*` 客户端指纹参数 | 仍 `-352` |
+| 换代理出口 IP | 无效（机房 IP 反而直接 412） |
+
+也就是说**必须注入真实登录 Cookie**。本库不内置任何凭据，只提供注入点：
+
+```java
+// 方式一：代码注入
+HttpPolicy.setCookie("SESSDATA=xxx; bili_jct=xxx; ...");
+
+// 方式二：启动参数（在静态初始化时读取）
+// java -Dbili.cookie="SESSDATA=xxx; bili_jct=xxx; ..." -jar app.jar
+```
+
+- Cookie 取自浏览器开发者工具里请求头的 `Cookie` 整串（至少含 `SESSDATA`）。
+- 注入后会与匿名指纹 Cookie 合并，**用户 Cookie 的键优先**（同名键不会被指纹值覆盖）。
+- 会在日志/`HttpPolicy.describe()` 里只输出键名，值一律打码。
+- 其它端点（`Live` / `CardInfo` / `BilibiliClient`）匿名可用，**只有动态列表需要 Cookie**。
+
+> **排障**：注入后仍持续 412 时，先看日志里这一行（首次出站必然打印、之后仅在身份变化时打印）：
+> ```
+> 出站身份：Cookie 键=[buvid3,buvid4,SESSDATA]，设备指纹来源=登录 Cookie，UA="..."
+> ```
+> 它证明的是"请求真的带上了什么"，而不是"配置里写了什么"。
+> 若这里显示 `未携带任何 Cookie`，问题是拼装/注入，与风控无关；
+> 若键名齐全却仍 412，就只剩出口 IP / 该指纹已被标记这一类原因了
+> （同一台机器上 `x/frontend/finger/spi` 若仍 200，说明不是整站封 IP，
+> 而是该风控只在动态 feed 这条路径上更严 —— 此时换出口 IP 或换指纹才可能有效）。
+
+### Cookie 里带了 buvid 时会跳过匿名指纹领取
+
+`buvid3/buvid4` 由匿名指纹接口（`x/frontend/finger/spi`）领取。但合并规则是"用户 Cookie 优先"，
+所以当注入的 Cookie 已经带 `buvid3`/`buvid4` 时，领来的值<b>根本进不了最终 Cookie 头</b> ——
+唯一效果是多打一次请求，而这次请求恰好排在业务请求前几百毫秒，正是风控最敏感的连发形态。
+
+因此 `AnonymousSession` 在这种情况下<b>直接跳过领取</b>（出站 Cookie 逐字节不变，只少一次请求）。
+副作用有两个，都是有意的：
+
+- "空列表换身份重试"（`DynamicService.getInfoList`）在此情况下是空转（换不了身份），会被跳过；
+  **想让它重新生效，就把 Cookie 里的 `buvid3`/`buvid4` 去掉**（只保留 `SESSDATA`），
+  这样设备指纹改由匿名指纹提供、可轮换。
+- 日志里轮换会显示 `由登录 Cookie 提供（轮换不改变出站身份）`，这**不是**故障。
+
 ## 版本历史
 - 0.9.13.1-beta: 初始版本
+- 0.9.21-beta: 新增 `HttpPolicy.setCookie` / `-Dbili.cookie`，支持注入真实登录 Cookie
+  （`v1/feed/space` 匿名已无法通过）；长图渲染早已改为 Java2D 自绘，不再依赖 Selenium
+- 0.9.22-beta: **修复「Cookie 正确却仍 412」** —— 关闭 Unirest 自带的 cookie 管理
+  （它会把响应 `Set-Cookie` 回放到后续请求，与显式 `Cookie` 头叠加后被 B 站判风控）。
+  触发场景：先请求直播接口、紧接着请求动态 feed，稳定 412
+- 0.9.23-beta: 新增 `HttpPolicy.hasCookieKey/cookieProvidesDeviceId/cookieKeys`；
+  登录 Cookie 自带 buvid 时**跳过匿名指纹领取**（出站内容不变，少一次请求，
+  避免启动时"指纹+feed"连发）；此时"空列表换身份重试"自动跳过；
+  出站时打印一行**实际 Cookie 键名 + 指纹来源**，用于区分「请求形状问题」与「出口 IP 被标记」
 
 ## 许可证
 
