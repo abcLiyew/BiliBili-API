@@ -18,6 +18,31 @@ import java.util.List;
 @Data
 public class RenderModel {
 
+    /**
+     * 动态类型（来源：{@code item.type}）。
+     *
+     * <p>渲染器按 {@link Type} 选绘制分支：{@link #DRAW} 走"图文 + 图片网格"；
+     * {@link #VIDEO}/{@link #FORWARD} 走"视频卡片"（封面图 + 标题 + BV 号 + 互动数）；
+     * 其它类型（ARTICLE / LIVE / UNKNOWN）目前一律按 VIDEO 分支兜底。
+     */
+    public enum Type {
+        /** 图文 + 多图（DYNAMIC_TYPE_DRAW） */
+        DRAW,
+        /** 视频投稿（DYNAMIC_TYPE_AV） */
+        VIDEO,
+        /** 转发动态（DYNAMIC_TYPE_FORWARD —— 原动态类型留 orig.type） */
+        FORWARD,
+        /** 专栏文章（DYNAMIC_TYPE_ARTICLE） —— 当前按 VIDEO 分支兜底 */
+        ARTICLE,
+        /** 直播推荐（DYNAMIC_TYPE_LIVE_RCMD） —— 当前按 VIDEO 分支兜底 */
+        LIVE,
+        /** 未识别（端点回空 modules，且 fallback 没拿到 type 时降级） */
+        UNKNOWN
+    }
+
+    /** 动态类型（默认 DRAW，渲染器据此选绘制分支） */
+    private Type type = Type.DRAW;
+
     /** 动态 ID */
     private String dynamicId;
 

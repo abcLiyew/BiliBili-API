@@ -58,7 +58,25 @@ public class BilibiliConfig {
      */
     public static final String opusDetailUrl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/detail?id=";
     public static final String liveBaseUrl = "https://api.live.bilibili.com/room/v1/Room/get_info?room_id=";
-    public static final String dynamicListUrl = "https://space.bilibili.com/%s/dynamic";
-    public static final String dynamicInfoUrl  = "https://www.bilibili.com/opus/";
+    /**
+     * <b>桌面端动态空间 feed</b>（{@code getDynamicInfoList} 专用）。
+     *
+     * <p>{@code host_mid} 形参与 {@code features} 都是<b>必填</b>：
+     * <ul>
+     *   <li>{@code features=itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote} —
+     *       <b>缺了这条 {@code features} 时响应里的 {@code items} 永远是空数组</b>，
+     *       接口本身返回 200 但拿不到任何数据（极易被误判为接口失效）。</li>
+     *   <li>{@code platform=web} + {@code build=735002902680334849} 是桌面端默认 UA 习惯，
+     *       跟移动端拿到的不一样（移动端不放 {@code features} 不就空）。</li>
+     *   <li>{@code specials=1} 表示"只要置顶"，不传则拿到按时间倒序的全部。</li>
+     * </ul>
+     *
+     * <p>实测<b>匿名可用</b>（无需 Cookie），但带 {@code buvid3} 更稳。
+     * 之所以必须走这条而<b>不是</b> {@code api.vc.bilibili.com/dynamic_svr/space_history}
+     * —— 后者既已 404（参见 {@link #dynamicBaseUrl} 的弃用说明）。
+     */
+    public static final String dynamicFeedUrl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
+            + "?host_mid=%s&features=itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote"
+            + "&platform=web&build=735002902680334849";
 
 }

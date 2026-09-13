@@ -17,21 +17,33 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 把 B 站的「opus schema」响应转换成 {@link RenderModel}。
+ * 把 B 站的动态响应转换成 {@link RenderModel}。
  *
- * <p><b>为什么渲染走 opus 端点而不是 {@code v1/detail}</b>：实测对比后有三个硬原因——
+ * <p><b>端点策略（按优先级）</b>：
+ * <ol>
+ *   <li>{@code x/polymer/web-dynamic/v1/opus/detail?id=} —— 主路径，返回 OPUS schema，
+ *       对图文类动态天然友好（自带段落顺序 + emoji 贴图）。</li>
+ *   <li>若 opus 回空 {@code modules}，自动回落到
+ *       {@code x/polymer/web-dynamic/v1/detail?id=} —— 该端点对图文的 {@code desc} 是 null，
+ *       但<b>对视频/转发动态才是唯一可解析的源</b>。从
+ *       {@code modules.module_dynamic.major.{archive,opus,article}} 抽提必要字段。</li>
+ * </ol>
+ * 因此对<b>任意类型</b>（DRAW / VIDEO / FORWARD / ARTICLE / LIVE）的动态
+ * {@link #load(String)} 都能产出可用模型。
+ *
+ * <p><b>为什么渲染优先 opus 而不是 {@code v1/detail}</b>：实测对比后有三个硬原因——
  * <ol>
  *   <li>{@code v1/detail?id=} 对"图文 + 多图"类动态返回的 {@code module_dynamic.desc} 是
  *       {@code null}，<b>整条响应的 JSON 里搜不到一个正文字符</b>（实测 id
  *       {@code 1247440317376888835}，正文 258 字，detail 响应里全文检索无命中）；</li>
- *   <li>feed / detail 把正文与图片放在两个互相独立的 module 里，<b>丢失了它们的先后顺序</b>，
+ *   <li>detail 把正文与图片放在两个互相独立的 module 里，<b>丢失了它们的先后顺序</b>，
  *       而长图必须按原文顺序排版；</li>
  *   <li>{@code v1/opus/detail?id=} 直接给出 {@code MODULE_TYPE_CONTENT.module_content.paragraphs}，
  *       段落自带 {@code para_type}（1=文本 2=图片）且<b>顺序即原文顺序</b>，还带 emoji 贴图地址。</li>
  * </ol>
  *
- * <p><b>覆盖范围</b>：只覆盖"图文/opus"类动态。视频动态与转发动态在该端点返回空
- * {@code modules}（实测），需要走 {@code v1/detail} 另行适配 —— 这是 PoC 之后的工作。
+ * <p><b>覆盖范围</b>：DRAW / VIDEO / FORWARD / ARTICLE / LIVE 都能产模型，
+ * 但前三种是常态化兼容，后两种以"封面 + 标题 + 互动数"兜底渲染。
  */
 @Slf4j
 public final class RenderModelLoader {
@@ -51,6 +63,8 @@ public final class RenderModelLoader {
     /**
      * 拉取并解析一条动态，产出可直接渲染的视图模型。
      *
+     * <p>主路径走 opus，回退走 {@code v1/detail}（详见类注释）。
+     *
      * @param dynamicId 动态 ID（新旧格式均可）
      * @return 视图模型
      * @throws IOException 网络失败或响应不可用
@@ -59,17 +73,53 @@ public final class RenderModelLoader {
         if (dynamicId == null || dynamicId.isEmpty()) {
             throw new IOException("动态ID不能为空");
         }
-        String url = BilibiliConfig.opusDetailUrl + dynamicId;
 
+        // —— 主路径：opus（图文最佳） ——
+        try {
+            JSONObject opusItem = fetchItem(BilibiliConfig.opusDetailUrl + dynamicId, "获取动态内容");
+            RenderModel model = parse(opusItem);
+            if (!model.getBlocks().isEmpty()) {
+                return model;
+            }
+            // modules 拿不到（视频/转发类此端点常返空），但 item.type 可能标了 VIDEO/FORWARD/etc。
+            // 只要 type 不是 DRAW，就直接走 legacy；DRAW 但 blocks 空是极少见的退化场景，仍尝试 legacy。
+            log.debug("opus 端点 modules 空（type={}），回落到 v1/detail：id={}",
+                    model.getType(), dynamicId);
+        } catch (IOException e) {
+            // opus 端点对非 opus 类型的 ID 会返 code=4101105 / item 缺失 / JSON 异常；
+            // 这都不是"真实错误"——视频/转发用 opus 端点本来就是错的。我们都视为"走 fallback"信号。
+            // 真正致命错误（code=-352 风控 / 真·网络断）也会再次发生，legacy 也会同样抛。
+            log.debug("opus 端点不可用，回落到 v1/detail：id={}（{}）",
+                    dynamicId, e.getMessage());
+        }
+
+        // —— 回退：v1/detail（视频/转发唯一可解析源；图文也走这个兜底）——
+        JSONObject detailItem = fetchItem(BilibiliConfig.dynamicDetailUrl + dynamicId, "获取动态详情");
+        RenderModel fallback = parseLegacy(detailItem);
+        if (fallback.getBlocks().isEmpty() && fallback.getType() == RenderModel.Type.UNKNOWN) {
+            throw new IOException("opus 与 v1/detail 都拿不到可渲染内容：id=" + dynamicId);
+        }
+        return fallback;
+    }
+
+    /**
+     * 从 URL 拉一次响应，校验 code==0 后返回 {@code data.item} JSON。
+     *
+     * @param url 接口完整 URL
+     * @param action 错误信息前缀
+     * @return 响应里的 item 节点
+     * @throws IOException 网络失败 / code!=0 / data.item 缺失
+     */
+    private static JSONObject fetchItem(String url, String action) throws IOException {
         HttpResponse<String> response;
         try {
             // 必须走 BilibiliHttp（自动带匿名 buvid3）——API 直连不带设备指纹会被判 -352 风控
             response = BilibiliHttp.get(url);
         } catch (Exception e) {
-            throw new IOException("获取动态内容失败：请求发送异常：" + e.getMessage(), e);
+            throw new IOException(action + "失败：请求发送异常：" + e.getMessage(), e);
         }
         if (response == null) {
-            throw new IOException("获取动态内容失败：请求无响应");
+            throw new IOException(action + "失败：请求无响应");
         }
 
         ApiResponse<JSONObject> resp;
@@ -77,38 +127,35 @@ public final class RenderModelLoader {
             resp = JSON.parseObject(response.getBody(), new TypeReference<ApiResponse<JSONObject>>() {
             });
         } catch (Exception e) {
-            throw new IOException("获取动态内容失败：响应不是合法 JSON", e);
+            throw new IOException(action + "失败：响应不是合法 JSON", e);
         }
 
         JSONObject data;
         try {
             // 门面边界规则：库内统一 BilibiliException，出口转成签名声明的 IOException
-            data = ResponseParserSupport.unwrap(resp, "获取动态内容");
+            data = ResponseParserSupport.unwrap(resp, action);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }
         JSONObject item = data.getJSONObject("item");
         if (item == null) {
-            throw new IOException("获取动态内容失败：data 里没有 item");
+            throw new IOException(action + "失败：data 里没有 item");
         }
-
-        RenderModel model = parse(item);
-        if (model.getBlocks().isEmpty()) {
-            // opus 端点对视频/转发类动态会返回空 modules —— 必须显式报错，不能渲染出一张空白图
-            throw new IOException("该动态不是图文类型（opus 端点未返回可渲染内容）：id=" + dynamicId);
-        }
-        return model;
+        return item;
     }
 
     /**
-     * 解析 {@code data.item} 节点。
+     * 解析 {@code data.item} 节点（OPUS schema）。legacy schema 走 {@link #parseLegacy}。
      *
-     * @param item opus schema 的 item
+     * @param item OPUS schema 的 item
      * @return 视图模型
      */
     static RenderModel parse(JSONObject item) {
         RenderModel model = new RenderModel();
         model.setDynamicId(item.getString("id_str"));
+        model.setType(mapType(item.getString("type")));
+        // OPUS 端点拿到的动态形态基本都是 DRAW —— 但若 item.type 是 AV/FORWARD 等（实测罕见），
+        // 我们仍如实标记，renderer 看到 type != DRAW 会自动切到 video 分支。
 
         JSONArray modules = item.getJSONArray("modules");
         if (modules == null) {
@@ -148,6 +195,290 @@ public final class RenderModelLoader {
             model.getBlocks().add(block);
         }
         return model;
+    }
+
+    /**
+     * 把 OPUS 端点拿到的"图文明明非空但模块不全"或"空 modules"的 item 改造一下，
+     * <b>或</b>处理 v1/detail 端点的 LEGACY schema —— 由调用方挑一个入口。
+     *
+     * <p>v1/detail 的 item.modules 是 {@code JSONObject}（key 是 {@code module_*}），而且
+     * 对 VIDEO/FORWARD 类型能给出 {@code module_dynamic.major.{archive,opus,article}} 等主体。
+     * 本方法按 {@link RenderModel.Type} 分支填充 {@link RenderModel#getBlocks()}：
+     * <ul>
+     *   <li>{@link RenderModel.Type#DRAW}：和 {@link #parse} 路径一致（兜底）</li>
+     *   <li>{@link RenderModel.Type#VIDEO}：1 张封面图 + 标题/BV号文本 + 描述</li>
+     *   <li>{@link RenderModel.Type#FORWARD}：转发原文的小摘要（标题/desc）+ 引用块</li>
+     *   <li>{@link RenderModel.Type#ARTICLE} / {@link RenderModel.Type#LIVE}：标题 + 封面</li>
+     * </ul>
+     */
+    static RenderModel parseLegacy(JSONObject item) {
+        RenderModel model = new RenderModel();
+        model.setDynamicId(item.getString("id_str"));
+        model.setType(mapType(item.getString("type")));
+
+        JSONObject modules = item.getJSONObject("modules");
+        if (modules == null) {
+            return model;
+        }
+        parseAuthor(modules.getJSONObject("module_author"), model);
+        parseStat(modules.getJSONObject("module_stat"), model);
+
+        JSONObject moduleDynamic = modules.getJSONObject("module_dynamic");
+        if (moduleDynamic == null) {
+            return model;
+        }
+
+        // 标题 + 描述 + 互动数（desc.text 可能为 null，转发类型下也允许空）
+        String descText = extractLegacyDescText(moduleDynamic.getJSONObject("desc"));
+        JSONObject major = moduleDynamic.getJSONObject("major");
+        String majorType = major == null ? null : major.getString("type");
+
+        switch (model.getType()) {
+            case VIDEO:
+                appendVideoBlocks(model, major, majorType, descText);
+                break;
+            case FORWARD:
+                appendForwardBlocks(model, moduleDynamic, descText);
+                break;
+            case ARTICLE:
+                appendArticleBlocks(model, major, descText);
+                break;
+            case LIVE:
+                appendLiveBlocks(model, major, descText);
+                break;
+            case DRAW:
+                // LEGACY schema 的 DRAW 没 desc —— 已是退化场景，至少把 major.draw.items 抓回来当图
+                appendDrawFallbackBlocks(model, major, descText);
+                break;
+            default:
+                // UNKNOWN：什么都不做，blocks 空，load() 会再抛
+                break;
+        }
+        return model;
+    }
+
+    /** 把 B 站 dynamic.type 字面量映射到 {@link RenderModel.Type} */
+    static RenderModel.Type mapType(String type) {
+        if (type == null) {
+            return RenderModel.Type.UNKNOWN;
+        }
+        switch (type) {
+            case "DYNAMIC_TYPE_DRAW":
+                return RenderModel.Type.DRAW;
+            case "DYNAMIC_TYPE_AV":
+                return RenderModel.Type.VIDEO;
+            case "DYNAMIC_TYPE_FORWARD":
+                return RenderModel.Type.FORWARD;
+            case "DYNAMIC_TYPE_ARTICLE":
+                return RenderModel.Type.ARTICLE;
+            case "DYNAMIC_TYPE_LIVE_RCMD":
+            case "DYNAMIC_TYPE_LIVE":
+                return RenderModel.Type.LIVE;
+            default:
+                return RenderModel.Type.UNKNOWN;
+        }
+    }
+
+    /** LEGACY schema 的 desc 是对象，text + rich_text_nodes；这里降级到只取 text */
+    private static String extractLegacyDescText(JSONObject desc) {
+        if (desc == null) {
+            return null;
+        }
+        String t = desc.getString("text");
+        return (t == null || t.isEmpty()) ? null : t;
+    }
+
+    private static void appendVideoBlocks(RenderModel model, JSONObject major, String majorType, String descText) {
+        if (!"MAJOR_TYPE_ARCHIVE".equals(majorType) || major == null) {
+            return;
+        }
+        JSONObject archive = major.getJSONObject("archive");
+        if (archive == null) {
+            return;
+        }
+        // 封面图（一张）
+        String cover = archive.getString("cover");
+        if (cover != null && !cover.isEmpty()) {
+            RenderModel.ImageBlock image = new RenderModel.ImageBlock();
+            RenderModel.Pic pic = new RenderModel.Pic();
+            pic.setUrl(normalizeUrl(cover));
+            pic.setWidth(archive.getIntValue("width"));
+            pic.setHeight(archive.getIntValue("height"));
+            image.getPics().add(pic);
+            model.getBlocks().add(image);
+        }
+        // 标题 + BV 号 + 时长（合并到一段文本里）
+        String title = archive.getString("title");
+        String bv = nonNull(archive.getString("bvid"));
+        String duration = nonNull(archive.getString("duration_text"));
+        StringBuilder header = new StringBuilder();
+        if (title != null) {
+            header.append(title);
+        }
+        if (bv != null || duration != null) {
+            header.append('\n');
+            if (bv != null) {
+                header.append(bv);
+            }
+            if (duration != null) {
+                if (bv != null) header.append(" · ");
+                header.append(duration);
+            }
+        }
+        if (header.length() > 0) {
+            RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+            textBlock.getSpans().add(textSpan(header.toString()));
+            model.getBlocks().add(textBlock);
+        }
+        if (descText != null && !descText.isEmpty()) {
+            RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+            textBlock.getSpans().add(textSpan(descText));
+            model.getBlocks().add(textBlock);
+        }
+    }
+
+    private static void appendForwardBlocks(RenderModel model, JSONObject moduleDynamic, String descText) {
+        // —— 转发者自己的描述 ——
+        if (descText != null && !descText.isEmpty()) {
+            RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+            textBlock.getSpans().add(textSpan("转发：" + descText));
+            model.getBlocks().add(textBlock);
+        }
+        // —— 原动态的小摘要（不展开做长图渲染，只展示一两条关键信息）——
+        JSONObject orig = moduleDynamic.getJSONObject("orig");
+        if (orig != null) {
+            RenderModel.Type origType = mapType(orig.getString("type"));
+            String origSummary = summarizeOrig(orig, origType);
+            if (origSummary != null && !origSummary.isEmpty()) {
+                RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+                textBlock.getSpans().add(textSpan("「" + origSummary + "」"));
+                model.getBlocks().add(textBlock);
+            }
+        }
+    }
+
+    private static String summarizeOrig(JSONObject orig, RenderModel.Type origType) {
+        JSONObject modules = orig.getJSONObject("modules");
+        if (modules == null) {
+            return null;
+        }
+        switch (origType) {
+            case VIDEO: {
+                JSONObject major = modules.getJSONObject("module_dynamic");
+                if (major == null) return null;
+                JSONObject mj = major.getJSONObject("major");
+                if (mj == null) return null;
+                JSONObject archive = mj.getJSONObject("archive");
+                if (archive == null) return null;
+                String title = archive.getString("title");
+                String bv = archive.getString("bvid");
+                String dur = archive.getString("duration_text");
+                StringBuilder sb = new StringBuilder();
+                if (title != null) sb.append(title);
+                if (bv != null || dur != null) {
+                    sb.append(" (");
+                    if (bv != null) sb.append(bv);
+                    if (bv != null && dur != null) sb.append(" · ");
+                    if (dur != null) sb.append(dur);
+                    sb.append(')');
+                }
+                return sb.length() > 0 ? sb.toString() : null;
+            }
+            case DRAW:
+            case ARTICLE:
+            case LIVE:
+            case UNKNOWN:
+            default: {
+                JSONObject md = modules.getJSONObject("module_dynamic");
+                if (md == null) return null;
+                JSONObject desc = md.getJSONObject("desc");
+                if (desc == null) return null;
+                return desc.getString("text");
+            }
+        }
+    }
+
+    private static void appendArticleBlocks(RenderModel model, JSONObject major, String descText) {
+        if (major == null) return;
+        JSONObject article = major.getJSONObject("article");
+        if (article == null) return;
+        // 封面（最多一张）
+        String cover = article.getString("cover");
+        if (cover == null) {
+            // 备选：article.covers[0]
+            com.alibaba.fastjson.JSONArray covers = article.getJSONArray("covers");
+            if (covers != null && !covers.isEmpty()) {
+                cover = covers.getString(0);
+            }
+        }
+        if (cover != null && !cover.isEmpty()) {
+            RenderModel.ImageBlock image = new RenderModel.ImageBlock();
+            RenderModel.Pic pic = new RenderModel.Pic();
+            pic.setUrl(normalizeUrl(cover));
+            image.getPics().add(pic);
+            model.getBlocks().add(image);
+        }
+        String title = article.getString("title");
+        if (title != null && !title.isEmpty()) {
+            RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+            textBlock.getSpans().add(textSpan(title));
+            model.getBlocks().add(textBlock);
+        }
+        if (descText != null && !descText.isEmpty()) {
+            RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+            textBlock.getSpans().add(textSpan(descText));
+            model.getBlocks().add(textBlock);
+        }
+    }
+
+    private static void appendLiveBlocks(RenderModel model, JSONObject major, String descText) {
+        if (major == null) return;
+        // 直播推荐：major.live_rcmd.content.title
+        JSONObject live = major.getJSONObject("live_rcmd");
+        if (live != null) {
+            JSONObject content = live.getJSONObject("content");
+            if (content != null) {
+                String title = content.getString("title");
+                if (title != null && !title.isEmpty()) {
+                    RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+                    textBlock.getSpans().add(textSpan(title));
+                    model.getBlocks().add(textBlock);
+                }
+            }
+        }
+        if (descText != null && !descText.isEmpty()) {
+            RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+            textBlock.getSpans().add(textSpan(descText));
+            model.getBlocks().add(textBlock);
+        }
+    }
+
+    private static void appendDrawFallbackBlocks(RenderModel model, JSONObject major, String descText) {
+        // LEGACY schema 的 DRAW 没 desc；只能从 major.draw.items 当图
+        if (major == null) return;
+        JSONObject draw = major.getJSONObject("draw");
+        if (draw == null) return;
+        com.alibaba.fastjson.JSONArray items = draw.getJSONArray("items");
+        if (items == null || items.isEmpty()) return;
+        RenderModel.ImageBlock image = new RenderModel.ImageBlock();
+        for (int i = 0; i < items.size(); i++) {
+            JSONObject it = items.getJSONObject(i);
+            if (it == null) continue;
+            RenderModel.Pic pic = new RenderModel.Pic();
+            pic.setUrl(normalizeUrl(it.getString("src")));
+            pic.setWidth(it.getIntValue("width"));
+            pic.setHeight(it.getIntValue("height"));
+            if (pic.getUrl() != null && !pic.getUrl().isEmpty()) {
+                image.getPics().add(pic);
+            }
+        }
+        if (!image.getPics().isEmpty()) {
+            model.getBlocks().add(image);
+        }
+    }
+
+    private static String nonNull(String s) {
+        return (s == null || s.isEmpty()) ? null : s;
     }
 
     private static void parseAuthor(JSONObject author, RenderModel model) {
@@ -471,10 +802,13 @@ public final class RenderModelLoader {
      * B 站图片 CDN 给的是 {@code http://}，直接请求会被跳转（且 http→https 的跳转
      * {@code HttpURLConnection} 默认不跟随），这里统一规范成 https。
      *
+     * <p>是 {@code public} 因为 {@code Dynamic.getDynamicInfoList} 也要用 —— 两个调用方写两份
+     * 容易在细节上分叉（{@code //} vs {@code http://} vs {@code https://} 哪个先检查）。
+     *
      * @param url 原始地址
      * @return 规范化地址
      */
-    static String normalizeUrl(String url) {
+    public static String normalizeUrl(String url) {
         if (url == null || url.isEmpty()) {
             return url;
         }
