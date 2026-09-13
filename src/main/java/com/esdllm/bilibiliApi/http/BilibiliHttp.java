@@ -2,23 +2,34 @@ package com.esdllm.bilibiliApi.http;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
+import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.parse.ErrorMapper;
 import kong.unirest.GetRequest;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.HttpHost;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.HttpClientBuilder;
+
+import java.io.IOException;
 
 /**
  * 统一的 GET 出口：<b>伪装 + 指纹 + 限流 + 重试退避 + 身份轮换 + 代理</b>全在这一处。
  *
- * <p><b>本类是唯一出口</b>：门面里的 {@code ApiBase.getCloseableHttpResponse} 已经委托到这里，
- * 因此 {@code CardInfo} / {@code BilibiliClient} / {@code Live} / {@code Dynamic} 四个门面
- * 与渲染链路走的是同一套策略。<b>新增网络调用请一律经由本类</b>，
- * 不要绕过它自己发请求 —— 绕过就意味着那条链路没有指纹、没有限流、没有重试。
+ * <p><b>本类是唯一出口</b>：5 个门面经 {@code service/*}、渲染链路经 {@code RenderModelLoader}、
+ * 短链经 {@code ShortLinkService}，最终都汇聚到这里。
+ * <b>新增网络调用请一律经由本类</b>，不要绕过它自己发请求 ——
+ * 绕过就意味着那条链路没有指纹、没有限流、没有重试。
  *
- * <p>改造前的 {@code ApiBase} 只发 User-Agent 与 Accept、不带任何 Cookie，
+ * <p>唯一例外是 {@link AnonymousSession}：它要提供"当前身份"，若再反过来调本类会形成
+ * 循环依赖，因此它自己发那一次指纹请求（见 {@code AnonymousSession#obtain}）。
+ *
+ * <p>改造前所有的出站都塞在 {@code ApiBase} 里（只发 User-Agent 与 Accept、不带任何 Cookie），
  * 这正是动态类接口被判风控（{@code -352} / {@code 412}）的直接原因。
+ * {@code ApiBase} 已在 P3 退场（仅留 {@code @Deprecated} 兼容壳），能力全部收进本类。
  *
  * <p><b>重试策略的核心是"分类"，不是"多试几次"</b>（见 {@link #classify}）：
  * <table border="1">
@@ -43,6 +54,27 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public final class BilibiliHttp {
+
+    /**
+     * 测试钩子：把生产 URL 的 {@code scheme://host[:port]} 替换成这里的 base URL。
+     *
+     * <p>仅用于本地 HttpServer / WireMock 类测试；生产路径（默认 {@code null}）不做任何替换，
+     * 行为与改造前完全一致。设值后必须配套 {@link #clearTestBaseUrl()} 还原，避免污染其他测试。
+     *
+     * <p><b>示例</b>：把 {@code https://api.bilibili.com/x/web-interface/view?bvid=BV1xx}
+     * 改成 {@code http://127.0.0.1:8080/x/web-interface/view?bvid=BV1xx}，让本地 server 返回 fixture。
+     */
+    private static volatile String testBaseUrl;
+
+    /** 设置测试 base URL（{@code null} 表示关闭）。生产代码不应调用。 */
+    public static void setTestBaseUrl(String baseUrl) {
+        testBaseUrl = baseUrl;
+    }
+
+    /** 关闭测试 base URL 改写。生产代码不应调用。 */
+    public static void clearTestBaseUrl() {
+        testBaseUrl = null;
+    }
 
     private BilibiliHttp() {
     }
@@ -120,10 +152,11 @@ public final class BilibiliHttp {
     // ------------------------------------------------------------------ 发送
 
     private static HttpResponse<String> send(String url, AnonymousSession.Identity identity) {
+        url = applyTestBaseUrl(url);
         GetRequest request = Unirest.get(url)
                 .header("User-Agent", identity.userAgent())
-                .header("Accept", BilibiliConfig.accept)
-                .header("Referer", BilibiliConfig.referer)
+                .header("Accept", BilibiliEndpoint.accept)
+                .header("Referer", BilibiliEndpoint.referer)
                 .connectTimeout(HttpPolicy.getConnectTimeoutMs())
                 .socketTimeout(HttpPolicy.getSocketTimeoutMs());
 
@@ -135,6 +168,107 @@ public final class BilibiliHttp {
             request.proxy(HttpPolicy.getProxyHost(), HttpPolicy.getProxyPort());
         }
         return request.asString();
+    }
+
+    // ------------------------------------------------------------------ 关重定向（短链专用）
+
+    /**
+     * <b>关掉自动重定向</b>发一次 GET，返回原始响应 —— 只为读中间跳转的
+     * {@code Location} header（短链解析用）。
+     *
+     * <p><b>为什么单独一个方法</b>：Unirest 会自动跟随 302，拿不到中间那一跳的
+     * {@code Location}；必须改用 Apache HttpClient 的 {@code disableRedirectHandling()}。
+     * 该能力原先在 {@code ApiBase.getHttpResponseNotRedirect} 里，2026-09-13（P3）迁到本类 ——
+     * 让"出站"只剩本类这一个出口，Apache 依赖也不出 {@code http} 包。
+     *
+     * <p>与 {@link #get(String)} 的区别：
+     * <ul>
+     *   <li><b>不</b>走重试/退避（读 Location 是一次性动作，重试无意义）；</li>
+     *   <li><b>不</b>做业务码分类（这里只关心 HTTP 头）；</li>
+     *   <li>仍然带 UA / Accept / Referer / 指纹 Cookie / 超时 / 代理 —— 短链也在 B 站域名下，
+     *       不该成为一条裸奔的旁路。</li>
+     * </ul>
+     *
+     * @param url 完整地址
+     * @return Apache HttpClient 的响应（调用方自取 header）；网络失败抛 {@link IOException}
+     */
+    public static org.apache.http.HttpResponse getNoRedirect(String url) throws IOException {
+        url = applyTestBaseUrl(url);
+        HttpGet request = new HttpGet(url);
+        request.setHeader("User-Agent", AnonymousSession.userAgent());
+        request.setHeader("Accept", BilibiliEndpoint.accept);
+        request.setHeader("Referer", BilibiliEndpoint.referer);
+        String cookie = AnonymousSession.cookieHeader();
+        if (cookie != null && !cookie.isEmpty()) {
+            request.setHeader("Cookie", cookie);
+        }
+
+        RequestConfig.Builder config = RequestConfig.custom()
+                .setConnectTimeout(HttpPolicy.getConnectTimeoutMs())
+                .setConnectionRequestTimeout(HttpPolicy.getConnectTimeoutMs())
+                .setSocketTimeout(HttpPolicy.getSocketTimeoutMs());
+
+        HttpClientBuilder builder = HttpClientBuilder.create()
+                .disableRedirectHandling()
+                .setDefaultRequestConfig(config.build());
+        if (HttpPolicy.hasProxy()) {
+            builder.setProxy(new HttpHost(HttpPolicy.getProxyHost(), HttpPolicy.getProxyPort()));
+        }
+
+        HttpClient client = builder.build();
+        return client.execute(request);
+    }
+
+    /**
+     * 取短链跳转的真实地址（即 {@code Location} header）。
+     *
+     * <p>只暴露"拿 Location"这一件事，让调用方不必碰 Apache 类型。
+     *
+     * @param url 短链地址
+     * @return {@code Location} 的值；header 不存在 / 网络失败 / 解析异常时返回 {@code null}
+     */
+    public static String getLocation(String url) {
+        try {
+            org.apache.http.HttpResponse response = getNoRedirect(url);
+            org.apache.http.Header location = response.getFirstHeader("Location");
+            return location == null ? null : location.getValue();
+        } catch (Exception e) {
+            log.debug("读取跳转地址失败：{}（{}）", url, e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * 把 URL 的 {@code scheme://host[:port]} 替换为 {@link #testBaseUrl}（测试钩子用）。
+     * 路径 + query + fragment 原样保留。
+     *
+     * @param url 完整 URL
+     * @return 测试 base URL 未设置时返回原 URL；设置后替换前缀
+     */
+    static String applyTestBaseUrl(String url) {
+        String base = testBaseUrl;
+        if (base == null || base.isEmpty() || url == null) {
+            return url;
+        }
+        int protoEnd = url.indexOf("://");
+        if (protoEnd < 0) {
+            return url;
+        }
+        int pathStart = url.indexOf('/', protoEnd + 3);
+        if (pathStart < 0) {
+            return base;
+        }
+        return base + url.substring(pathStart);
+    }
+
+    /**
+     * 测试钩子的公开版本：与 {@link #applyTestBaseUrl(String)} 一致。
+     *
+     * <p>存在的意义是供<b>其它包的测试</b>验证"URL 是否会被改写"；
+     * 包内的 {@code getNoRedirect} / {@code send} 直接用 {@code applyTestBaseUrl}。
+     */
+    public static String rewriteForTest(String url) {
+        return applyTestBaseUrl(url);
     }
 
     // ------------------------------------------------------------------ 分类

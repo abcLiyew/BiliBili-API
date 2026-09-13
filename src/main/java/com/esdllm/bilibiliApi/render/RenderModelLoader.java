@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
+import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.parse.ApiResponse;
@@ -76,7 +76,7 @@ public final class RenderModelLoader {
 
         // —— 主路径：opus（图文最佳） ——
         try {
-            JSONObject opusItem = fetchItem(BilibiliConfig.opusDetailUrl + dynamicId, "获取动态内容");
+            JSONObject opusItem = fetchItem(BilibiliEndpoint.opusDetailUrl + dynamicId, "获取动态内容");
             RenderModel model = parse(opusItem);
             if (!model.getBlocks().isEmpty()) {
                 return model;
@@ -94,7 +94,7 @@ public final class RenderModelLoader {
         }
 
         // —— 回退：v1/detail（视频/转发唯一可解析源；图文也走这个兜底）——
-        JSONObject detailItem = fetchItem(BilibiliConfig.dynamicDetailUrl + dynamicId, "获取动态详情");
+        JSONObject detailItem = fetchItem(BilibiliEndpoint.dynamicDetailUrl + dynamicId, "获取动态详情");
         RenderModel fallback = parseLegacy(detailItem);
         if (fallback.getBlocks().isEmpty() && fallback.getType() == RenderModel.Type.UNKNOWN) {
             throw new IOException("opus 与 v1/detail 都拿不到可渲染内容：id=" + dynamicId);

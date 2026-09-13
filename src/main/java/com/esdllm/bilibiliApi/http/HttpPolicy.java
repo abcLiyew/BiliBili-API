@@ -13,7 +13,8 @@ import java.util.concurrent.ThreadLocalRandom;
  *       反而更容易被风控识别。</li>
  *   <li><b>限流</b>：全局最小请求间隔 {@value #DEFAULT_MIN_INTERVAL_MS}ms，
  *       把所有出站请求摊平，避免"列表 + 逐条详情 + 抓图"连着打把自己推近风控线。</li>
- *   <li><b>身份轮换</b>：仅对<b>风控码</b>生效，且最多 {@value #DEFAULT_MAX_ROTATIONS} 次。
+ *   <li><b>身份轮换</b>：对<b>风控码</b>生效，且最多 {@value #DEFAULT_MAX_ROTATIONS} 次；
+ *       此外动态列表<b>空 items</b>（静默风控，见 {@link #isRotateOnEmptyFeed()}）也轮换一次。
  *       注意这与"盲重试"有本质区别：盲重试是拿<b>已被标记的指纹</b>再撞一次，
  *       只会加重风控；轮换是换一个全新匿名身份再试。</li>
  *   <li><b>代理</b>：默认直连。可用 {@link #setProxy(String, int)} 显式指定，
@@ -60,6 +61,7 @@ public final class HttpPolicy {
     private static volatile double jitterRatio = DEFAULT_JITTER_RATIO;
     private static volatile long minRequestIntervalMs = DEFAULT_MIN_INTERVAL_MS;
     private static volatile boolean rotateOnRiskControl = true;
+    private static volatile boolean rotateOnEmptyFeed = true;
     private static volatile int maxRotations = DEFAULT_MAX_ROTATIONS;
     private static volatile int connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
     private static volatile int socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
@@ -172,6 +174,27 @@ public final class HttpPolicy {
         rotateOnRiskControl = value;
     }
 
+    /**
+     * 动态列表返回<b>空 items</b>时，是否换一副身份重试一次。
+     *
+     * <p><b>为什么需要这个开关</b>：{@code v1/feed/space} 有一种失败形态与"业务码"无关 ——
+     * 实测 {@code code=0} 但 {@code data.items=[]}（静默空），<b>无法与"该 UP 真没发动态"区分</b>。
+     * {@link BilibiliHttp} 的分类只看业务码，因此这类"语义空"只能在列表服务层兜底
+     * （{@code DynamicService.getInfoList}）：空则换身份再取一次。
+     *
+     * <p>默认开启。副作用是"确实没有动态的 UP"每次轮询都会消耗一代身份
+     * （指纹接口每次调用一次，代价很低），若在意可关掉。
+     *
+     * @return 默认 {@code true}
+     */
+    public static boolean isRotateOnEmptyFeed() {
+        return rotateOnEmptyFeed;
+    }
+
+    public static void setRotateOnEmptyFeed(boolean value) {
+        rotateOnEmptyFeed = value;
+    }
+
     public static int getMaxRotations() {
         return maxRotations;
     }
@@ -242,6 +265,7 @@ public final class HttpPolicy {
         jitterRatio = DEFAULT_JITTER_RATIO;
         minRequestIntervalMs = DEFAULT_MIN_INTERVAL_MS;
         rotateOnRiskControl = true;
+        rotateOnEmptyFeed = true;
         maxRotations = DEFAULT_MAX_ROTATIONS;
         connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
         socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
@@ -256,6 +280,7 @@ public final class HttpPolicy {
                 + ", 抖动=" + jitterRatio
                 + ", 最小间隔=" + minRequestIntervalMs + "ms"
                 + ", 风控轮换=" + rotateOnRiskControl + "(最多" + maxRotations + "次)"
+                + ", 空列表轮换=" + rotateOnEmptyFeed
                 + ", 超时=" + connectTimeoutMs + "/" + socketTimeoutMs + "ms"
                 + ", 代理=" + (hasProxy() ? proxyHost + ":" + proxyPort : "直连")
                 + "}";

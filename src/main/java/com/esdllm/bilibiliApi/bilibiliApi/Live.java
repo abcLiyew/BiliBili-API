@@ -1,255 +1,189 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
-
-
-import com.alibaba.fastjson.JSON;
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
-import com.esdllm.bilibiliApi.model.BilibiliLiveResp;
 import com.esdllm.bilibiliApi.model.data.pojo.LiveRoom;
-import kong.unirest.HttpResponse;
+import com.esdllm.bilibiliApi.service.LiveService;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Objects;
 
 /**
+ * 直播间门面。
+ *
+ * <p>P1 起本门面仅做"调 {@link LiveService} 一次、读字段返回"；原 {@code ApiBase} 调用、
+ * 异常包装、JSON 解析全部迁到 {@code LiveService.load(Long)}。
+ *
+ * <p><b>异常边界</b>（§4.8.1 红线）：
+ * <ul>
+ *   <li>{@code throws IOException} 的方法（{@link #getLiveStatus(Long)} /
+ *       {@link #getLiveTitle(Long)} / {@link #getImageUrl(Long)}）：
+ *       业务异常 {@link BilibiliException} 被重新包装成 {@link IOException} 抛出，与旧版一致；</li>
+ *   <li>未声明 {@code throws IOException} 的方法：透传 {@link BilibiliException}（runtime）。</li>
+ * </ul>
+ *
+ * <p><b>缓存策略</b>（§6.4）：本门面<b>不</b>提供跨调用的实例缓存。
+ * 想要"一次调用复用一次结果"的消费者（如 {@code PushInfoServiceImpl.livePush}）应：
+ * <pre>{@code LiveRoom room = new Live().getLiveRoom(roomId);  // 一次请求
+ * // 然后在循环里反复 read room.getXxx();}</pre>
+ *
  * @author 饿死的流浪猫
- * @decription 直播间相关接口
  */
 public class Live {
-    private  static final String BaseUrl = BilibiliConfig.liveBaseUrl;
 
-    /***
-     * 获取直播间信息
+    private static final String BASE_LIVE_URL = "https://live.bilibili.com/";
+
+    /**
+     * 取完整 {@link LiveRoom}。
+     *
      * @param roomId 直播间房间号
-     * @return LiveRoom 直播间信息
+     * @return 不可为 null
      */
-    public LiveRoom getLiveRoom(Long roomId)  {
-        BilibiliLiveResp resp;
-        try {
-            resp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new RuntimeException("获取直播间信息失败。"+e.getMessage()+"\n房间号："+roomId);
-        }
-        if (Objects.isNull(resp.getData())){
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-        }
-        return resp.getData();
+    public LiveRoom getLiveRoom(Long roomId) {
+        return LiveService.INSTANCE.load(roomId);
     }
+
     /**
-     * 获取直播间信息
+     * 获取直播间状态 0-未开播 1-直播中 2-轮播中
+     *
      * @param roomId 直播间房间号
-     * @return BilibiliLiveResp 直播间信息
+     * @return 直播状态码
+     * @throws IOException 网络/业务异常
      */
-    private BilibiliLiveResp getBilibiliLiveResp(Long roomId) throws BilibiliException, IOException {
-        String url = BaseUrl + roomId;
-
-        HttpResponse<String> response = ApiBase.getCloseableHttpResponse(url);
-
-        BilibiliLiveResp resp;
+    public int getLiveStatus(Long roomId) throws IOException {
         try {
-            resp = JSON.parseObject(response.getBody(), BilibiliLiveResp.class);
-        }catch (Exception e){
-            throw new BilibiliException("获取直播消息失败"+ response.getBody()+"\n房间号："+roomId);
+            return LiveService.INSTANCE.load(roomId).getLive_status();
+        } catch (BilibiliException e) {
+            throw new IOException("获取直播间信息失败\n房间号：" + roomId, e);
         }
-        if (Objects.isNull(resp.getData())||resp.getCode()!=0){
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-        }
-        return resp;
     }
 
     /**
-     * 获取直播间状态
-     * @param room_id 直播间房间号
-     * @return int 直播间状态 0-未开播 1-直播中 2-轮播中
-     * @throws IOException 网络异常
+     * 获取直播间地址（纯本地拼接，不打网络）。
+     *
+     * @param roomId 直播间房间号
+     * @return {@code https://live.bilibili.com/{roomId}}
      */
-    public int getLiveStatus(Long room_id) throws IOException {
-        BilibiliLiveResp resp = getBilibiliLiveResp(room_id);
-        if (Objects.isNull(resp.getData())){
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+room_id);
-        }
-        return resp.getData().getLive_status();
-    }
-    /**
-     * 获取直播间地址
-     * @param room_id 直播间房间号
-     * @return String 直播间地址
-     */
-    public String getLiveUrl(Long room_id) {
-        String baseLiveUrl = "https://live.bilibili.com/";
-        return baseLiveUrl + room_id;
+    public String getLiveUrl(Long roomId) {
+        return BASE_LIVE_URL + roomId;
     }
 
     /**
      * 获取直播间标题
-     * @param room_id 直播间房间号
-     * @return String 直播间标题
-     * @throws IOException 网络异常
-     */
-    public String getLiveTitle(Long room_id) throws IOException {
-        BilibiliLiveResp resp = getBilibiliLiveResp(room_id);
-        if (Objects.isNull(resp.getData())){
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+room_id);
-        }
-        return resp.getData().getTitle();
-    }
-    /**
-     * 获取直播间封面
-     * @param room_id 直播间房间号
-     * @return String 直播间封面url
-     * @throws IOException 网络异常
-     */
-    public String getImageUrl(Long room_id) throws IOException {
-        BilibiliLiveResp resp = getBilibiliLiveResp(room_id);
-        if (Objects.isNull(resp.getData().getUser_cover())){
-            throw new BilibiliException("获取封面失败"+"\n房间号："+room_id);
-        }
-        return resp.getData().getUser_cover();
-    }
-    /**
-     * 获取主播uid
+     *
      * @param roomId 直播间房间号
-     * @return Long 主播uid
+     * @return 标题
+     * @throws IOException 网络/业务异常
+     */
+    public String getLiveTitle(Long roomId) throws IOException {
+        try {
+            return LiveService.INSTANCE.load(roomId).getTitle();
+        } catch (BilibiliException e) {
+            throw new IOException("获取直播间信息失败\n房间号：" + roomId, e);
+        }
+    }
+
+    /**
+     * 获取直播间封面 URL
+     *
+     * @param roomId 直播间房间号
+     * @return 封面 URL
+     * @throws IOException 网络/业务异常
+     */
+    public String getImageUrl(Long roomId) throws IOException {
+        try {
+            return LiveService.INSTANCE.load(roomId).getUser_cover();
+        } catch (BilibiliException e) {
+            throw new IOException("获取直播间信息失败\n房间号：" + roomId, e);
+        }
+    }
+
+    /**
+     * 获取主播 uid
+     *
+     * @param roomId 直播间房间号
+     * @return uid
      */
     public Long getUid(Long roomId) {
-        BilibiliLiveResp resp;
-        try {
-            resp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return resp.getData().getUid();
+        return LiveService.INSTANCE.load(roomId).getUid();
     }
+
     /**
      * 获取直播间分区名
+     *
      * @param roomId 直播间房间号
-     * @return String 直播间分区名
+     * @return 分区名
      */
     public String getLiveArea(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getArea_name();
+        return LiveService.INSTANCE.load(roomId).getArea_name();
     }
+
     /**
      * 获取直播间观看人数
+     *
      * @param roomId 直播间房间号
-     * @return int 直播间观看人数
+     * @return 人数
      */
     public int getOnline(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getOnline();
+        return LiveService.INSTANCE.load(roomId).getOnline();
     }
+
     /**
-     * 获取直播间关键帧
+     * 获取直播间关键帧 URL
+     *
      * @param roomId 直播间房间号
-     * @return String 直播间关键帧url
+     * @return 关键帧 URL
      */
     public String getKeyFrame(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getKeyframe();
+        return LiveService.INSTANCE.load(roomId).getKeyframe();
     }
+
     /**
-     * 获取直播间标签
+     * 获取直播间标签（逗号分隔）
+     *
      * @param roomId 直播间房间号
-     * @return String 直播间标签 ','分割
+     * @return 标签
      */
     public String getTags(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getTags();
+        return LiveService.INSTANCE.load(roomId).getTags();
     }
+
     /**
      * 获取直播间描述
+     *
      * @param roomId 直播间房间号
-     * @return String 直播间描述
+     * @return 描述
      */
     public String getDescription(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getDescription();
+        return LiveService.INSTANCE.load(roomId).getDescription();
     }
+
     /**
      * 获取直播间开播时间
+     *
      * @param roomId 直播间房间号
-     * @return String 直播间开播时间
+     * @return 开播时间字符串
      */
     public String getLiveTime(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getLive_time();
+        return LiveService.INSTANCE.load(roomId).getLive_time();
     }
+
     /**
-     * 获取直播间pk状态
+     * 获取直播间 PK 状态
+     *
      * @param roomId 直播间房间号
-     * @return int 直播间pk状态
+     * @return PK 状态码
      */
     public int getPkStatus(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId);
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getPk_status();
+        return LiveService.INSTANCE.load(roomId).getPk_status();
     }
+
     /**
      * 获取直播间热词
+     *
      * @param roomId 直播间房间号
-     * @return List<String> 直播间热词
+     * @return 热词列表
      */
     public List<String> getHotWords(Long roomId) {
-        BilibiliLiveResp bilibiliLiveResp;
-        try {
-            bilibiliLiveResp = getBilibiliLiveResp(roomId); // 调用方法获取BilibiliLiveResp对象
-        } catch (IOException e) {
-            throw new BilibiliException("获取直播间信息失败"+"\n房间号："+roomId);
-
-
-        }
-        return bilibiliLiveResp.getData().getHot_words();
+        return LiveService.INSTANCE.load(roomId).getHot_words();
     }
 }

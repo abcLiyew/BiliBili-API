@@ -1,0 +1,38 @@
+{
+   "code": 0,
+   "message": "0",
+   "ttl": 1,
+   "msg": "",
+   "data": {
+     "card": {
+       "mid": "3546774476163227",
+       "approve": false,
+       "name": "测试用户",
+       "sex": "男",
+       "face": "http://i0.hdslb.com/bfs/face/test_user.jpg",
+       "DisplayRank": "0",
+       "regtime": 1500000000,
+       "spacesta": 0,
+       "birthday": "01-01",
+       "place": "测试地区",
+       "description": "",
+       "article": 0,
+       "attentions": [],
+       "fans": 12345,
+       "friend": 0,
+       "attention": 0,
+       "sign": "测试签名",
+       "level_info": {
+         "current_level": 6,
+         "current_min": 0,
+         "current_exp": 1000,
+         "next_exp": 2000
+       }
+     },
+     "following": false,
+     "archive_count": 42,
+     "article_count": 1,
+     "follower": 12345,
+     "like_num": 6789
+   }
+}

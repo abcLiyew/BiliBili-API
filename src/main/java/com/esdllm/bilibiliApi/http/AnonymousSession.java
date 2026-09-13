@@ -2,7 +2,7 @@ package com.esdllm.bilibiliApi.http;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
+import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import kong.unirest.Unirest;
 import lombok.extern.slf4j.Slf4j;
 
@@ -24,7 +24,9 @@ import lombok.extern.slf4j.Slf4j;
  * <p><b>身份轮换</b>：一个 {@link Identity} 是"指纹 Cookie + 与它同代的 UA"的不可变组合。
  * 指纹被风控标记后，{@link #rotate()} 会领一套全新身份（同时换 UA，保持自洽），
  * 由 {@link BilibiliHttp} 在命中风控码时自动调用（次数受
- * {@link HttpPolicy#getMaxRotations()} 约束）。
+ * {@link HttpPolicy#getMaxRotations()} 约束）；此外动态列表出现<b>空 items</b>
+ * 这一"静默风控"形态时，由 {@code DynamicService.getInfoList} 主动调用一次
+ * （受 {@link HttpPolicy#isRotateOnEmptyFeed()} 控制）。
  *
  * <p><b>失败不阻塞</b>：领不到就给出一个"无 Cookie 身份"（由调用方按错误码处理），
  * 绝不因为拿不到指纹就让整个功能不可用。
@@ -150,9 +152,14 @@ public final class AnonymousSession {
         try {
             // 指纹接口本身也是一次出站请求，纳入限流，避免与业务请求叠加把密度打高
             RateLimiter.acquire();
-            String body = Unirest.get(SPI_URL)
+            // 测试钩子：让本机 mock server 也能接管指纹接口。
+            // 否则单测里每次 rotate() 都会真的打 api.bilibili.com —— 既慢又不可控。
+            // applyTestBaseUrl 是纯字符串函数（同包可见），不构成与 BilibiliHttp 的行为循环：
+            // 行为循环指 BilibiliHttp.get → AnonymousSession.current → BilibiliHttp.get，
+            // 而这里只是复用它的 URL 改写，不触发任何请求。
+            String body = Unirest.get(BilibiliHttp.applyTestBaseUrl(SPI_URL))
                     .header("User-Agent", agent)
-                    .header("Referer", BilibiliConfig.referer)
+                    .header("Referer", BilibiliEndpoint.referer)
                     .connectTimeout(HttpPolicy.getConnectTimeoutMs())
                     .socketTimeout(HttpPolicy.getSocketTimeoutMs())
                     .asString()

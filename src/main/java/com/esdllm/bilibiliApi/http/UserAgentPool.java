@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.http;
 
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
+import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 
 /**
  * User-Agent 池：身份轮换时随设备指纹一起换，保证<b>同一代身份自洽</b>。
@@ -12,14 +12,14 @@ import com.esdllm.bilibiliApi.config.BilibiliConfig;
  * 会出现"新指纹 + 旧指纹留下的 UA"这种自相矛盾的组合，
  * 而这种不一致本身才是可疑特征。
  *
- * <p>{@link #at(int)} 的下标 0 刻意与 {@link BilibiliConfig#userAgent} 逐字相同，
+ * <p>{@link #at(int)} 的下标 0 刻意与 {@link BilibiliEndpoint#userAgent} 逐字相同，
  * 因此<b>不轮换时行为与改造前完全一致</b>（默认第一代即原 UA）。
  */
 public final class UserAgentPool {
 
     /** 真实浏览器 UA：Windows Edge / Windows Chrome / macOS Chrome / macOS Safari */
     private static final String[] AGENTS = {
-            BilibiliConfig.userAgent,
+            BilibiliEndpoint.userAgent,
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                     + "Chrome/131.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "

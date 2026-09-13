@@ -15,25 +15,28 @@ Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java�
 
 - JDK 17+
 - Maven 3.6+
-- Chrome浏览器（用于动态截图功能）
+
+> 无需安装浏览器：动态长截图已改用 **Java2D 自绘**（自 v0.9.13.5 起），不再依赖 Chrome / Selenium。
+> 字体为 jar 内置（Noto Sans SC 子集），因此无图形界面的 Linux 环境也能正常出图。
 
 ## 安装方法
 
 ### Maven
-
-```xml
-<dependency>
-    <groupId>com.esdllm</groupId>
-    <artifactId>bilibili-api</artifactId>
-    <version>0.9.13.3-beta</version>
-</dependency>
-```
 **由于目前项目尚未发布到中央仓库，需要有以下两种方式导入本地仓库：**
 - 1 克隆仓库到本地，然后执行以下命令：
 ```bash
 mvn install
 ```
 - 2 在[Release](https://github.com/abcLiyew/BiliBili-API/releases/tag/beta)中下载最新版本的jar包，并将其复制到本地Maven仓库中。
+在你的Maven项目中，将以上代码添加到`pom.xml`文件的`<dependencies>`标签内，即可引入本库。
+```xml
+<dependency>
+    <groupId>com.esdllm</groupId>
+    <artifactId>bilibili-api</artifactId>
+    <version>0.9.20-beta</version>
+</dependency>
+```
+
 ## 快速开始
 
 ### 获取用户信息
@@ -76,7 +79,9 @@ Card card = cardInfo.getCard(uid);
 System.out.println("完整用户信息: " + card);
 ```
 ### 获取用户动态信息
-<div style="color:red;text-"><strong>由于动态截图功能需要Chrome浏览器，请先安装Chrome浏览器。并且获取动态列表和图片耗时较长，建议在多线程中获取动态列表和图片。</strong></div>
+<div style="color:red;"><strong>获取动态列表与图片耗时较长，建议在多线程中调用。</strong></div>
+> 注：动态截图功能**不需要** Chrome 浏览器 —— 现已改为 Java2D 自绘（自 v0.9.13.5 起），
+> 请勿再按旧说明安装 Chrome；旧版本（≤ v0.9.13.3）才依赖 Selenium + Chrome。
 
 ```java
 // 初始化Dynamic对象

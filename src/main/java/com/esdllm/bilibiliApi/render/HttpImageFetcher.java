@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.render;
 
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
+import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.http.AnonymousSession;
 import com.esdllm.bilibiliApi.http.HttpPolicy;
 import lombok.extern.slf4j.Slf4j;
@@ -188,8 +188,8 @@ public final class HttpImageFetcher {
             conn.setReadTimeout(HttpPolicy.getSocketTimeoutMs());
             // 用"当前身份"的 UA 与指纹，与 API 请求保持一致（同一身份的画像不能自相矛盾）
             conn.setRequestProperty("User-Agent", AnonymousSession.userAgent());
-            conn.setRequestProperty("Accept", BilibiliConfig.accept);
-            conn.setRequestProperty("Referer", BilibiliConfig.referer);
+            conn.setRequestProperty("Accept", BilibiliEndpoint.accept);
+            conn.setRequestProperty("Referer", BilibiliEndpoint.referer);
             String cookie = AnonymousSession.cookieHeader();
             if (cookie != null && !cookie.isEmpty()) {
                 conn.setRequestProperty("Cookie", cookie);
@@ -264,6 +264,14 @@ public final class HttpImageFetcher {
             return url;
         }
         String ext = base.substring(dot);
+        // 扩展名合理性校验（2026-09-13 由单测发现）：地址若没有真正的扩展名，
+        // lastIndexOf('.') 会命中 host 里的点（如 https://i0.hdslb.com/bfs/archive/noext
+        // → ext = ".com/bfs/archive/noext"），拼出 "@300w.com/bfs/archive/noext" 这种畸形 URL。
+        // 只接受"像样的扩展名"：至少 2 字符、以字母开头、长度 ≤ 5、不含路径分隔符与 query。
+        if (ext.length() < 2 || ext.length() > 5 || ext.indexOf('/') >= 0
+                || ext.indexOf('?') >= 0 || !Character.isLetter(ext.charAt(1))) {
+            return url;
+        }
         String suffix = request.hintH() > 0
                 ? "@" + request.hintW() + "w_" + request.hintH() + "h_1c" + ext
                 : "@" + request.hintW() + "w" + ext;

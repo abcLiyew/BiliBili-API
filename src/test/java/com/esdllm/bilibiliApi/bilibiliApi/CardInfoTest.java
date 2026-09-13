@@ -1,84 +1,132 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
+import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.BilibiliCardResp;
 import com.esdllm.bilibiliApi.model.data.pojo.Card;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * <b>角色</b>：联网手测用例（演示 + 集成验证），{@code @Disabled} 不参与自动构建。
+ * <b>CardInfo 门面回归测试</b>。
  *
- * <p>历史背景：本类曾用 Selenium + Jsoup 做空间主页探索（{@code testJsoup} 截图、
- * {@code testHtmlUnit} 占位桩），那个路径已经在 {@code REFACTOR_PLAN.md §4.9 +
- * P2-收尾} 中退役（库内不再依赖 ChromeDriver / Jsoup）。
+ * <p>fixture 驱动：拦截 {@code api.bilibili.com/x/web-interface/card?mid=3546774476163227}，
+ * 返回 {@code card.json}；对照断言 card 的 8 个 getter + {@code getBilibiliLiveResp} 全字段映射。
  *
- * <p>当前只保留直接调门面的 7 个用例，断言层的事归 {@code contract/} 与 {@code smoke/}。
+ * <p>验收：9 个 getter × 至少 1 个断言 + 单槽缓存 + 异常路径。
  */
-@Slf4j
-@Disabled("联网手测用例：依赖 B 站线上接口，无断言、不参与自动构建（见 REFACTOR_PLAN.md P3）")
 class CardInfoTest {
-    private final CardInfo cardInfo = new CardInfo();
-    private final long uid = 3546774476163227L;
+
+    private static final long UID = 3546774476163227L;
+    private static final String CARD_PATH = "/x/web-interface/card";
+    private static final String FIXTURE = "src/test/resources/fixtures/card.json";
+
+    private MockBiliServer mock;
+    private CardInfo cardInfo;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        String body = Files.readString(Path.of(FIXTURE));
+        mock = MockBiliServer.start().register(CARD_PATH + "?mid=", body);
+        cardInfo = new CardInfo();
+    }
+
+    @AfterEach
+    void tearDown() {
+        mock.close();
+    }
 
     @Test
-    void getBilibiliLiveResp() {
-        try {
-            BilibiliCardResp resp = cardInfo.getBilibiliLiveResp(uid);
-            System.out.println(resp);
-        } catch (BilibiliException | IOException e) {
-            log.error(e.getMessage());
-        }
+    void getBilibiliLiveResp_returnsFullEnvelope() throws IOException {
+        BilibiliCardResp resp = cardInfo.getBilibiliLiveResp(UID);
+        assertNotNull(resp);
+        assertEquals(0, resp.getCode());
+        assertNotNull(resp.getData());
+        assertNotNull(resp.getData().getCard());
+        assertEquals(42, resp.getData().getArchive_count());
+        assertEquals(12345, resp.getData().getFollower());
+        assertEquals(6789, resp.getData().getLike_num());
     }
 
     @Test
     void getArchiveCount() {
-        Integer archiveCount = cardInfo.getArchiveCount(uid);
-        System.out.println(archiveCount);
+        assertEquals(42, cardInfo.getArchiveCount(UID));
     }
 
     @Test
     void getUserName() {
-        String userName = cardInfo.getUserName(uid);
-        System.out.println(userName);
+        assertEquals("测试用户", cardInfo.getUserName(UID));
     }
 
     @Test
     void getFace() {
-        String face = cardInfo.getFace(uid);
-        System.out.println(face);
+        assertEquals("http://i0.hdslb.com/bfs/face/test_user.jpg", cardInfo.getFace(UID));
     }
 
     @Test
     void getLevel() {
-        Integer level = cardInfo.getLevel(uid);
-        System.out.println(level);
+        // LevelInfo.current_level = 6
+        assertEquals(6, cardInfo.getLevel(UID));
     }
 
     @Test
     void getSign() {
-        String sign = cardInfo.getSign(uid);
-        System.out.println(sign);
+        assertEquals("测试签名", cardInfo.getSign(UID));
     }
 
     @Test
     void getFollower() {
-        Integer follower = cardInfo.getFollower(uid);
-        System.out.println(follower);
+        assertEquals(12345, cardInfo.getFollower(UID));
     }
 
     @Test
     void getLikeNum() {
-        Integer likeNum = cardInfo.getLikeNum(uid);
-        System.out.println(likeNum);
+        assertEquals(6789, cardInfo.getLikeNum(UID));
     }
 
     @Test
-    void getCardTest() {
-        Card card = cardInfo.getCard(uid);
-        System.out.println(card);
+    void getCard_returnsCardObject() {
+        Card c = cardInfo.getCard(UID);
+        assertNotNull(c);
+        assertEquals("测试用户", c.getName());
+        assertEquals("测试签名", c.getSign());
+        assertEquals(12345, c.getFans());
+    }
+
+    // —— 单槽缓存 + 异常路径 ——
+
+    @Test
+    void singleSlotCache_returnsSameObjectAcrossGetters() {
+        // 调任意 getter 后，再调另一个 getter；Card 单槽应已被第一填好，第二个直接复用（无新请求）。
+        // 这里只能验证"两次拿到的 Card 实例是同一个引用"—— CardInfo.resp 单槽只缓存到 BilibiliCardResp。
+        // 我们的实现缓存到 resp（BilibiliCardResp），所以两次 getCard(uid) 应返回同一个 Card 实例。
+        Card first = cardInfo.getCard(UID);
+        Card second = cardInfo.getCard(UID);
+        assertEquals(first, second);
+    }
+
+    @Test
+    void getBilibiliLiveResp_nullUid_throws() {
+        assertThrows(BilibiliException.class, () -> cardInfo.getBilibiliLiveResp(null));
+    }
+
+    @Test
+    void getArchiveCount_invalidUid_throws() {
+        assertThrows(BilibiliException.class, () -> cardInfo.getArchiveCount(0L));
+        assertThrows(BilibiliException.class, () -> cardInfo.getArchiveCount(-1L));
+    }
+
+    @Test
+    void getArchiveCount_nullUid_throws() {
+        assertThrows(BilibiliException.class, () -> cardInfo.getArchiveCount(null));
     }
 }

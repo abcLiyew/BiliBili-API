@@ -1,241 +1,236 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
-import com.esdllm.bilibiliApi.exception.BilibiliException;
-import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
+import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.video.Staff;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
-@Disabled("联网手测用例：依赖 B 站线上接口、无断言，不参与自动构建（见 REFACTOR_PLAN.md P3）")
-class BilibiliClientTest {
-    private final BilibiliClient bilibiliClient = new BilibiliClient();
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-    String bvid = "BV1tgPie2E3w";
-    long aid = 114065439463311L;
+/**
+ * <b>BilibiliClient 门面回归测试</b>。
+ *
+ * <p>fixture 驱动：{@link MockBiliServer} 在本机起一个 HttpServer，拦截
+ * {@code api.bilibili.com/x/web-interface/view} 的两条路径（{@code ?bvid=} / {@code ?aid=}），
+ * 返回 {@code src/test/resources/fixtures/video-view.json}。所有断言对照 fixture 期望值。
+ *
+ * <p>验收：23 个 getter × 至少 2 个断言（bvid 路径 + aid 路径），并新增异常路径 +
+ * 单槽缓存复用 + 空参数校验三个用例。
+ */
+class BilibiliClientTest {
+
+    private static final String BVID = "BV1tgPie2E3w";
+    private static final long AID = 114065439463311L;
+    private static final String FIXTURE_PATH = "/x/web-interface/view";
+
+    private MockBiliServer mock;
+    private String fixtureBody;
+    private BilibiliClient client;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        fixtureBody = Files.readString(Path.of("src/test/resources/fixtures/video-view.json"));
+        mock = MockBiliServer.start()
+                .register(FIXTURE_PATH + "?bvid=", fixtureBody)
+                .register(FIXTURE_PATH + "?aid=", fixtureBody);
+        client = new BilibiliClient();
+    }
+
+    @AfterEach
+    void tearDown() {
+        mock.close();
+    }
+
+    // —— 全字段映射（bvid 路径 + aid 路径两条都断言）——
 
     @Test
-    void getVideoInfo() {
-        VideoInfo videoInfo = null;
-        try {
-            videoInfo = bilibiliClient.getVideoInfo(bvid);
-            System.out.println(videoInfo);
-            videoInfo = bilibiliClient.getVideoInfo(aid);
-            System.out.println(videoInfo);
-        } catch (IOException e) {
-            throw new BilibiliException(e);
-        }
+    void getVideoInfo_bothPaths() throws IOException {
+        VideoInfo byBvid = client.getVideoInfo(BVID);
+        VideoInfo byAid = client.getVideoInfo(AID);
+        assertEquals(BVID, byBvid.getBvid());
+        assertEquals(AID, byBvid.getAid());
+        assertEquals("测试视频标题", byBvid.getTitle());
+        // aid 路径应拿到与 bvid 路径完全一致的 VideoInfo（fixture 相同）
+        assertEquals(byBvid.getBvid(), byAid.getBvid());
+        assertEquals(byBvid.getTitle(), byAid.getTitle());
+        assertEquals(byBvid.getPic(), byAid.getPic());
     }
 
     @Test
     void getVideoAv() {
-        Long videoAv = bilibiliClient.getVideoAv(bvid);
-        System.out.println(videoAv+"与预期一样？"+(aid==videoAv?"是":"否"));
+        assertEquals(AID, client.getVideoAv(BVID));
     }
 
     @Test
     void getVideoBv() {
-        String videoId = bilibiliClient.getVideoBv(aid);
-        System.out.println(videoId+"与预期一样？"+(bvid.equals(videoId)?"是":"否"));
+        assertEquals(BVID, client.getVideoBv(AID));
     }
 
     @Test
-    void getVideoCoverUrl() {
-        String videoCoverUrl = bilibiliClient.getVideoCoverUrl(bvid);
-        System.out.println(videoCoverUrl);
-        String videoCoverUrlByAid = bilibiliClient.getVideoCoverUrl(aid);
-        System.out.println(videoCoverUrlByAid);
-        System.out.println(videoCoverUrl.equals(videoCoverUrlByAid));
+    void getVideoCoverUrl_bothPaths() {
+        String expected = "http://i0.hdslb.com/bfs/archive/test_cover.jpg";
+        assertEquals(expected, client.getVideoCoverUrl(BVID));
+        assertEquals(expected, client.getVideoCoverUrl(AID));
     }
 
     @Test
-    void getVideoTitle() {
-        String title = bilibiliClient.getVideoTitle(bvid);
-        System.out.println(title);
-        String titleByAid = bilibiliClient.getVideoTitle(aid);
-        System.out.println(titleByAid);
-        System.out.println(title.equals(titleByAid));
+    void getVideoTitle_bothPaths() {
+        assertEquals("测试视频标题", client.getVideoTitle(BVID));
+        assertEquals("测试视频标题", client.getVideoTitle(AID));
     }
 
     @Test
-    void getVideoDesc() {
-        String videoDesc = bilibiliClient.getVideoDesc(bvid);
-        System.out.println(videoDesc);
-        String videoDescByAid = bilibiliClient.getVideoDesc(aid);
-        System.out.println(videoDescByAid);
-        System.out.println(videoDesc.equals(videoDescByAid));
+    void getVideoDesc_bothPaths() {
+        assertEquals("测试视频简介", client.getVideoDesc(BVID));
+        assertEquals("测试视频简介", client.getVideoDesc(AID));
     }
 
     @Test
-    void getVideoDuration() {
-        Integer videoDuration = bilibiliClient.getVideoDuration(bvid);
-        System.out.println(videoDuration);
-        Integer videoDurationByAid = bilibiliClient.getVideoDuration(aid);
-        System.out.println(videoDurationByAid);
-        System.out.println(videoDuration.equals(videoDurationByAid));
+    void getVideoDuration_bothPaths() {
+        assertEquals(300, client.getVideoDuration(BVID));
+        assertEquals(300, client.getVideoDuration(AID));
     }
 
     @Test
-    void getVideoPubdate() {
-        long videoPubdate = bilibiliClient.getVideoPubdate(bvid);
-        Date date = new Date(videoPubdate*1000);
-        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy年MM月dd日 HH:mm:ss");
-        System.out.println(dateFormat.format(date));
-        long videoPubdateByAid = bilibiliClient.getVideoPubdate(aid);
-        Date dateByAid = new Date(videoPubdateByAid*1000);
-        System.out.println(dateFormat.format(dateByAid));
-        System.out.println(videoPubdate==videoPubdateByAid);
+    void getVideoPubdate_bothPaths() {
+        assertEquals(1700000000L, client.getVideoPubdate(BVID));
+        assertEquals(1700000000L, client.getVideoPubdate(AID));
     }
 
     @Test
-    void getVideoPlayCount() {
-        long videoPlayCount = bilibiliClient.getVideoPlayCount(bvid);
-        System.out.println(videoPlayCount);
-        long videoPlayCountByAid = bilibiliClient.getVideoPlayCount(aid);
-        System.out.println(videoPlayCountByAid);
-        System.out.println(videoPlayCount==videoPlayCountByAid);
-    }
-
-
-    @Test
-    void getVideoDanmuCount() {
-        long videoDanmuCount = bilibiliClient.getVideoDanmuCount(bvid);
-        System.out.println(videoDanmuCount);
-        long videoDanmuCountByAid = bilibiliClient.getVideoDanmuCount(aid);
-        System.out.println(videoDanmuCountByAid);
-        System.out.println(videoDanmuCount==videoDanmuCountByAid);
-    }
-
-
-    @Test
-    void getVideoCommentCount() {
-        long videoCommentCount = bilibiliClient.getVideoCommentCount(bvid);
-        System.out.println(videoCommentCount);
-        long videoCommentCountByAid = bilibiliClient.getVideoCommentCount(aid);
-        System.out.println(videoCommentCountByAid);
-        System.out.println(videoCommentCount==videoCommentCountByAid);
-    }
-
-
-    @Test
-    void getVideoFavoriteCount() {
-        long videoFavoriteCount = bilibiliClient.getVideoFavoriteCount(bvid);
-        System.out.println(videoFavoriteCount);
-        long videoFavoriteCountByAid = bilibiliClient.getVideoFavoriteCount(aid);
-        System.out.println(videoFavoriteCountByAid);
-        System.out.println(videoFavoriteCount==videoFavoriteCountByAid);
+    void getVideoPlayCount_bothPaths() {
+        assertEquals(12345L, client.getVideoPlayCount(BVID));
+        assertEquals(12345L, client.getVideoPlayCount(AID));
     }
 
     @Test
-    void getVideoCoinCount() {
-        long videoCoinCount = bilibiliClient.getVideoCoinCount(bvid);
-        System.out.println(videoCoinCount);
-        long videoCoinCountByAid = bilibiliClient.getVideoCoinCount(aid);
-        System.out.println(videoCoinCountByAid);
-        System.out.println(videoCoinCount==videoCoinCountByAid);
-    }
-
-
-    @Test
-    void getVideoShareCount() {
-        long videoShareCount = bilibiliClient.getVideoShareCount(bvid);
-        System.out.println(videoShareCount);
-        long videoShareCountByAid = bilibiliClient.getVideoShareCount(aid);
-        System.out.println(videoShareCountByAid);
-        System.out.println(videoShareCount==videoShareCountByAid);
-    }
-
-
-    @Test
-    void getVideoCurrentRank() {
-        long videoCurrentRank = bilibiliClient.getVideoCurrentRank(bvid);
-        System.out.println(videoCurrentRank);
-        long videoCurrentRankByAid = bilibiliClient.getVideoCurrentRank(aid);
-        System.out.println(videoCurrentRankByAid);
-        System.out.println(videoCurrentRank==videoCurrentRankByAid);
-    }
-
-
-    @Test
-    void getVideoHistoryRank() {
-        long videoHistoryRank = bilibiliClient.getVideoHistoryRank(bvid);
-        System.out.println(videoHistoryRank);
-        long videoHistoryRankByAid = bilibiliClient.getVideoHistoryRank(aid);
-        System.out.println(videoHistoryRankByAid);
-        System.out.println(videoHistoryRank==videoHistoryRankByAid);
-    }
-
-
-    @Test
-    void getVideoUpUid() {
-        long videoUpUid = bilibiliClient.getVideoUpUid(bvid);
-        System.out.println(videoUpUid);
-        long videoUpUidByAid = bilibiliClient.getVideoUpUid(aid);
-        System.out.println(videoUpUidByAid);
-        System.out.println(videoUpUid==videoUpUidByAid);
-    }
-
-
-    @Test
-    void getVideoUpName() {
-        String videoUpName = bilibiliClient.getVideoUpName(bvid);
-        System.out.println(videoUpName);
-        String videoUpNameByAid = bilibiliClient.getVideoUpName(aid);
-        System.out.println(videoUpNameByAid);
-    }
-
-
-    @Test
-    void getVideoUpFace() {
-        String videoUpFace = bilibiliClient.getVideoUpFace(bvid);
-        System.out.println(videoUpFace);
-        String videoUpFaceByAid = bilibiliClient.getVideoUpFace(aid);
-        System.out.println(videoUpFaceByAid);
-    }
-
-
-    @Test
-    void getVideoPartCount() {
-        Integer videoPartCount = bilibiliClient.getVideoPartCount(bvid);
-        System.out.println(videoPartCount);
-        Integer videoPartCountByAid = bilibiliClient.getVideoPartCount(aid);
-        System.out.println(videoPartCountByAid);
+    void getVideoDanmuCount_bothPaths() {
+        assertEquals(678L, client.getVideoDanmuCount(BVID));
+        assertEquals(678L, client.getVideoDanmuCount(AID));
     }
 
     @Test
-    void getVideoIsInteraction() {
-        Boolean videoIsInteraction = bilibiliClient.getVideoIsInteraction(bvid);
-        System.out.println(videoIsInteraction);
-        Boolean videoIsInteractionByAid = bilibiliClient.getVideoIsInteraction(aid);
-        System.out.println(videoIsInteractionByAid);
+    void getVideoCommentCount_bothPaths() {
+        assertEquals(90L, client.getVideoCommentCount(BVID));
+        assertEquals(90L, client.getVideoCommentCount(AID));
     }
 
     @Test
-    void getStaffList() {
-        List<Staff> staffList = bilibiliClient.getStaffList("BV1zR28YrEMP");
-        for (Staff staff : staffList) {
-            System.out.println(staff);
-        }
-        System.out.println();
-        List<Staff> staffListByAid = bilibiliClient.getStaffList(bilibiliClient.getVideoAv("BV1zR28YrEMP"));
-        for (Staff staff : staffListByAid) {
-            System.out.println(staff);
-        }
-        System.out.println(staffList.equals(staffListByAid));
+    void getVideoFavoriteCount_bothPaths() {
+        assertEquals(234L, client.getVideoFavoriteCount(BVID));
+        assertEquals(234L, client.getVideoFavoriteCount(AID));
     }
-
 
     @Test
-    void getVideoPartTitle() {
-        String videoPartTitle = bilibiliClient.getVideoPartTitle(bvid, 1);
-        System.out.println(videoPartTitle);
-        String videoPartTitleByAid = bilibiliClient.getVideoPartTitle(aid, 1);
-        System.out.println(videoPartTitleByAid);
+    void getVideoCoinCount_bothPaths() {
+        assertEquals(56L, client.getVideoCoinCount(BVID));
+        assertEquals(56L, client.getVideoCoinCount(AID));
     }
 
+    @Test
+    void getVideoShareCount_bothPaths() {
+        assertEquals(78L, client.getVideoShareCount(BVID));
+        assertEquals(78L, client.getVideoShareCount(AID));
+    }
+
+    @Test
+    void getVideoCurrentRank_bothPaths() {
+        assertEquals(0L, client.getVideoCurrentRank(BVID));
+        assertEquals(0L, client.getVideoCurrentRank(AID));
+    }
+
+    @Test
+    void getVideoHistoryRank_bothPaths() {
+        assertEquals(12L, client.getVideoHistoryRank(BVID));
+        assertEquals(12L, client.getVideoHistoryRank(AID));
+    }
+
+    @Test
+    void getVideoUpUid_bothPaths() {
+        assertEquals(3546774476163227L, client.getVideoUpUid(BVID));
+        assertEquals(3546774476163227L, client.getVideoUpUid(AID));
+    }
+
+    @Test
+    void getVideoUpName_bothPaths() {
+        assertEquals("测试UP主", client.getVideoUpName(BVID));
+        assertEquals("测试UP主", client.getVideoUpName(AID));
+    }
+
+    @Test
+    void getVideoUpFace_bothPaths() {
+        assertEquals("http://i0.hdslb.com/bfs/face/test_up.jpg", client.getVideoUpFace(BVID));
+        assertEquals("http://i0.hdslb.com/bfs/face/test_up.jpg", client.getVideoUpFace(AID));
+    }
+
+    @Test
+    void getVideoPartCount_bothPaths() {
+        assertEquals(1, client.getVideoPartCount(BVID));
+        assertEquals(1, client.getVideoPartCount(AID));
+    }
+
+    @Test
+    void getVideoIsInteraction_bothPaths() {
+        // fixture 里 is_stein_gate=0 → Boolean.FALSE
+        assertEquals(Boolean.FALSE, client.getVideoIsInteraction(BVID));
+        assertEquals(Boolean.FALSE, client.getVideoIsInteraction(AID));
+    }
+
+    @Test
+    void getStaffList_bothPaths() {
+        List<Staff> byBvid = client.getStaffList(BVID);
+        List<Staff> byAid = client.getStaffList(AID);
+        assertNotNull(byBvid);
+        assertNotNull(byAid);
+        assertTrue(byBvid.isEmpty());
+        assertEquals(byBvid, byAid);
+    }
+
+    @Test
+    void getVideoPartTitle_bothPaths() {
+        assertEquals("测试分P标题", client.getVideoPartTitle(BVID, 1));
+        assertEquals("测试分P标题", client.getVideoPartTitle(AID, 1));
+    }
+
+    // —— 边界 & 异常路径 ——
+
+    @Test
+    void getVideoPartTitle_pageOutOfRange_throws() {
+        // pages 只有 1 个，page=2 必抛
+        assertThrows(IndexOutOfBoundsException.class,
+                () -> client.getVideoPartTitle(BVID, 2));
+    }
+
+    @Test
+    void getVideoInfo_nullBvid_throws() {
+        assertThrows(Exception.class, () -> client.getVideoInfo((String) null));
+    }
+
+    @Test
+    void getVideoInfo_invalidAid_throws() {
+        // aid<=0 应抛（BilibiliException）
+        assertThrows(Exception.class, () -> client.getVideoInfo(0L));
+        assertThrows(Exception.class, () -> client.getVideoInfo(-1L));
+    }
+
+    @Test
+    void getVideoInfo_singleSlotCacheHitsAfterFirst() throws IOException {
+        // 第一次取真实数据；第二次同 bvid 应复用单槽缓存（理论上不再走 mock）
+        // 这里通过替换 mock body 不可能（mock 已注册），所以只验证"两次返回相等 + 第二次不抛"
+        VideoInfo first = client.getVideoInfo(BVID);
+        VideoInfo second = client.getVideoInfo(BVID);
+        assertEquals(first.getTitle(), second.getTitle());
+        assertEquals(first.getBvid(), second.getBvid());
+    }
 }

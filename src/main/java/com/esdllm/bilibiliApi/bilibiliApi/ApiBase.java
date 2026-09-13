@@ -1,88 +1,67 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
-import com.esdllm.bilibiliApi.http.AnonymousSession;
+import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
-import com.esdllm.bilibiliApi.http.HttpPolicy;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.http.HttpHost;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.HttpClientBuilder;
 
 import java.io.IOException;
 
 /**
- * 请求接口基类。
+ * 请求接口基类 —— <b>已退场的兼容壳</b>。
  *
- * <p><b>改造说明（2026-09-13）</b>：以前这里只发 {@code User-Agent} 与 {@code Accept}，
- * 不带 Cookie、不带 Referer —— 这是动态类接口被判风控（{@code -352} / {@code 412}）的直接原因。
- * 现在 {@link #getCloseableHttpResponse(String)} <b>委托给统一出口 {@link BilibiliHttp}</b>，
- * 于是共用它的 4 个门面（{@code CardInfo} / {@code BilibiliClient} / {@code Live} / {@code Dynamic}）
- * 一次性获得了：<b>设备指纹 Cookie、Referer、超时、限流、重试退避、身份轮换、代理</b>。
+ * <p><b>P3（2026-09-13）起本类的实现已全部搬空</b>，只剩转发：
+ * <ul>
+ *   <li>{@link #getCloseableHttpResponse(String)} → {@link BilibiliHttp#get(String)}
+ *       （门面在 P1 就已改走 {@code service/*}，此方法仅历史引用可解析）；</li>
+ *   <li>{@link #getHttpResponseNotRedirect(String)} → {@link BilibiliHttp#getNoRedirect(String)}
+ *       （"关重定向读 Location"的能力在 P3 迁入 {@code BilibiliHttp}，
+ *       使 {@code org.apache.http.*} 依赖不再出 {@code http} 包）。</li>
+ * </ul>
  *
- * <p>这样做而不是逐个改门面，是因为"出口只有一个"才好统一施策略 ——
- * 否则每加一条抗压规则都要改 N 个地方，漏一个就出现"裸奔的门面"。
+ * <p><b>为什么保留而不是直接删</b>：本仓库是公开库
+ * （{@code github.com/abcLiyew/BiliBili-API}），删除 {@code public} 类属破坏性变更。
+ * 已知消费方 XatiiBot 不引用本类（P1 已 grep 核对），但外部使用者无从确认 ——
+ * 因此保留为 {@code @Deprecated} 壳，实现收敛，签名不动。
  *
- * <p><b>公开签名逐字未变</b>（含 {@code throws IOException}），门面契约不受影响。
+ * <p><b>新代码不要再用本类</b>：直接调 {@link BilibiliHttp}，或对应的 {@code service.*Service}。
+ *
+ * @author 饿死的流浪猫
+ * @deprecated 出站能力已统一收敛到 {@link BilibiliHttp}（唯一出口）。本类仅为兼容保留，
+ *         计划在下一个大版本移除。
  */
-@Slf4j
+@Deprecated
 public class ApiBase {
 
     /** @deprecated 仅保留以兼容既有引用；实际出站 UA 由 {@code UserAgentPool} 按当前身份决定 */
     @Deprecated
-    public static final String userAgent = BilibiliConfig.userAgent;
+    public static final String userAgent = BilibiliEndpoint.userAgent;
 
-    /** @deprecated 仅保留以兼容既有引用；实际出站 Accept 见 {@link BilibiliConfig#accept} */
+    /** @deprecated 仅保留以兼容既有引用；实际出站 Accept 见 {@link BilibiliEndpoint#accept} */
     @Deprecated
-    public static final String accept = BilibiliConfig.accept;
+    public static final String accept = BilibiliEndpoint.accept;
 
     /**
      * 获取 http 响应（走统一出口，自动带指纹、限流与重试）。
      *
      * @param url 请求地址
      * @return http 响应
+     * @deprecated 实现已转发到 {@link BilibiliHttp#get(String)}；请直接调它或 {@code service.*Service}
      */
+    @Deprecated
     public static kong.unirest.HttpResponse<String> getCloseableHttpResponse(String url) {
         return BilibiliHttp.get(url);
     }
 
     /**
-     * 获取 http 响应，不重定向。
-     *
-     * <p>唯一用途是解析短链：读取 {@code Location} 头拿到真实地址，因此必须关掉自动重定向。
-     * 同样补上了 UA / Referer / 指纹 / 超时 / 代理 —— 短链服务也属 B 站域名，
-     * 没必要让它成为一条"裸奔"的旁路。
+     * 获取 http 响应，不重定向（读 {@code Location} header 用）。
      *
      * @param url 请求地址
-     * @return http 响应
+     * @return Apache HttpClient 响应（调用方自取 header）
      * @throws IOException I/O 异常
+     * @deprecated 实现已转发到 {@link BilibiliHttp#getNoRedirect(String)}；
+     *         若只想要跳转地址，直接用 {@link BilibiliHttp#getLocation(String)} 更简洁
      */
-    public static HttpResponse getHttpResponseNotRedirect(String url) throws IOException {
-        HttpGet request = new HttpGet(url);
-        request.setHeader("User-Agent", AnonymousSession.userAgent());
-        request.setHeader("Accept", BilibiliConfig.accept);
-        request.setHeader("Referer", BilibiliConfig.referer);
-        String cookie = AnonymousSession.cookieHeader();
-        if (cookie != null && !cookie.isEmpty()) {
-            request.setHeader("Cookie", cookie);
-        }
-
-        RequestConfig.Builder config = RequestConfig.custom()
-                .setConnectTimeout(HttpPolicy.getConnectTimeoutMs())
-                .setConnectionRequestTimeout(HttpPolicy.getConnectTimeoutMs())
-                .setSocketTimeout(HttpPolicy.getSocketTimeoutMs());
-
-        HttpClientBuilder builder = HttpClientBuilder.create()
-                .disableRedirectHandling()
-                .setDefaultRequestConfig(config.build());
-        if (HttpPolicy.hasProxy()) {
-            builder.setProxy(new HttpHost(HttpPolicy.getProxyHost(), HttpPolicy.getProxyPort()));
-        }
-
-        HttpClient client = builder.build();
-        return client.execute(request);
+    @Deprecated
+    public static org.apache.http.HttpResponse getHttpResponseNotRedirect(String url) throws IOException {
+        return BilibiliHttp.getNoRedirect(url);
     }
 }
