@@ -43,7 +43,9 @@ public class Java2DImageRenderer implements DynamicImageRenderer {
     private static final float NAME_SIZE = 18f;
     private static final float META_SIZE = 13f;
     private static final float BADGE_SIZE = 11f;
+    private static final float TITLE_SIZE = 21f;
     private static final float BODY_SIZE = 17f;
+    private static final int TITLE_LINE_HEIGHT = 34;
     private static final int LINE_HEIGHT = 28;
     private static final int BLOCK_GAP = 16;
     private static final int IMAGE_GAP = 6;
@@ -130,6 +132,16 @@ public class Java2DImageRenderer implements DynamicImageRenderer {
 
             y += AVATAR + 22;
 
+            // ---- 标题（可选：只有"带标题的动态 / opus 文章"才有，多数图文动态没有）----
+            // B 站版式里标题在作者行之下、正文之上，字号更大且加粗；用伪粗体（重描一次）实现。
+            String title = model.getTitle();
+            if (title != null && !title.isBlank()) {
+                Font titleFont = FontRegistry.emphasis(TITLE_SIZE);
+                y = layoutSpans(RenderModelLoader.splitUnicodeEmoji(title), y, cmds,
+                        titleFont, mg.getFontMetrics(titleFont), left, TITLE_LINE_HEIGHT, true);
+                y += 10;
+            }
+
             // ---- 内容块（顺序即原文顺序）----
             for (RenderModel.Block block : model.getBlocks()) {
                 if (block instanceof RenderModel.TextBlock) {
@@ -158,7 +170,28 @@ public class Java2DImageRenderer implements DynamicImageRenderer {
 
     private int layoutText(RenderModel.TextBlock block, int y, List<Cmd> cmds,
                            Graphics2D mg, Font bodyFont, FontMetrics metrics, int left) {
-        List<Line> lines = typeset(block.getSpans(), bodyFont, metrics);
+        return layoutSpans(block.getSpans(), y, cmds, bodyFont, metrics, left, LINE_HEIGHT, false);
+    }
+
+    /**
+     * 把一组富文本片段排成若干行并落成绘制指令。
+     *
+     * <p>抽出来是为了让<b>标题</b>复用同一套排版能力（换行、避头尾、emoji 贴图、缺字占位），
+     * 否则标题得另写一份排版逻辑 —— 而长标题一旦不换行就会直接画出画布外。
+     *
+     * @param spans      片段
+     * @param y          起始 y
+     * @param cmds       绘制指令收集器
+     * @param font       本段字体
+     * @param metrics    本段字体度量
+     * @param left       左边距
+     * @param lineHeight 行高
+     * @param fauxBold   是否伪粗体（内置子集只有 Regular 一个字面，加粗靠偏移重描）
+     * @return 本段结束后的 y
+     */
+    private int layoutSpans(List<RenderModel.Span> spans, int y, List<Cmd> cmds, Font font,
+                            FontMetrics metrics, int left, int lineHeight, boolean fauxBold) {
+        List<Line> lines = typeset(spans, font, metrics);
         if (lines.isEmpty()) {
             return y;
         }
@@ -183,14 +216,14 @@ public class Java2DImageRenderer implements DynamicImageRenderer {
                                 C_PLACEHOLDER, C_PLACEHOLDER_EDGE));
                         break;
                     default:
-                        cmds.add(new TextCmd(piece.text, drawX, baseline, bodyFont, piece.color, false));
+                        cmds.add(new TextCmd(piece.text, drawX, baseline, font, piece.color, fauxBold));
                         break;
                 }
                 x += piece.width;
             }
-            baseline += LINE_HEIGHT;
+            baseline += lineHeight;
         }
-        return y + lines.size() * LINE_HEIGHT;
+        return y + lines.size() * lineHeight;
     }
 
     private int layoutImages(RenderModel.ImageBlock block, int y, List<Cmd> cmds, int left) {

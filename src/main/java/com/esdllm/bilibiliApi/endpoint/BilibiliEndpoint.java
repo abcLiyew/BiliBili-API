@@ -25,12 +25,39 @@ public class BilibiliEndpoint {
     public static final String accept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7";
 
     /**
+     * JSON 接口用的 {@code Accept}。
+     *
+     * <p><b>为什么需要单独一份</b>（2026-09-13 真机 412 排查）：上面那份 {@link #accept} 是
+     * <b>文档型</b>的（{@code text/html,...}），它是"浏览器打开一个页面"时才发的形状；
+     * 而 B 站 web 前端请求 {@code /x/...} 这类 JSON 接口时发的是
+     * {@code application/json, text/plain, *\/\*}。
+     *
+     * <p>把文档型 Accept 发到 JSON 接口上，属于"与真实客户端形状不一致"的请求 ——
+     * 在高信誉的住宅 IP 上通常无碍，但在低信誉出口（机房 IP）上就是 WAF 的加分项。
+     * 这类差异不会报错，只会让请求看起来"不像浏览器发的"。
+     */
+    public static final String jsonAccept = "application/json, text/plain, */*";
+
+    /**
      * 统一 Referer。
      *
      * <p>缺失时部分接口会额外收紧风控（实测），因此所有出站请求都带上。
      * 取站根而非具体页面：具体页面路径对 API 请求反而不自然。
+     *
+     * <p>例外见 {@link #spaceDynamicReferer}：动态 feed 属于"空间页里发起的请求"，
+     * 真正的前端会带具体空间页地址。
      */
     public static final String referer = "https://www.bilibili.com/";
+
+    /**
+     * 动态 feed 专用的 Referer 模板（{@code %s} = uid）。
+     *
+     * <p>B 站空间页请求动态列表时，Referer 是当前空间页
+     * （{@code https://space.bilibili.com/<uid>/dynamic}），而不是站根。
+     * 实测（python 对照）用这一组合 + {@link #jsonAccept} 请求
+     * {@code v1/feed/space} 能稳定拿到 {@code code=0}。
+     */
+    public static final String spaceDynamicReferer = "https://space.bilibili.com/%s/dynamic";
 
     /** {@code x/web-interface/view?bvid=} —— 视频投稿主查（按 bvid）。 */
     public static final String videoBaseUrl = "https://api.bilibili.com/x/web-interface/view?bvid=";
@@ -91,6 +118,25 @@ public class BilibiliEndpoint {
     public static final String dynamicFeedUrl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
             + "?host_mid=%s&features=itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote"
             + "&platform=web&build=735002902680334849";
+
+    /**
+     * <b>关注流</b>（{@code feed/all}）—— 登录账号所关注 UP 的最新动态，一次请求覆盖全部。
+     *
+     * <p><b>实测（2026-09-14）它比 {@link #dynamicFeedUrl} 更"耐封"</b>：在被
+     * {@code -412 request was banned} 拒掉 feed/space 的同一台机器、同一枚 Cookie 下，
+     * 本端点返回 {@code 200 / code=0}（15 万字节真实数据）。
+     *
+     * <p>参数说明：{@code type=all} 取全部类型（投稿/图文/转发/直播推荐…）；
+     * {@code page=1} 只要第一页（约 20 条）；{@code platform=web} + {@code build=…} 与桌面端一致。
+     *
+     * <p>需要登录 Cookie；且返回里含推荐内容（{@code DYNAMIC_TYPE_LIVE_RCMD} 等），
+     * 调用方必须按 {@code module_author.mid} 过滤。
+     */
+    public static final String followFeedUrl = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/all"
+            + "?type=all&page=1&platform=web&build=735002902680334849";
+
+    /** 关注流页面地址，用作该端点的 Referer（与真实网页一致）。 */
+    public static final String followFeedReferer = "https://t.bilibili.com/";
 
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**

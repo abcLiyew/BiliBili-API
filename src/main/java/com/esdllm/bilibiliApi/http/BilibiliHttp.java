@@ -117,6 +117,30 @@ public final class BilibiliHttp {
      * @return 最后一次拿到的响应（可能是错误状态，交由调用方语义化）
      */
     public static HttpResponse<String> get(String url) {
+        return get(url, null, null);
+    }
+
+    /**
+     * 与 {@link #get(String)} 相同，但可覆盖 {@code Accept} / {@code Referer}。
+     *
+     * <p><b>为什么要能覆盖</b>（2026-09-13 真机 412 排查）：本类默认发的是"文档型"形状
+     * （{@link BilibiliEndpoint#accept} + 站根 Referer），它适合"用户点开一个页面"的场景；
+     * 但 B 站 web 前端请求 {@code /x/...} 这类 JSON 接口时，发的是
+     * {@code application/json} + <b>当前页面</b>的 Referer。
+     *
+     * <p>形状不一致本身不会报错，它只会让请求在低信誉出口（机房 IP）上更像"非浏览器客户端" ——
+     * 而风控恰恰是按这个打分的。所以"对齐真实客户端"是这类端点该做的事，而不是碰运气。
+     *
+     * <p>刻意只开放这两个头、并<b>直接替换</b>而不是追加：Unirest 的 {@code header()} 语义是追加，
+     * 追加会出现同名头两份（`Accept: text/html...` + `Accept: application/json...`），
+     * 那比不覆盖更糟。
+     *
+     * @param url     完整地址
+     * @param accept  覆盖 {@code Accept}；{@code null}/空白表示用默认
+     * @param referer 覆盖 {@code Referer}；{@code null}/空白表示用默认
+     * @return 最后一次拿到的响应
+     */
+    public static HttpResponse<String> get(String url, String accept, String referer) {
         int maxAttempts = HttpPolicy.getMaxAttempts();
         int rotations = 0;
         HttpResponse<String> lastResponse = null;
@@ -126,7 +150,7 @@ public final class BilibiliHttp {
             RateLimiter.acquire();
 
             try {
-                HttpResponse<String> response = send(url, AnonymousSession.current());
+                HttpResponse<String> response = send(url, AnonymousSession.current(), accept, referer);
                 lastResponse = response;
                 lastError = null;
 
@@ -182,12 +206,14 @@ public final class BilibiliHttp {
 
     // ------------------------------------------------------------------ 发送
 
-    private static HttpResponse<String> send(String url, AnonymousSession.Identity identity) {
+    private static HttpResponse<String> send(String url, AnonymousSession.Identity identity,
+                                             String accept, String referer) {
         url = applyTestBaseUrl(url);
+        boolean customHead = (accept != null && !accept.isBlank()) || (referer != null && !referer.isBlank());
         GetRequest request = Unirest.get(url)
                 .header("User-Agent", identity.userAgent())
-                .header("Accept", BilibiliEndpoint.accept)
-                .header("Referer", BilibiliEndpoint.referer)
+                .header("Accept", accept == null || accept.isBlank() ? BilibiliEndpoint.accept : accept)
+                .header("Referer", referer == null || referer.isBlank() ? BilibiliEndpoint.referer : referer)
                 .connectTimeout(HttpPolicy.getConnectTimeoutMs())
                 .socketTimeout(HttpPolicy.getSocketTimeoutMs());
 
@@ -195,7 +221,7 @@ public final class BilibiliHttp {
         if (cookie != null && !cookie.isEmpty()) {
             request.header("Cookie", cookie);
         }
-        logOutgoingIdentity(identity, cookie);
+        logOutgoingIdentity(identity, cookie, customHead ? "JSON+页面 Referer" : "默认文档头");
         if (HttpPolicy.hasProxy()) {
             request.proxy(HttpPolicy.getProxyHost(), HttpPolicy.getProxyPort());
         }
@@ -224,22 +250,26 @@ public final class BilibiliHttp {
      *
      * @param identity       本代身份（提供匿名指纹与 UA）
      * @param composedCookie 实际写进 {@code Cookie} 头的内容，可为 {@code null}
+     * @param requestShape  请求头形状的短标签（"默认文档头" / "JSON+页面 Referer"），
+     *                      用来在日志里区分"发的是哪一套形状"
      */
-    private static void logOutgoingIdentity(AnonymousSession.Identity identity, String composedCookie) {
+    private static void logOutgoingIdentity(AnonymousSession.Identity identity, String composedCookie,
+                                            String requestShape) {
         boolean hasCookie = composedCookie != null && !composedCookie.isEmpty();
         String source = HttpPolicy.cookieProvidesDeviceId()
                 ? "登录 Cookie"
                 : (identity.hasCookie() ? "匿名指纹" : "无");
-        String signature = keysOf(composedCookie) + "|" + source;
+        String signature = keysOf(composedCookie) + "|" + source + "|" + requestShape;
         if (signature.equals(LAST_IDENTITY_SIGNATURE.getAndSet(signature))) {
             return;
         }
         if (!hasCookie) {
-            log.warn("出站身份：未携带任何 Cookie（匿名端点会被判 412）；指纹来源={}", source);
+            log.warn("出站身份：未携带任何 Cookie（匿名端点会被判 412）；指纹来源={}，请求头={}",
+                    source, requestShape);
             return;
         }
-        log.info("出站身份：Cookie 键=[{}]，设备指纹来源={}，UA=\"{}\"",
-                keysOf(composedCookie), source, brief(identity.userAgent(), 40));
+        log.info("出站身份：Cookie 键=[{}]，设备指纹来源={}，请求头={}，UA=\"{}\"",
+                keysOf(composedCookie), source, requestShape, brief(identity.userAgent(), 40));
     }
 
     /** 取 Cookie 的键名（逗号分隔，值不出），纯日志用 */

@@ -78,7 +78,9 @@ public final class RenderModelLoader {
         try {
             JSONObject opusItem = fetchItem(BilibiliEndpoint.opusDetailUrl + dynamicId, "获取动态内容");
             RenderModel model = parse(opusItem);
-            if (!model.getBlocks().isEmpty()) {
+            // 有正文块、或至少有标题，都算"opus 这条路径拿到了东西"。
+            // （只有标题没有正文的动态极少见，但真出现时不能因为 blocks 空就丢掉标题）
+            if (!model.getBlocks().isEmpty() || model.getTitle() != null) {
                 return model;
             }
             // modules 拿不到（视频/转发类此端点常返空），但 item.type 可能标了 VIDEO/FORWARD/etc。
@@ -96,8 +98,13 @@ public final class RenderModelLoader {
         // —— 回退：v1/detail（视频/转发唯一可解析源；图文也走这个兜底）——
         JSONObject detailItem = fetchItem(BilibiliEndpoint.dynamicDetailUrl + dynamicId, "获取动态详情");
         RenderModel fallback = parseLegacy(detailItem);
-        if (fallback.getBlocks().isEmpty() && fallback.getType() == RenderModel.Type.UNKNOWN) {
-            throw new IOException("opus 与 v1/detail 都拿不到可渲染内容：id=" + dynamicId);
+        if (fallback.getBlocks().isEmpty() && fallback.getTitle() == null) {
+            // ★ 正文/图片/标题全空时**宁可报错**：画出来会是一张"只有头像+昵称"的空卡片
+            //   （实测 756x162），用户看到只会觉得"图不对"。让调用方降级成纯文字更有意义。
+            //   原来这里只判 type==UNKNOWN，于是 LIVE_RCMD 这类 type 已知但内容取不到的动态
+            //   会安静地渲染出一张空卡片。
+            throw new IOException("opus 与 v1/detail 都没拿到可渲染内容（正文/图片/标题全空）：id="
+                    + dynamicId + "，type=" + fallback.getType());
         }
         return fallback;
     }
@@ -172,6 +179,11 @@ public final class RenderModelLoader {
             switch (type) {
                 case "MODULE_TYPE_AUTHOR":
                     parseAuthor(module.getJSONObject("module_author"), model);
+                    break;
+                case "MODULE_TYPE_TITLE":
+                    // ★ 标题模块（2026-09-14 补）：图文类动态也可能带标题，而它只在 opus 端点上；
+                    //   漏了它的表现是"长图里有作者、有正文、有图，就是没有标题"。
+                    parseTitle(module.getJSONObject("module_title"), model);
                     break;
                 case "MODULE_TYPE_TOP":
                     model.setTop(true);
@@ -433,15 +445,52 @@ public final class RenderModelLoader {
 
     private static void appendLiveBlocks(RenderModel model, JSONObject major, String descText) {
         if (major == null) return;
-        // 直播推荐：major.live_rcmd.content.title
+        // 直播推荐：{@code major.live_rcmd.content} 是**被双重编码的 JSON 字符串**（实测），
+        // fastjson 的 getJSONObject 会自动再解一层；真正的业务字段在 {@code live_play_info} 里 ——
+        // 标题是 {@code live_play_info.title}，直播封面是 {@code live_play_info.cover}。
+        // ★ 2026-09-14 修正：原实现读的是 {@code content.title}，那个路径**永远取不到值**，
+        //   于是直播推荐卡片只剩头像和昵称（实测 756x162 的近空白图），看起来就是"标题丢了"。
         JSONObject live = major.getJSONObject("live_rcmd");
         if (live != null) {
             JSONObject content = live.getJSONObject("content");
-            if (content != null) {
-                String title = content.getString("title");
+            JSONObject info = content == null ? null : content.getJSONObject("live_play_info");
+            if (info == null) {
+                // 兜底：如果哪天 B 站把它摊平成 content.title，这里仍能取到
+                info = content;
+            }
+            if (info != null) {
+                String cover = info.getString("cover");
+                if (cover != null && !cover.isEmpty()) {
+                    RenderModel.ImageBlock image = new RenderModel.ImageBlock();
+                    RenderModel.Pic pic = new RenderModel.Pic();
+                    pic.setUrl(normalizeUrl(cover));
+                    image.getPics().add(pic);
+                    model.getBlocks().add(image);
+                }
+                String title = info.getString("title");
                 if (title != null && !title.isEmpty()) {
                     RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
-                    textBlock.getSpans().add(textSpan(title));
+                    textBlock.getSpans().addAll(splitUnicodeEmoji(title));
+                    model.getBlocks().add(textBlock);
+                }
+                String areaName = info.getString("area_name");
+                String parentArea = info.getString("parent_area_name");
+                long online = info.getLongValue("online");
+                StringBuilder meta = new StringBuilder();
+                if (parentArea != null && !parentArea.isEmpty()) {
+                    meta.append(parentArea);
+                }
+                if (areaName != null && !areaName.isEmpty()) {
+                    if (meta.length() > 0) meta.append(" · ");
+                    meta.append(areaName);
+                }
+                if (online > 0) {
+                    if (meta.length() > 0) meta.append(" · ");
+                    meta.append("人气 ").append(online);
+                }
+                if (meta.length() > 0) {
+                    RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
+                    textBlock.getSpans().add(textSpan(meta.toString()));
                     model.getBlocks().add(textBlock);
                 }
             }
@@ -495,6 +544,28 @@ public final class RenderModelLoader {
             if (label != null && label.getString("text") != null && !label.getString("text").isEmpty()) {
                 a.setBadge(label.getString("text"));
             }
+        }
+    }
+
+    /**
+     * 解析 {@code MODULE_TYPE_TITLE}（标题模块）。
+     *
+     * <p><b>只有 opus 端点会给出这个模块</b>：{@code v1/detail} 对图文动态连 {@code desc} 都是
+     * {@code null}，更不会有标题（2026-09-14 实测：同一条动态 detail 响应里全文搜不到 title 字段）。
+     * 所以"标题丢了"必然发生在 opus 路径上 —— 也就是这里。
+     *
+     * <p>B 站多数图文动态本来就没有标题，拿到 null/空串是常态，跳过即可。
+     *
+     * @param titleModule {@code module_title} 节点
+     * @param model 视图模型
+     */
+    private static void parseTitle(JSONObject titleModule, RenderModel model) {
+        if (titleModule == null) {
+            return;
+        }
+        String text = titleModule.getString("text");
+        if (text != null && !text.isBlank()) {
+            model.setTitle(text.trim());
         }
     }
 

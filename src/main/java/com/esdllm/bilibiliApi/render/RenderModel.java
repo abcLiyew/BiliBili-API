@@ -46,6 +46,18 @@ public class RenderModel {
     /** 动态 ID */
     private String dynamicId;
 
+    /**
+     * 动态标题（来源：opus 端点的 {@code MODULE_TYPE_TITLE.module_title.text}）。
+     *
+     * <p><b>为什么单独一个字段而不是塞进 {@link #blocks}</b>：标题在版式上属于"头部信息"，
+     * 画在作者行下面、正文上面，字号字重都和正文不同；放进 blocks 会让"正文顺序"这个概念被污染。
+     *
+     * <p>注意：图文类动态<b>多数没有标题</b>（B 站只有"带标题的动态 / opus 文章"才有），
+     * 所以为 {@code null} 是常态，渲染器要按"没有就跳过"处理。
+     * 另外 {@code v1/detail} 端点<b>根本不返回</b>标题字段，只有 opus 端点有。
+     */
+    private String title;
+
     /** 作者信息 */
     private Author author = new Author();
 

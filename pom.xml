@@ -6,7 +6,7 @@
 
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.23-beta</version>
+    <version>0.9.28-beta</version>
     <name>bilibili-api</name>
     <description>哔哩哔哩（Bilibili）常用数据接口的 Java 客户端：用户名片、视频、动态、直播间与短链解析。</description>
 

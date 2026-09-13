@@ -137,31 +137,79 @@ public class DynamicService {
     }
 
     /**
-     * 取一次动态列表（单次请求 + 解析），<b>不含</b>任何重试/轮换策略 —— 策略由
+     * 取<b>关注流</b>（{@code feed/all}）：登录账号所关注 UP 的最新动态，<b>一次请求覆盖全部</b>。
+     *
+     * <p><b>为什么需要它</b>（2026-09-14 真机实测）：{@code feed/space} 会被 B 站 WAF 以
+     * {@code {"code":-412,"message":"request was banned"}} <b>按客户端封禁</b>。
+     * 同一台机器、同一枚有效 Cookie 下对照：
+     * <pre>
+     * x/frontend/finger/spi                    → 200 / code=0
+     * x/polymer/web-dynamic/v1/feed/space      → 412 / code=-412 request was banned（换 buvid、换头、拉间隔都无效）
+     * x/polymer/web-dynamic/v1/feed/all        → 200 / code=0（15 万字节真实数据）★
+     * </pre>
+     * 也就是说这不是"Cookie 失效"也不是"整台机器被封"，而是这一条路径被封。
+     * 关注流是同机可用的替代源，而且更省请求（1 次/轮 vs 每个 uid 1 次）。
+     *
+     * <p><b>限制</b>：需要登录 Cookie；只包含该账号<b>已关注</b>的 UP；
+     * 结果里混有推荐内容（{@code DYNAMIC_TYPE_LIVE_RCMD} 等），调用方按
+     * {@link DynamicInfo#getUid()} 过滤。
+     *
+     * @return 关注流动态列表（可能为空，永不为 null）
+     */
+    public List<DynamicInfo> getFollowFeed() throws IOException {
+        return fetchItems(BilibiliEndpoint.followFeedUrl,
+                BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.followFeedReferer,
+                "获取关注流");
+    }
+
+    /**
+     * 取一次某个 UP 的动态列表（单次请求 + 解析），<b>不含</b>任何重试/轮换策略 —— 策略由
      * {@link #getInfoList(String)} 决定。抽出本方法是为了让"空列表换身份重试"能复用同一段取数逻辑。
      *
      * @param uid 用户 UID
      * @return 解析后的动态列表（可能为空，永不为 null）
      */
     private List<DynamicInfo> fetchFeed(String uid) {
-        String url = String.format(BilibiliEndpoint.dynamicFeedUrl, uid);
-        log.info("正在获取动态列表:{}", url);
+        // ★ 用"和真实网页一致"的请求头形状（2026-09-13 真机 412 排查）：
+        //   B 站空间页请求这条 JSON 接口时发的是 Accept: application/json
+        //   + Referer: https://space.bilibili.com/<uid>/dynamic；
+        //   而本库默认发的是"文档型" Accept + 站根 Referer（那是"打开页面"的形状）。
+        //   形状不一致不会报错，但会让请求在低信誉出口上被判为非浏览器客户端 ——
+        //   所以这里对齐它，不留这个变量。
+        return fetchItems(String.format(BilibiliEndpoint.dynamicFeedUrl, uid),
+                BilibiliEndpoint.jsonAccept,
+                String.format(BilibiliEndpoint.spaceDynamicReferer, uid),
+                "获取动态列表");
+    }
+
+    /**
+     * 取一次动态列表并解析成冻结模型（feed/space 与 feed/all 共用本段）。
+     *
+     * @param url     完整地址
+     * @param accept  该端点对应的 {@code Accept}
+     * @param referer 该端点对应的 {@code Referer}
+     * @param what    语义名（用于异常文案，如"获取动态列表" / "获取关注流"）
+     * @return 解析后的列表（可能为空，永不为 null）
+     */
+    private List<DynamicInfo> fetchItems(String url, String accept, String referer, String what) {
+        log.info("正在{}:{}", what, url);
 
         HttpResponse<String> response;
         try {
-            response = BilibiliHttp.get(url);
+            response = BilibiliHttp.get(url, accept, referer);
         } catch (Exception e) {
-            throw new BilibiliException(e, "获取动态列表失败：请求发送异常：" + e.getMessage());
+            throw new BilibiliException(e, what + "失败：请求发送异常：" + e.getMessage());
         }
         if (response == null) {
-            throw new BilibiliException("获取动态列表失败：请求无响应");
+            throw new BilibiliException(what + "失败：请求无响应");
         }
 
         // HTTP 层先拦一道（与 getDetail 同一规则）。
-        // ★ 不加这一步的后果（2026-09-13 实测踩到）：412 风控返回的是 HTML 页面，
+        // ★ 不加这一步的后果（2026-09-13 实测踩到）：412 风控返回的可能是 HTML 页面，
         //   会被下面的 JSON 解析报成"响应不是合法 JSON"，把排障方向带偏；
         //   而真实原因是风控，文案必须点明且不得自动重试。
-        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), "获取动态列表");
+        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), what);
         if (httpError != null) {
             throw httpError;
         }
@@ -172,13 +220,12 @@ public class DynamicService {
         } catch (Exception ignored) {
             // ★ 不把异常直接包进 message：fastjson 的 syntax error 会把整段输入拼进它自己的
             //   message，而风控页 HTML 有数 KB —— 实测会把日志刷爆。用 brief() 截到 120 字。
-            //   （getDetail 一直是这么做的，getInfoList 漏了，本轮补齐。）
-            throw new BilibiliException("获取动态列表失败：响应不是合法 JSON（前 120 字："
+            throw new BilibiliException(what + "失败：响应不是合法 JSON（前 120 字："
                     + brief(response.getBody()) + "）");
         }
         int code = body.getIntValue("code");
         if (code != 0) {
-            throw new BilibiliException("获取动态列表失败：B 站 code=" + code
+            throw new BilibiliException(what + "失败：B 站 code=" + code
                     + " message=" + body.getString("message"));
         }
         JSONObject data = body.getJSONObject("data");
@@ -259,10 +306,14 @@ public class DynamicService {
     /**
      * 把桌面端 feed 中的一条 item 映射成 {@link DynamicInfo}。
      *
-     * <p>本方法不抛异常：B 站某些 item 类型（如 {@code DYNAMIC_TYPE_LIVE_RCMD} 直播推荐）
-     * 在 {@code modules} 里没有 {@code module_dynamic} —— 这种 item 直接返回 {@code null}
-     * 让外层 caller 跳过；调用方拿到的是一个"少几条但都对"的列表，
-     * <b>不是</b>"为了某一条不合规矩而整列抛掉"。
+     * <p>本方法不抛异常。注意<b>不是</b>"只返回有正文的条目"：像
+     * {@code DYNAMIC_TYPE_LIVE_RCMD}（直播推荐）这类没有 {@code module_dynamic} 的 item
+     * 依然会产出一个 {@code DynamicInfo}（只有 {@code dynamicId} / {@code uid} / {@code time}，
+     * 正文与配图都为空）—— 2026-09-14 复核代码确认，旧注释里"直接返回 null"的说法不成立。
+     *
+     * <p>因此<b>过滤是调用方的责任</b>：关注流 {@code feed/all} 会混入大量推荐内容，
+     * 调用方必须按 {@link DynamicInfo#getUid()}（是否属于已订阅的 UP）以及
+     * {@link DynamicInfo#getTime()}（是否够新）筛掉它们。
      */
     private static DynamicInfo parseFeedItem(JSONObject item) {
         DynamicInfo info = new DynamicInfo();
@@ -322,6 +373,18 @@ public class DynamicService {
         // —— 3. dynamicId（非转发才有；FORWARD 时 id_str 留给 shareDynamicId） ——
         if (!"DYNAMIC_TYPE_FORWARD".equals(type) && idStr != null) {
             info.setDynamicId(idStr);
+        }
+
+        // —— 3.5 发布者（2026-09-14 新增的两个附加字段） ——
+        //
+        // 关注流 feed/all 一次返回多个 UP 的动态，调用方必须靠 uid 把每条归到具体订阅；
+        // userName 则让调用方不必再额外请求一次名片接口（请求密度是风控敏感项）。
+        if (moduleAuthor != null) {
+            String mid = moduleAuthor.getString("mid");
+            if (mid != null && !mid.isEmpty()) {
+                info.setUid(mid);
+            }
+            info.setUserName(moduleAuthor.getString("name"));
         }
 
         // —— 4. time（**语义承载字段**，见 REFACTOR_PLAN.md §2.4） ——

@@ -51,6 +51,9 @@ class DynamicServiceTest {
 
     private static final String DETAIL_PATH = "/x/polymer/web-dynamic/v1/detail";
     private static final String FEED_PATH = "/x/polymer/web-dynamic/v1/feed/space";
+
+    /** 关注流路径（{@code feed/all}，2026-09-14 新增的替代数据源） */
+    private static final String FOLLOW_PATH = "/x/polymer/web-dynamic/v1/feed/all";
     private static final String LEGACY_FIXTURE = "src/test/resources/fixtures/dynamic-detail-legacy.json";
     private static final String FEED_FIXTURE = "src/test/resources/fixtures/dynamic-feed-desktop.json";
 
@@ -369,6 +372,78 @@ class DynamicServiceTest {
             IOException e = assertThrows(IOException.class,
                     () -> DynamicService.INSTANCE.getImg("9999999999"));
             assertNotNull(e.getMessage());
+        }
+    }
+
+    // ================================================================
+    // getFollowFeed（2026-09-14 新增：feed/space 被 -412 封禁时的替代数据源）
+    // ================================================================
+
+    @Nested
+    @DisplayName("getFollowFeed：关注流链路")
+    class GetFollowFeed {
+
+        @Test
+        @DisplayName("正常路径：一次请求解析多条，且每条都带 uid / userName（供调用方按订阅过滤）")
+        void 正常() throws IOException {
+            // 形态取自 2026-09-14 真机实测的 feed/all 响应（items[].modules.module_author.{mid,name,pub_time}）
+            mock.register(FOLLOW_PATH,
+                    "{\"code\":0,\"data\":{\"has_more\":true,\"items\":["
+                            + "{\"id_str\":\"1247591251054690304\",\"type\":\"DYNAMIC_TYPE_DRAW\","
+                            + "\"modules\":{\"module_author\":{\"mid\":\"497078180\",\"name\":\"可可小绒猫\","
+                            + "\"pub_time\":\"刚刚\"},"
+                            + "\"module_dynamic\":{\"desc\":{\"text\":\"今天也要加油\"},"
+                            + "\"dyn_draw\":{\"items\":[{\"src\":\"//i0.hdslb.com/bfs/a.jpg\"}]}}}},"
+                            + "{\"id_str\":\"1247591251054690305\",\"type\":\"DYNAMIC_TYPE_AV\","
+                            + "\"modules\":{\"module_author\":{\"mid\":\"3546774476163227\",\"name\":\"小雨绒Candy\","
+                            + "\"pub_time\":\"3分钟前\",\"pub_action\":\"投稿了视频\"},"
+                            + "\"module_dynamic\":{\"dyn_archive\":{\"title\":\"标题\",\"bvid\":\"BV1xVY26dEbz\"}}}}"
+                            + "]}}");
+
+            List<Dynamic.DynamicInfo> list = DynamicService.INSTANCE.getFollowFeed();
+
+            assertEquals(2, list.size());
+            Dynamic.DynamicInfo first = list.get(0);
+            assertEquals("497078180", first.getUid(), "必须带发布者 uid，否则调用方无法归到订阅");
+            assertEquals("可可小绒猫", first.getUserName(), "带上昵称，省掉一次名片接口请求");
+            assertEquals("刚刚", first.getTime());
+            assertEquals(1, first.getImageUrl().size());
+
+            Dynamic.DynamicInfo second = list.get(1);
+            assertEquals("3546774476163227", second.getUid());
+            assertEquals("3分钟前 · 投稿了视频", second.getTime(), "pub_action 非空时按前端习惯拼接");
+            assertEquals("BV1xVY26dEbz", second.getBvid());
+
+            assertEquals(1, mock.hitCount(FOLLOW_PATH), "关注流一轮只该发 1 次请求");
+        }
+
+        @Test
+        @DisplayName("含推荐项（LIVE_RCMD 无 module_dynamic）→ 仍会解析出条目，过滤是调用方的责任")
+        void 推荐项需调用方过滤() throws IOException {
+            mock.register(FOLLOW_PATH,
+                    "{\"code\":0,\"data\":{\"items\":[{\"id_str\":\"1\",\"type\":\"DYNAMIC_TYPE_LIVE_RCMD\","
+                            + "\"modules\":{\"module_author\":{\"mid\":\"999\",\"name\":\"直播推荐\"}}},"
+                            + "{\"id_str\":\"2\",\"type\":\"DYNAMIC_TYPE_DRAW\",\"modules\":{\"module_author\":"
+                            + "{\"mid\":\"111\",\"name\":\"up\",\"pub_time\":\"5分钟前\"}}}]}}");
+
+            List<Dynamic.DynamicInfo> list = DynamicService.INSTANCE.getFollowFeed();
+
+            // ★ 关键契约：推荐项**不会**被过滤掉（它有 uid/id，只是没正文）。
+            //   关注流会大量混入这类内容，所以调用方必须按 uid 过滤 —— XatiiBot 就是这么做的。
+            assertEquals(2, list.size(), "推荐项也会解析出来，不能指望本层替你过滤");
+            assertEquals("999", list.get(0).getUid(), "推荐项的 uid 不属于任何订阅 → 调用方据此丢弃");
+            assertEquals("111", list.get(1).getUid());
+            assertEquals("5分钟前", list.get(1).getTime());
+        }
+
+        @Test
+        @DisplayName("-412 request was banned → 抛异常（这是 feed/space 被封的真实形态）")
+        void 被封() {
+            mock.register(FOLLOW_PATH, "{\"code\":-412,\"message\":\"request was banned\",\"ttl\":1}");
+
+            BilibiliException e = assertThrows(BilibiliException.class,
+                    () -> DynamicService.INSTANCE.getFollowFeed());
+            assertTrue(e.getMessage().contains("-412"), "实际：" + e.getMessage());
         }
     }
 }

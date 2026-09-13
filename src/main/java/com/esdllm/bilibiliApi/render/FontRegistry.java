@@ -3,16 +3,22 @@ package com.esdllm.bilibiliApi.render;
 import lombok.extern.slf4j.Slf4j;
 
 import java.awt.Font;
-import java.awt.FontFormatException;
-import java.io.IOException;
 import java.io.InputStream;
 
 /**
  * 内置字体注册表。
  *
  * <p><b>为什么要内置字体</b>：{@code Font.createFont(...)} 加载的物理字体由 JDK 自带的
- * FreeType 光栅化，<b>不查 fontconfig、不依赖操作系统已安装字体</b>。无界面 Linux
- * （最小容器）通常一个中文字体都没装，任何依赖系统字体的方案都会渲染出一片"豆腐块"。
+ * FreeType 光栅化，不依赖操作系统已安装的中文字体。无界面 Linux（最小容器）通常一个中文字体都没装，
+ * 依赖系统字体就会渲染出一片"豆腐块"。
+ *
+ * <p><b>⚠️ 但内置字体并不能免除 fontconfig（2026-09-14 真机踩到）</b>：
+ * Java 在 Linux 上<b>无法</b>绕过平台字体管理器 —— 即便 {@code Font.createFont} 从流里读字体，
+ * 内部也会走 {@code FontManagerFactory.getInstance()} → {@code X11FontManager} →
+ * {@code FontConfiguration} → <b>读 fontconfig</b>。在既没装 fontconfig、也没有任何字体目录的
+ * 系统上，这一步会抛 <b>{@code java.lang.InternalError: ... Fontconfig head is null}</b>
+ * （注意是 {@link Error} 而非 {@link Exception}）。
+ * 修复只需在目标机器上执行：{@code apt-get install -y fontconfig fonts-dejavu-core}。
  *
  * <p>本类打包 Noto Sans SC（SIL OFL 1.1，许可证见 {@code /fonts/OFL.txt}），已用
  * {@code tools/build-font-subset.py} 裁到 GB2312 + 常用标点/假名/全角，约 2.4MB。
@@ -112,10 +118,24 @@ public final class FontRegistry {
             }
             log.warn("动态长图渲染：classpath 上找不到内置字体 {}，回退到系统字体。"
                     + "无界面 Linux 上可能因缺字体渲染出豆腐块。", CJK_FONT_RESOURCE);
-        } catch (FontFormatException | IOException e) {
-            log.warn("动态长图渲染：内置字体加载失败（{}），回退到系统字体", e.toString());
+        } catch (Throwable t) {
+            // ★ 必须是 Throwable 而不是 (FontFormatException | IOException)：
+            //   缺 fontconfig 的 Linux 上，Font.createFont 内部初始化平台字体管理器时抛的是
+            //   java.lang.InternalError（Error），用 catch(Exception) 系一律兜不住，
+            //   会直接穿到调用方（表现为整轮推送在发消息前中断）。
+            log.warn("动态长图渲染：内置字体加载失败（{}），回退到系统字体", t);
         }
         bundled = false;
-        return new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+        try {
+            return new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+        } catch (Throwable t) {
+            // 连系统字体都拿不到 → 这台机器根本没有可用的字体环境。
+            // 这里给出可执行的修复指引，而不是把 InternalError 原样抛给上层。
+            throw new IllegalStateException(
+                    "当前系统无法使用 Java2D 字体（" + t + "）。Linux 上通常是没装 fontconfig —— "
+                            + "执行 `apt-get install -y fontconfig fonts-dejavu-core` 即可；"
+                            + "注意即便是库内置字体，Java 也必须先初始化平台字体管理器，同样依赖 fontconfig。",
+                    t);
+        }
     }
 }

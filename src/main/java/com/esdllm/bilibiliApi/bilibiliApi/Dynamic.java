@@ -65,6 +65,21 @@ public class Dynamic {
          * 转发动态ID，如果为null，则该条动态不是转发动态
          */
         private String shareDynamicId;
+        /**
+         * 发布者 UID（{@code module_author.mid}）。
+         *
+         * <p><b>2026-09-14 新增（附加字段，不改动上面任何既有字段）</b>：
+         * 关注流 {@code feed/all} 一次返回多个 UP 的动态，调用方必须靠本字段把每条动态
+         * 归到"是哪条订阅的"。{@code feed/space}（按 uid 查）场景下等于请求时的 uid。
+         */
+        private String uid;
+        /**
+         * 发布者昵称（{@code module_author.name}）。
+         *
+         * <p>2026-09-14 新增。有了它，走关注流时不必再额外调一次名片接口取昵称
+         * （少一次出站请求，而请求密度正是风控敏感项）。
+         */
+        private String userName;
     }
 
     /**
@@ -126,6 +141,43 @@ public class Dynamic {
             throw new RuntimeException("获取动态列表失败：" + e.getMessage(), e);
         } catch (BilibiliException e) {
             throw new RuntimeException("获取动态列表失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 获取<b>关注流</b>动态列表（登录账号所关注 UP 的最新动态，一次请求覆盖全部）。
+     *
+     * <p>端点：{@code x/polymer/web-dynamic/v1/feed/all}。
+     *
+     * <p><b>为什么需要它</b>（2026-09-14 实测）：{@code feed/space} 会被 B 站 WAF
+     * 以 {@code {"code":-412,"message":"request was banned"}} <b>按客户端封禁</b> ——
+     * 同一台机器、同一枚有效 Cookie，{@code x/frontend/finger/spi} 返回 200、
+     * 本方法返回 200/code=0（15 万字节真实数据），只有 {@code feed/space} 这条路径被拒。
+     * 换 buvid、换请求头形状、拉长间隔都无效（不是频率问题，是"这条路被封"）。
+     *
+     * <p>因此当 {@code feed/space} 不可用时，关注流是<b>同机可用</b>的替代数据源，
+     * 而且更省请求：一轮只需 1 次请求（原来每个 uid 1 次）。
+     *
+     * <p><b>前提与限制</b>：
+     * <ul>
+     *   <li>需要登录 Cookie，且该账号<b>已关注</b>目标 UP —— 未关注的 UP 不会出现在这里；</li>
+     *   <li>返回里会混入推荐的直播/动态（如 {@code DYNAMIC_TYPE_LIVE_RCMD}），
+     *       调用方应按 {@link DynamicInfo#getUid()} 过滤；</li>
+     *   <li>只含最新一页（约 20 条），轮询间隔内足以覆盖。</li>
+     * </ul>
+     *
+     * <p>签名与 {@link #getDynamicInfoList(String)} 同款（保留占位声明），
+     * {@code XatiiBot} 侧不需要改动既有调用。
+     *
+     * @return 关注流动态列表（可能为空，永不为 null）
+     */
+    public List<DynamicInfo> getFollowFeed() throws InterruptedException {
+        try {
+            return DynamicService.INSTANCE.getFollowFeed();
+        } catch (IOException e) {
+            throw new RuntimeException("获取关注流失败：" + e.getMessage(), e);
+        } catch (BilibiliException e) {
+            throw new RuntimeException("获取关注流失败：" + e.getMessage(), e);
         }
     }
 }

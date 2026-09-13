@@ -71,6 +71,96 @@ class RenderModelLoaderLegacyTest {
         assertEquals(RenderModel.Type.UNKNOWN, RenderModelLoader.mapType(null));
     }
 
+    @Test
+    @DisplayName("★ LIVE_RCMD：标题取自 live_rcmd.content.live_play_info.title（content 是双重编码的 JSON 串）")
+    void 直播推荐() {
+        // 真实响应里 content 的值是一个 **JSON 字符串**（不是对象），标题埋在 live_play_info 下。
+        // 原来读 content.title 永远取不到 → 卡片只剩头像昵称。
+        JSONObject playInfo = new JSONObject();
+        playInfo.put("title", "全麦新人可带回");
+        playInfo.put("cover", "http://i0.hdslb.com/bfs/live/cover.jpg");
+        playInfo.put("area_name", "交友");
+        playInfo.put("parent_area_name", "聊天室");
+        playInfo.put("online", 95411);
+
+        JSONObject content = new JSONObject();
+        content.put("type", 1);
+        content.put("live_play_info", playInfo);
+
+        JSONObject liveRcmd = new JSONObject();
+        liveRcmd.put("content", content.toJSONString());
+
+        JSONObject major = new JSONObject();
+        major.put("type", "MAJOR_TYPE_LIVE_RCMD");
+        major.put("live_rcmd", liveRcmd);
+
+        JSONObject moduleDynamic = new JSONObject();
+        moduleDynamic.put("major", major);
+
+        JSONObject modules = new JSONObject();
+        modules.put("module_dynamic", moduleDynamic);
+
+        JSONObject item = new JSONObject();
+        item.put("id_str", "1247446579414040579");
+        item.put("type", "DYNAMIC_TYPE_LIVE_RCMD");
+        item.put("modules", modules);
+
+        RenderModel model = RenderModelLoader.parseLegacy(item);
+
+        assertEquals(RenderModel.Type.LIVE, model.getType());
+        boolean hasImage = false;
+        StringBuilder texts = new StringBuilder();
+        for (RenderModel.Block b : model.getBlocks()) {
+            if (b instanceof RenderModel.ImageBlock) {
+                hasImage = true;
+            } else if (b instanceof RenderModel.TextBlock) {
+                for (RenderModel.Span s : ((RenderModel.TextBlock) b).getSpans()) {
+                    texts.append(s.getText());
+                }
+                texts.append('\n');
+            }
+        }
+        assertTrue(hasImage, "直播封面必须被取到");
+        assertTrue(texts.toString().contains("全麦新人可带回"),
+                "直播标题必须被取到，实际文本：" + texts);
+        assertTrue(texts.toString().contains("人气 95411"), "分区/人气行应存在，实际：" + texts);
+    }
+
+    @Test
+    @DisplayName("LIVE_RCMD 的 content 若被摊平（将来改结构）也能取到标题")
+    void 直播推荐扁平兜底() {
+        JSONObject content = new JSONObject();
+        content.put("type", 1);
+        content.put("title", "摊平后的标题");
+
+        JSONObject liveRcmd = new JSONObject();
+        liveRcmd.put("content", content.toJSONString());
+        JSONObject major = new JSONObject();
+        major.put("live_rcmd", liveRcmd);
+
+        JSONObject moduleDynamic = new JSONObject();
+        moduleDynamic.put("major", major);
+        JSONObject modules = new JSONObject();
+        modules.put("module_dynamic", moduleDynamic);
+        JSONObject item = new JSONObject();
+        item.put("id_str", "1");
+        item.put("type", "DYNAMIC_TYPE_LIVE_RCMD");
+        item.put("modules", modules);
+
+        RenderModel model = RenderModelLoader.parseLegacy(item);
+        boolean found = false;
+        for (RenderModel.Block b : model.getBlocks()) {
+            if (b instanceof RenderModel.TextBlock) {
+                for (RenderModel.Span s : ((RenderModel.TextBlock) b).getSpans()) {
+                    if ("摊平后的标题".equals(s.getText())) {
+                        found = true;
+                    }
+                }
+            }
+        }
+        assertTrue(found, "content 摊平时也要能取到标题");
+    }
+
     /** 读 fixture 里的 {@code data.item} 并返回 raw JSONObject */
     private static JSONObject itemOf(String filename) throws Exception {
         String text = Files.readString(Path.of("src/test/resources/fixtures", filename));

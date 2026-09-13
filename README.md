@@ -33,7 +33,7 @@ mvn install
 <dependency>
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.23-beta</version>
+    <version>0.9.27-beta</version>
 </dependency>
 ```
 
@@ -187,6 +187,44 @@ HttpPolicy.setCookie("SESSDATA=xxx; bili_jct=xxx; ...");
   这样设备指纹改由匿名指纹提供、可轮换。
 - 日志里轮换会显示 `由登录 Cookie 提供（轮换不改变出站身份）`，这**不是**故障。
 
+### ⚠️ Linux 上必须装字体（fontconfig），否则长图渲染会整体失败
+
+长图由 Java2D 自绘，字体取自 jar 内置的 Noto Sans SC 子集，**但这并不等于可以不装 fontconfig**：
+Java 在 Linux 上无法绕过平台字体管理器 —— `Font.createFont` 内部同样会走
+`FontManagerFactory` → `X11FontManager` → `FontConfiguration` → 读 fontconfig。
+在既无 fontconfig、也没有任何字体目录的系统上，第一次画字就会抛：
+
+```
+java.lang.InternalError: java.lang.reflect.InvocationTargetException
+Caused by: java.lang.RuntimeException: Fontconfig head is null, check your fonts or fonts configuration
+```
+
+**修复**（Debian/Ubuntu，二选一即可，约 5MB）：
+
+```bash
+apt-get install -y fontconfig fonts-dejavu-core      # 推荐：同时给系统兜底字体
+apt-get install -y fontconfig                        # 最小：只装 fontconfig 也行
+```
+
+验证：
+
+```bash
+fc-list | wc -l          # > 0 即可
+```
+
+> 注意这是 **`Error` 而不是 `Exception`**：任何 `catch (Exception)` 都兜不住它。
+> 调用方务必用 `catch (Throwable)` 包住渲染步骤，并在失败时降级为纯文字，
+> 否则会出现"日志里只有一条 AsyncUncaughtExceptionHandler、用户什么都收不到"的现象。
+> 本库已把字体加载失败包装成带修复指引异常（见 `FontRegistry`），但调用方的边界仍建议兜 `Throwable`。
+
+### 动态标题
+
+B 站"带标题的动态 / opus 文章"的标题在 **opus 端点**的 `MODULE_TYPE_TITLE.module_title.text` 里，
+长图会把它画在作者行下方（字号更大、伪粗体）。注意：
+
+- `v1/detail` 端点**根本不返回标题字段**（图文动态连 `desc` 都是 null），所以标题只能从 opus 端点取；
+- 多数图文动态**本来就没有标题**，此时 `RenderModel.title` 为 `null`，渲染器直接跳过。
+
 ## 版本历史
 - 0.9.13.1-beta: 初始版本
 - 0.9.21-beta: 新增 `HttpPolicy.setCookie` / `-Dbili.cookie`，支持注入真实登录 Cookie
@@ -198,6 +236,29 @@ HttpPolicy.setCookie("SESSDATA=xxx; bili_jct=xxx; ...");
   登录 Cookie 自带 buvid 时**跳过匿名指纹领取**（出站内容不变，少一次请求，
   避免启动时"指纹+feed"连发）；此时"空列表换身份重试"自动跳过；
   出站时打印一行**实际 Cookie 键名 + 指纹来源**，用于区分「请求形状问题」与「出口 IP 被标记」
+- 0.9.24-beta: 动态 feed 改用**与真实网页一致的请求头形状**
+  （`Accept: application/json, text/plain, */*` + `Referer: https://space.bilibili.com/<uid>/dynamic`），
+  替代默认的"文档型 Accept + 站点根 Referer"；`BilibiliHttp.get(url, accept, referer)` 新增头部覆盖重载
+  （只开放这两个头、且**替换**而非追加，避免同名头两份）；出站身份日志追加"请求头"标签
+- 0.9.25-beta: 新增**关注流**数据源 `Dynamic.getFollowFeed()`（`x/polymer/web-dynamic/v1/feed/all`）。
+  起因：真机实测 `feed/space` 被 WAF 以 `{"code":-412,"message":"request was banned"}` **按客户端封禁**
+  （同机同 Cookie 下 `spi` 200、`feed/all` 200，只有这条路径被拒；换 buvid / 换头 / 拉长间隔都无效）。
+  关注流一轮 1 次请求覆盖所有已关注 UP，是这类环境下的可用替代源。
+  `Dynamic.DynamicInfo` 相应新增两个**附加**字段：`uid`（`module_author.mid`，用于归到订阅）
+  与 `userName`（`module_author.name`，省掉一次名片请求）；既有字段与签名一字未动
+- 0.9.26-beta: **修正 `FontRegistry` 的错误假设**（原注释称"内置字体不查 fontconfig、不依赖系统字体"，
+  在 Linux 上不成立）：字体加载改为 `catch (Throwable)`（缺 fontconfig 时抛的是 `InternalError`），
+  连系统兜底字体都拿不到时抛带修复指引的 `IllegalStateException`，而不是把 `InternalError` 原样上抛。
+  README 补「Linux 上必须装 fontconfig」章节与验证方法
+- 0.9.28-beta: **修两个"长图上没有标题"的问题**（2026-09-14 真机复现）：
+  ① opus 端点的 `MODULE_TYPE_TITLE` 之前被解析器忽略 —— 表现是"有作者、有正文、有图，就是没标题"。
+  `RenderModel` 新增 `title` 字段，渲染器画在作者行下方（21px、伪粗体、可换行、支持 emoji 贴图）；
+  `load()` 的"opus 是否算成功"判定放宽为"有正文块**或**有标题"。
+  ② 直播推荐（`DYNAMIC_TYPE_LIVE_RCMD`）原来读 `live_rcmd.content.title`，那个路径**永远取不到**——
+  标题其实在 `live_rcmd.content.live_play_info.title`（`content` 还是被双重编码的 JSON 字符串），
+  结果是渲染出一张只有头像昵称的近空白卡片（实测 756x162）。现在会画「封面 + 直播标题 + 分区/人气」。
+  ③ 另外 `load()` 改为"正文/图片/标题全空就报错"，让调用方降级成纯文字，而不是安静地发一张空卡片。
+  新增离线单测 `RenderModelLoaderOpusTest` 与直播推荐两个用例
 
 ## 许可证
 

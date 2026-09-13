@@ -296,6 +296,9 @@ class FacadeContractTest {
             assertField(info, "imageUrl", List.class);
             assertField(info, "bvid", String.class);
             assertField(info, "shareDynamicId", String.class);
+            // 2026-09-14 新增的两个附加字段（关注流 feed/all 需要：一个用来归到订阅，一个用来省掉名片请求）
+            assertField(info, "uid", String.class);
+            assertField(info, "userName", String.class);
         }
 
         @Test
