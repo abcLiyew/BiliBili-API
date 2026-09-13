@@ -3,9 +3,15 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.TypeReference;
+import com.esdllm.bilibiliApi.adapter.DynamicSchemaAdapter;
 import com.esdllm.bilibiliApi.config.BilibiliConfig;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
+import com.esdllm.bilibiliApi.parse.ApiResponse;
+import com.esdllm.bilibiliApi.parse.ErrorMapper;
+import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -72,29 +78,89 @@ public class Dynamic {
     }
 
     /**
-     * 获取动态详情
-     * @param dynamicId 动态ID
+     * 获取动态详情。
+     *
+     * <p>端点：{@code x/polymer/web-dynamic/v1/detail?id={dynamicId}}（实测匿名可用）。
+     * 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线（HTTP 404），
+     * 换源前本方法在真实调用下必然失败。
+     *
+     * <p><b>异常约定</b>：所有失败在门面边界统一转成签名里声明的 {@link IOException}。
+     * 原因是下游 XatiiBot 的两个调用点（{@code BilibiliAnalysisImpl.java:49}、
+     * {@code ShortChain.getDynamicCard()}）都<b>只有 {@code catch (IOException)}</b> ——
+     * 若抛 RuntimeException（含 {@code BilibiliException}），异常会直接穿透出去把消息处理器打挂，
+     * 连日志都留不下。库内部仍然统一用 {@code BilibiliException}，只在这一层做转换。
+     *
+     * @param dynamicId 动态ID（opus id / dynamic id 均可，新旧格式都支持）
      * @return 动态卡片详情
-     * @throws IOException IO异常
+     * @throws IOException IO异常，或取数失败（消息里含 B 站 code 与语义化说明）
      */
     public BilibiliDynamicResp.Data.Card getDynamicDetail(String dynamicId) throws IOException {
-        if(dynamicId == null || dynamicId.isEmpty()){
+        if (dynamicId == null || dynamicId.isEmpty()) {
+            // 参数校验属于调用方编程错误，保持原有的 BilibiliException（不受 IOException 影响）
             throw new BilibiliException("动态ID不能为空");
         }
-        BilibiliDynamicResp resp;
-        String baseUrl = BilibiliConfig.dynamicBaseUrl;
-        String url = baseUrl + dynamicId;
+        try {
+            JSONObject item = requestDynamicItem(dynamicId);
+            // 两套 schema（LEGACY / DESKTOP）在这里收敛成冻结模型
+            return DynamicSchemaAdapter.toCard(item);
+        } catch (BilibiliException e) {
+            // 门面边界：库内统一的 BilibiliException → 契约声明的 IOException
+            throw new IOException(e.getMessage(), e);
+        }
+    }
 
-        try  {
-            HttpResponse<String> response = ApiBase.getCloseableHttpResponse(url);
-            resp = JSON.parseObject(response.getBody(), BilibiliDynamicResp.class);
+    /**
+     * 请求详情接口并取出 {@code data.item}。
+     *
+     * @param dynamicId 动态ID
+     * @return 响应里的 item 节点
+     * @throws IOException 网络层失败
+     */
+    private JSONObject requestDynamicItem(String dynamicId) throws IOException {
+        String url = BilibiliConfig.dynamicDetailUrl + dynamicId;
+
+        HttpResponse<String> response;
+        try {
+            response = ApiBase.getCloseableHttpResponse(url);
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new IOException("获取动态详情失败：请求发送异常：" + e.getMessage(), e);
         }
-        if (Objects.isNull(resp) ||resp.getCode() != 0){
-            throw new BilibiliException("获取动态详情失败");
+        if (response == null) {
+            throw new IOException("获取动态详情失败：请求无响应");
         }
-        return resp.getData().getCard();
+
+        // HTTP 层先拦一道（412 风控必须有可读提示，且明确"不可重试"）
+        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), "获取动态详情");
+        if (httpError != null) {
+            throw new IOException(httpError.getMessage(), httpError);
+        }
+
+        ApiResponse<JSONObject> resp;
+        try {
+            resp = JSON.parseObject(response.getBody(), new TypeReference<ApiResponse<JSONObject>>() {
+            });
+        } catch (Exception e) {
+            throw new IOException("获取动态详情失败：响应不是合法 JSON（前 120 字："
+                    + brief(response.getBody()) + "）", e);
+        }
+
+        // code 校验：4101139（参数名错）/ 4101105（id 不存在）等都会在这里被语义化
+        JSONObject data = ResponseParserSupport.unwrap(resp, "获取动态详情");
+
+        JSONObject item = data.getJSONObject("item");
+        if (item == null) {
+            throw new IOException("获取动态详情失败：data 里没有 item");
+        }
+        return item;
+    }
+
+    /** 截断响应体，避免把整页 HTML/JS 塞进异常消息 */
+    private static String brief(String body) {
+        if (body == null) {
+            return "null";
+        }
+        String flat = body.replaceAll("\\s+", " ").trim();
+        return flat.length() <= 120 ? flat : flat.substring(0, 120) + "...";
     }
 
     /**
@@ -111,11 +177,9 @@ public class Dynamic {
         options.addArguments("--window-size=1280,10000"); // 增加窗口宽度和高度
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
-        Thread.sleep(0);
 
         // 创建 WebDriver
         WebDriver driver = new ChromeDriver(options);
-        Thread.sleep(0);
         log.info("正在加载页面...");
         try {
             driver.get(BilibiliConfig.dynamicInfoUrl + dynamicId);
@@ -169,7 +233,6 @@ public class Dynamic {
             // 获取动态内容的宽度和位置
             int contentWidth = dynamicContent.getRect().width;
             int contentX = dynamicContent.getRect().x;
-            dynamicContent.getRect();
 
 
             // 使用新方法：直接设置窗口大小为内容大小，然后一次性截图
@@ -230,13 +293,13 @@ public class Dynamic {
                 cropHeight = Math.max(scrollHeight.intValue(), fullImg.getHeight());
             }
 
-            // 确保裁剪区域不超出图像边界
-            if (cropX + cropWidth > fullImg.getWidth()) {
-                cropWidth = fullImg.getWidth() - cropX;
-            }
+            // 确保裁剪区域不超出图像边界，否则 getSubimage 会抛 RasterFormatException
+            cropX = Math.max(0, Math.min(cropX, fullImg.getWidth() - 1));
+            cropWidth = Math.max(1, Math.min(cropWidth, fullImg.getWidth() - cropX));
+            cropHeight = Math.max(1, Math.min(cropHeight - 100, fullImg.getHeight()));
             log.info("Full image size: {} x {}", fullImg.getWidth(), fullImg.getHeight());
             log.info("Crop region: x={}, y=0, width={}, height={}", cropX, cropWidth, cropHeight);
-            BufferedImage croppedImg = fullImg.getSubimage(cropX, 0, cropWidth, cropHeight-100);
+            BufferedImage croppedImg = fullImg.getSubimage(cropX, 0, cropWidth, cropHeight);
 
 
 
@@ -246,7 +309,6 @@ public class Dynamic {
         } catch (Exception e) {
             throw new RuntimeException(e);
         } finally {
-            driver.close();
             driver.quit();
         }
     }
@@ -258,7 +320,6 @@ public class Dynamic {
      */
     public List<DynamicInfo> getDynamicInfoList(String uid) throws InterruptedException {
         List<DynamicInfo> dynamicInfoList = new ArrayList<>();
-        DynamicInfo dynamicInfo = new DynamicInfo();
         String url = String.format(BilibiliConfig.dynamicListUrl, uid);
         log.info("正在获取动态列表:{}", url);
         // 配置 ChromeOptions
@@ -268,7 +329,6 @@ public class Dynamic {
         options.addArguments("--window-size=2080,1920");
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
-        Thread.sleep(0);
 
         // 创建 ChromeDriver
         WebDriver driver = new ChromeDriver(options);
@@ -298,6 +358,7 @@ public class Dynamic {
             }
             if (dynamicElements != null) {
                 for (Element dynamicElement : dynamicElements) {
+                    DynamicInfo dynamicInfo = new DynamicInfo();
                     if (!dynamicElement.getElementsByClass("bili-dyn-content__orig__author").isEmpty()){
                         String shareDynamicId = dynamicElement.getElementsByClass("bili-dyn-content__orig__major")
                                 .get(0).getElementsByClass("dyn-card-opus")
@@ -308,7 +369,7 @@ public class Dynamic {
                         String tag = dynamicElement.getElementsByClass("bili-dyn-tag__text").get(0).text();
                         dynamicInfo.setTag(tag);
                     }
-                    if (!dynamicElement.getElementsByClass("dyn-card-opus").isEmpty()&&dynamicInfo.shareDynamicId==null) {
+                    if (!dynamicElement.getElementsByClass("dyn-card-opus").isEmpty()&&dynamicInfo.getShareDynamicId()==null) {
                         String dyn_id = dynamicElement.getElementsByClass("dyn-card-opus").get(0).attr("dyn-id");
                         dynamicInfo.setDynamicId(dyn_id);
                     }
@@ -316,7 +377,7 @@ public class Dynamic {
                         String time = dynamicElement.getElementsByClass("bili-dyn-time fs-small bili-ellipsis").get(0).text();
                         dynamicInfo.setTime(time);
                     }
-                    if (!dynamicElement.getElementsByClass("dyn-card-opus__title").isEmpty()&&dynamicInfo.dynamicId!=null){
+                    if (!dynamicElement.getElementsByClass("dyn-card-opus__title").isEmpty()&&dynamicInfo.getDynamicId()!=null){
                         String title = dynamicElement.getElementsByClass("dyn-card-opus__title").get(0).text();
                         dynamicInfo.setTitle(title);
                     }
@@ -367,14 +428,12 @@ public class Dynamic {
                         }
                     }
                     dynamicInfoList.add(dynamicInfo);
-                    dynamicInfo = new DynamicInfo();
                 }
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }finally {
             //关闭 ChromeDriver
-            driver.close();
             driver.quit();
         }
         return dynamicInfoList;
