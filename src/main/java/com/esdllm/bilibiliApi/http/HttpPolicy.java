@@ -3,6 +3,10 @@ package com.esdllm.bilibiliApi.http;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -32,7 +36,9 @@ import java.util.concurrent.ThreadLocalRandom;
  *       带上 {@code buvid3/buvid4} 后变成 {@code code=-352}（风控），补全套
  *       {@code dm_img_*}/{@code web_location} 客户端指纹参数、换代理出口也都过不去。
  *       此时可用 {@link #setCookie(String)} 或启动时系统属性 {@code -Dbili.cookie=}
- *       注入<b>真实登录 Cookie</b>（浏览器里的 {@code SESSDATA} 等）。
+ *       注入<b>真实登录 Cookie</b>（浏览器里的 {@code SESSDATA} 等）；
+ *       也可用 {@code -Dbili.cookieFile=<路径>} 从文件读 —— Cookie 太长、含 {@code ;} / {@code =}，
+ *       命令行传易错。文件内容就是 Cookie <b>请求头整串</b>，<b>由调用方自行准备</b>、来源不限。
  *       注入后与指纹 Cookie 合并，<b>用户 Cookie 的键优先</b>。
  *       本库<b>不内置任何凭据</b>，也不落盘。</li>
  *   <li><b>User-Agent</b>：默认<b>跟着身份走</b> —— {@code UserAgentPool} 的第 0 个是 Windows Edge
@@ -74,6 +80,14 @@ public final class HttpPolicy {
     public static final String PROP_PROXY_PORT = "bili.proxy.port";
     /** 系统属性名：真实登录 Cookie（可选；为空表示只用匿名指纹） */
     public static final String PROP_COOKIE = "bili.cookie";
+    /**
+     * 系统属性名：真实登录 Cookie 的<b>文件</b>路径（可选）。
+     *
+     * <p>与 {@value #PROP_COOKIE} 二选一，<b>内联串优先</b>。文件内容就是 Cookie <b>请求头整串</b>
+     * （形如 {@code name=value; name=value}），<b>由调用方自行准备</b> —— 本库只消费、不获取。
+     * 理由见 {@link #readCookieProperty()}。
+     */
+    public static final String PROP_COOKIE_FILE = "bili.cookieFile";
     /** 系统属性名：显式 User-Agent（可选；为空表示跟随身份池） */
     public static final String PROP_USER_AGENT = "bili.userAgent";
 
@@ -146,7 +160,7 @@ public final class HttpPolicy {
 
      */
     @Getter
-    private static volatile String cookie = normalizeCookie(readStringProperty(PROP_COOKIE));
+    private static volatile String cookie = normalizeCookie(readCookieProperty());
 
     /**
      * 调用方<b>显式指定</b>的 User-Agent（{@code null} / 空白表示跟随身份池）。
@@ -489,7 +503,7 @@ public final class HttpPolicy {
         socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
         proxyHost = readStringProperty(PROP_PROXY_HOST);
         proxyPort = readIntProperty(PROP_PROXY_PORT);
-        cookie = normalizeCookie(readStringProperty(PROP_COOKIE));
+        cookie = normalizeCookie(readCookieProperty());
         userAgent = readStringProperty(PROP_USER_AGENT);
         clientHints = deriveClientHints(userAgent);
     }
@@ -659,6 +673,42 @@ public final class HttpPolicy {
             sb.append(key);
         }
         return sb.toString();
+    }
+
+    /**
+     * 读"启动时注入的登录 Cookie"，支持两种形态（前者优先）：
+     * 内联串 {@value #PROP_COOKIE} → 文件 {@value #PROP_COOKIE_FILE}。
+     *
+     * <p><b>为什么还要"文件"这一种</b>：Cookie 长度动辄几百字符、且含 {@code ;} / {@code =} 与
+     * 大量敏感值。塞进命令行会在 {@code cmd} / PowerShell / IDE "VM options" 三套转义规则之间
+     * 反复出错，而且它会出现在进程列表里。文件形态把这份<b>由调用方提供的</b>凭据放到磁盘上，
+     * 绕开全部转义问题：文件内容就是 Cookie 请求头整串（尾部换行会被归一化掉）。
+     *
+     * <p>两种形态都在<b>类初始化</b>与 {@link #reset()} 时被读取；{@link #setCookie(String)}
+     * 是运行时入口，优先级最高。
+     *
+     * <p>⚠️ 文件读不出来（不存在 / 路径非法 / 无权限）一律按"未配置"处理、<b>不抛异常</b>：
+     * 本方法在类初始化阶段被调用，抛出去会连类都加载不了。代价是"配了却不生效"不会自己报错，
+     * 请用 {@link #describe()} 自查（未生效时它会显示"仅匿名指纹"）。
+     *
+     * @return Cookie 字符串；两种形态都没有（或都读不出）返回 {@code null}
+     */
+    private static String readCookieProperty() {
+        String inline = readStringProperty(PROP_COOKIE);
+        if (inline != null && !inline.isBlank()) {
+            return inline;
+        }
+        String path = readStringProperty(PROP_COOKIE_FILE);
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+        try {
+            return Files.readString(Path.of(path.trim()), StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            System.err.println("[HttpPolicy] " + PROP_COOKIE_FILE + "=" + path
+                    + " 读不到，按未注入 Cookie 处理：" + e.getClass().getSimpleName());
+            return null;
+        }
     }
 
     private static String readStringProperty(String key) {

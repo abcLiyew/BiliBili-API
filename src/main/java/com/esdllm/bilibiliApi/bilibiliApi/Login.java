@@ -7,7 +7,7 @@ import com.esdllm.bilibiliApi.service.LoginService;
 import java.io.IOException;
 
 /**
- * 登录门面：<b>扫码 / 密码 / 短信三条链路 → 取得登录凭据</b>。
+ * 登录门面：<b>取得登录凭据（扫码 / 密码 / 短信）+ 校验凭据是否还算数</b>。
  *
  * <p>库内第 6 个门面（前 5 个：{@code Dynamic} / {@code Live} / {@code CardInfo} /
  * {@code BilibiliClient} / {@code ShortChain}）。新增类，<b>不触碰任何既有签名</b>，
@@ -37,6 +37,18 @@ import java.io.IOException;
  * LoginCredential c = login.waitForLogin(qr.getQrcode_key(), 180_000L);  // ③ 等确认
  * HttpPolicy.setCookie(c.getCookieHeader());      // ④ 注入，之后所有请求自动带登录态
  * }</pre>
+ *
+ * <p><b>拿到之后还得「证」它</b>（{@link #getCredentialStatus()}）：凭据到手不等于还活着，
+ * 而它失效在本库是<b>静默</b>的 —— 关注流 {@code -412}、空间动态 {@code code=0} 加空列表，
+ * 长驻进程表现为"突然什么都不推了、日志里一行错误都没有"。所以长驻进程应在启动时
+ * （或定时）问一次服务端，而不是等下游发现"没数据了"：
+ * <pre>{@code
+ * CredentialStatus st = login.getCredentialStatus();
+ * // st.isLoggedIn() 为 false 时重新登录：waitForLogin（扫码）或 loginBySms（短信）
+ * }</pre>
+ * 注意 {@code !st.isLoggedIn()} 是<b>返回值，不是异常</b> —— 只有真故障（HTTP 非 2xx、
+ * 响应不是合法 JSON）才抛。这样调用方能分清"凭据废了，该重新登录"与"网络/出口出了问题，该重试"，
+ * 而这两件事的处置恰好相反。
  *
  * <p><b>拿到的凭据能做什么</b>：治 {@code v1/feed/space} 的 {@code -412} 与
  * {@code code=0} 静默空（这是本库唯一真正需要登录的既有端点
@@ -110,6 +122,48 @@ public class Login {
         try {
             return LoginService.INSTANCE.waitForLogin(
                     qrcodeKey, timeoutMs, LoginService.DEFAULT_POLL_INTERVAL_MS);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    // ------------------------------------------------------------------ 凭据状态（校验）
+
+    /**
+     * <b>查"手上这枚凭据还算不算数"</b> —— 由服务端确认。
+     *
+     * <p>前面的方法都在回答"怎么拿到凭据"，这个方法回答"<b>拿到的还活着吗</b>"。
+     * 长驻进程（推送机器人、定时任务）真正需要的是后者：凭据失效在 B 站是<b>静默</b>的
+     * （关注流 {@code -412}、空间动态 {@code code=0} 加空列表），表现为"突然什么都不推了、
+     * 日志一行错误没有"。提前问一句，就能把"静默失效"变成"明确该重新登录"。
+     *
+     * <p><b>怎么用</b>（启动时校验一次，或定时校验）：
+     * <pre>{@code
+     * Login login = new Login();
+     * HttpPolicy.setCookie(loadCookieFromDisk());     // 凭据从哪来都行
+     * CredentialStatus st = login.getCredentialStatus();
+     * if (!st.isLoggedIn()) {
+     *     // 该重新登录了 —— 走 waitForLogin（扫码）或 loginBySms（短信）
+     * } else {
+     *     // st.getUid() / st.getUname() 顺带告诉你这是谁
+     * }
+     * }</pre>
+     *
+     * <p><b>凭据无效不是异常</b>：{@code isLoggedIn()} 返回 {@code false}，不抛。
+     * 只有真故障（HTTP 非 2xx、响应不是 JSON）才抛 {@link IOException} ——
+     * 这样调用方能分清"该重新登录"（false）与"该重试"（异常）。
+     *
+     * <p>⚠️ 返回对象里的 {@code isRefreshChecked()} 说明"该不该刷新"这一项<b>有没有问到</b>；
+     * 为 {@code false} 时不要用它做判断。另外本库目前<b>没有实现刷新</b>，
+     * {@code isRefreshNeeded()} 为 {@code true} 的当前含义是"请重新登录"
+     * （原因见 {@link LoginCredential#getRefreshToken()} 的说明）。
+     *
+     * @return 凭据状态，不可为 null
+     * @throws IOException HTTP 非 2xx、响应不是合法 JSON，或网络失败
+     */
+    public CredentialStatus getCredentialStatus() throws IOException {
+        try {
+            return LoginService.INSTANCE.credentialStatus();
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

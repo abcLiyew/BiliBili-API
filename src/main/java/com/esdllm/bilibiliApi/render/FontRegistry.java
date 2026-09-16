@@ -21,7 +21,8 @@ import java.io.InputStream;
  * 修复只需在目标机器上执行：{@code apt-get install -y fontconfig fonts-dejavu-core}。
  *
  * <p>本类打包 Noto Sans SC（SIL OFL 1.1，许可证见 {@code /fonts/OFL.txt}），已用
- * {@code tools/build-font-subset.py} 裁到 GB2312 + 常用标点/假名/全角，约 2.4MB。
+ * <b>源码仓库里的</b> {@code tools/build-font-subset.py}（脚本本身<b>不随 jar 发布</b>）
+ * 裁到 GB2312 + 常用标点/假名/全角，约 2.4MB。
  *
  * <p><b>缺字策略</b>：{@link #canDisplay(int)} 为 false 的码位由调用方负责兜底显式占位，
  * <b>不允许静默丢字</b>（静默丢字会表现为空白，线上极难发现）。

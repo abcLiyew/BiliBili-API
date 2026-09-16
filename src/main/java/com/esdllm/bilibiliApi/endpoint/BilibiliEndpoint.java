@@ -69,6 +69,29 @@ public class BilibiliEndpoint {
     public static final String cardBaseUrl = "https://api.bilibili.com/x/web-interface/card?mid=";
 
     /**
+     * {@code x/web-interface/nav} —— <b>查询当前登录态</b>（数据域，判据端点）。
+     *
+     * <p>GET，无参数、<b>不需要 WBI 签名</b>。已登录返回：
+     * <pre>
+     * {@code {"code":0,"data":{"isLogin":true,"mid":497078180,"uname":"…", …}}}
+     * </pre>
+     * 未登录返回 <b>{@code code=-101}</b>（{@code message="账号未登录"}）—— 注意这是
+     * <b>正常结果而非异常</b>：它的含义是"这枚凭据没登录"，正是调用方要问的问题本身。
+     *
+     * <p>🔴 <b>两个细节，都很容易踩</b>：
+     * <ol>
+     *   <li>判据是 <b>{@code data.isLogin}</b>（布尔）或外层 {@code code}（0 / -101），
+     *       <b>不是 HTTP 状态</b> —— 未登录时 HTTP 同样是 200，只看状态码会永远得到"成功"。</li>
+     *   <li>未登录时 <b>{@code data.wbi_img} 照样有值</b>（img/sub key 与登录态无关），
+     *       所以 Web 端做 WBI 签名时<b>不能靠 {@code code} 判断能否取 key</b>，要判 {@code wbi_img} 是否存在。</li>
+     * </ol>
+     *
+     * <p>⚠️ 响应里的 {@code data.money}（B 币余额）等字段属于账户隐私，本库只取
+     * {@code isLogin} / {@code mid} / {@code uname} 三项，其余一概不落日志。
+     */
+    public static final String navUrl = "https://api.bilibili.com/x/web-interface/nav";
+
+    /**
      * 动态详情地址（v1 起复用）。
      *
      * <p><b>参数名必须是 {@code id}</b> —— 传 {@code rid} 或 {@code dynamic_id} 都会返回
@@ -260,6 +283,31 @@ public class BilibiliEndpoint {
      * 的唯一优势（代价是每次登录都要收码，不可能是无人值守的形态）。
      */
     public static final String passportSmsLoginUrl = "https://passport.bilibili.com/x/passport-login/web/login/sms";
+
+    /**
+     * {@code x/passport-login/web/cookie/info} —— <b>查询凭据是否需要刷新</b>。
+     *
+     * <p>GET，<b>不需要参数</b>（凭据走 Cookie）。响应：
+     * <pre>
+     * {@code {"code":0,"message":"OK","ttl":1,"data":{"refresh":false,"timestamp":1789537994849}}}
+     * </pre>
+     * {@code data.refresh} 为 {@code true} 表示服务端认为该凭据<b>该刷新了</b>；
+     * {@code data.timestamp} 是刷新流程的输入 —— 现行明文是 {@code "set_" + timestamp}
+     * （公开文档写的 {@code "refresh_" + timestamp} 已过期），由
+     * {@link com.esdllm.bilibiliApi.model.data.pojo.login.CredentialStatus#getRefreshTimestamp()}
+     * 原样透出。未登录时返回 {@code code=-101}（HTTP 仍是 200）。
+     *
+     * <p>⚠️ <b>路径里必须有 {@code /web/} 这一段</b> —— 2026-09-16 实测：漏掉它
+     * （{@code /x/passport-login/cookie/info}）会返回 <b>HTTP 404</b> 的 HTML 错误页，
+     * 而不是一个带业务码的 JSON，很容易被误判成"端点已下线"。
+     *
+     * <p>⚠️ 本端点<b>不返回 {@code refresh_token}</b>，别把它和"刷新"混为一谈：
+     * 它只回答"现在要不要刷"。真正换新 Cookie 的
+     * {@code x/passport-login/web/cookie/refresh} 另需 {@code refresh_token}，
+     * 而该值在 web 端实测为空串（详见 {@code LoginCredential#refreshToken}）。
+     */
+    public static final String passportCookieInfoUrl =
+            "https://passport.bilibili.com/x/passport-login/web/cookie/info";
 
     /** 登录来源：独立登录页（网页版默认）。{@code main_mini} 是小窗登录，本库不用 */
     public static final String passportLoginSource = "main_web";

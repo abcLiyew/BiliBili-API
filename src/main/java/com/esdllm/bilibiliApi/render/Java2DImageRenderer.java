@@ -421,7 +421,8 @@ public class Java2DImageRenderer implements DynamicImageRenderer {
                 } else {
                     if (reportedMissing.add(cp)) {
                         log.warn("动态长图渲染：内置字体缺字形 U+{}（'{}'），已用占位块绘制。"
-                                        + "如属常用字符请扩充字体子集（tools/build-font-subset.py）",
+                                        + "该字形不在打包的字体子集内；如属常用字符，"
+                                        + "需在源码仓库侧扩充子集后重新打包",
                                 Integer.toHexString(cp).toUpperCase(), new String(Character.toChars(cp)));
                     }
                     atoms.add(Piece.missing(fm.charWidth('中'), cp));

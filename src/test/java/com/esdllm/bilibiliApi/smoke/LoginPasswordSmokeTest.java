@@ -483,7 +483,11 @@ class LoginPasswordSmokeTest {
                         # 用浏览器打开 Java 侧打印的那个 http://127.0.0.1:端口/ 地址，过完极验后点「复制 7 行」，\
                         粘贴到这里（覆盖全文）
                         # 每一轮登录都必须重新过验：极验 validate 用过即废
-                        # 可选（想用「浏览器那台设备」登录时才填，用于判别 B 站登录提醒的「未知设备」）：
+                        # 想把「真浏览器那一整套环境」交给本次登录（用于判别 B 站登录提醒的「未知设备」）：
+                        #   ★ 推荐：启动时加 -Dbili.cookieFile=.workbuddy/bili-anon-cookie.txt
+                        #     该文件来自 tools/cdp-cookie-bridge 的 cookies 命令，含 buvid_fp / browser_resolution
+                        #     等本库从不采集的键。它是启动参数，不怕本文件被覆盖（比下面两行稳）。
+                        #   备选（只补设备指纹，不含 buvid_fp）：
                         #   buvid3=<F12 → Application → Cookies → passport.bilibili.com 下的 buvid3 值>
                         #   buvid4=<同上的 buvid4 值>
                         """);
@@ -688,10 +692,27 @@ class LoginPasswordSmokeTest {
      * （默认"UA 跟身份走"，登录成功后恰好轮换一次就会变成"刚登录成功、转头 {@code -101}"）。
      *
      * <p><b>为什么还需要设备指纹</b>（2026-09-16 真机引出的首要假设）：补齐 UA + CH 之后，
-     * B 站登录提醒<b>依旧</b>写「未知设备」⇒ 那条判定不由 UA / CH 决定。现在的假设是它判的是
-     * "这是不是一台<b>我认识的设备</b>"，而设备身份在 B 站侧是 {@code buvid3}/{@code buvid4} ——
-     * 本库每次运行都从 {@code finger/spi} 领一套<b>全新随机</b>的，所以每次都是新设备。
-     * 把浏览器自己的两个值交进来（等于"同一台设备换个客户端登录"），即可做 A/B 判别。
+     * B 站登录提醒<b>依旧</b>写「未知设备」⇒ 那条判定不由 UA / CH 决定。曾假设它判的是
+     * "是不是一台<b>我认识的设备</b>"（{@code buvid3}/{@code buvid4}），但本库每次运行都从
+     * {@code finger/spi} 领一套<b>全新随机</b>的，所以每次都是新设备 —— 把浏览器自己的两个值
+     * 交进来即可做 A/B 判别。
+     *
+     * <p><b>🆕 2026-09-16 起多了一条更完整的入口：{@code cookie=}</b>。真浏览器<b>匿名态</b>就有
+     * <b>15</b> 个 Cookie，而本库只采集 {@code buvid3}+{@code buvid4}；多出的
+     * {@code buvid_fp}（前端 JS 算的浏览器指纹）与 {@code browser_resolution}（分辨率）是库从不采集的，
+     * 而"环境"的判据很可能就在 Cookie 里 —— 此前只排查过<b>请求头</b>（UA / CH），那两类东西
+     * 从未被区分（见 {@code API_FACTS.md} §2.8）。用 {@code tools/cdp-cookie-bridge} 的
+     * {@code cookies} 命令导出，整行粘进来即可：
+     * <pre>
+     * cookie=SESSDATA=…; buvid3=…; buvid_fp=…; browser_resolution=…   （一整行，覆盖本文件其余内容）
+     * ua=Mozilla/5.0 … Edg/153.0.0.0                                  （想要浏览器面孔就再加这行）
+     * </pre>
+     * 两者<b>各行其是</b>：{@code cookie=} 管"环境"，{@code ua=} 管"面孔"；同时写最接近真人。
+     *
+     * <p>⚠️ 本条走的是"交接文件"这一侧，而该文件会被「申请验证码」那一步<b>整份覆盖</b>
+     * （见 {@code prepareAndWait}），所以 {@code cookie=} 只在"跑 {@code main} 之前就写好"这一种时序下有效。
+     * <b>要稳就用启动参数 {@code -Dbili.cookieFile=}</b>（系统属性，不受本文件被覆盖影响）。
+     * 两者同时存在时<b>本文件这一侧优先</b>（它是在运行时调 {@link HttpPolicy#setCookie}），所以别同时配。
      *
      * <p><b>🔴 调用时机</b>：必须在<b>第一次出站之前</b>调（见 {@code passwordFlow}/{@code smsFlow} 开头）——
      * 「申请验证码」那一步会顺带领一套设备指纹，而指纹与身份是绑在一起的。
@@ -707,6 +728,13 @@ class LoginPasswordSmokeTest {
         } catch (IOException e) {
             return "库默认（读交接文件失败：" + e.getMessage() + "）";
         }
+        // 🆕 整套 Cookie 直供：一行 cookie= 就把"真浏览器那一整套匿名环境"整体注入。
+        //    它比 buvid3=/buvid4= 两行更完整 —— 真浏览器匿名态有 15 键，其中 buvid_fp（浏览器指纹）
+        //    与 browser_resolution（分辨率）是库从不采集的，而它们很可能正是「未知设备」的判据
+        //    （见 API_FACTS.md §2.8 / §2.10）。产物直接来自 tools/cdp-cookie-bridge 的 cookies 命令。
+        //    与 ua= 各行其是：cookie 管"环境"，ua 管"面孔"，两者都要就都写上。
+        String fullCookie = blankToNull(values.get("cookie"));
+
         HandoffIdentity fresh = new HandoffIdentity(
                 blankToNull(values.get("ua")),
                 blankToNull(values.get("buvid3")),
@@ -727,7 +755,12 @@ class LoginPasswordSmokeTest {
         }
 
         String deviceNote;
-        if (!used.hasDevice()) {
+        if (fullCookie != null) {
+            // 优先级最高：整套环境是"真浏览器原样"，拆着补只会补成四不像
+            HttpPolicy.setCookie(fullCookie);
+            deviceNote = "整套 Cookie=来自交接文件 cookie= 行（键=" + HttpPolicy.cookieKeys()
+                    + "）⇒ 跳过随机领取，UA 由上面那行单独决定";
+        } else if (!used.hasDevice()) {
             deviceNote = "设备指纹=匿名随机领取（交接文件里没有 buvid3=/buvid4= 行）";
         } else if (HttpPolicy.hasCookie()) {
             // 已注入登录 Cookie 时不动它：那份 Cookie 自带的 buvid 优先级更高，覆盖只会造成串味

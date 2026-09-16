@@ -1,6 +1,7 @@
 package com.esdllm.bilibiliApi.service;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
@@ -518,6 +519,109 @@ public class LoginService {
         trace("短信验证码登录", response);
 
         return credentialFrom(response, "短信验证码登录");
+    }
+
+    // ------------------------------------------------------------------ 凭据状态（校验）
+
+    /**
+     * <b>查询当前出站凭据的状态</b> —— 服务端确认，不是本地猜的。
+     *
+     * <p>这补的是登录链路的"另一半"：前面几个方法都在回答"<b>怎么拿到</b>凭据"，
+     * 这个方法回答"<b>手上这枚</b>还算数吗"。后者才是长驻进程真正需要的 ——
+     * 凭据失效在本库是<b>静默</b>的（关注流 {@code -412}、空间动态 {@code code=0} 加空列表），
+     * 表现为"推送突然停了、日志一行错误没有"。有了它，"该不该重新登录"从一个猜测变成一个布尔值。
+     *
+     * <p><b>两步</b>：
+     * <ol>
+     *   <li>{@code nav} —— 判 {@code data.isLogin}，同时带回 uid 与昵称（<b>唯一判据</b>）；</li>
+     *   <li>{@code cookie/info} —— 只在第 1 步确认已登录后才问，得到"服务端认不认为该刷新了"。
+     *       凭据没登录时<b>跳过</b>（问它没有意义，它同样回 {@code -101}），省一次请求。</li>
+     * </ol>
+     *
+     * <p>🔴 <b>{@code -101} 不是异常</b>：它的意思是"这枚凭据没登录"，而这正是调用方
+     * 要问的问题本身。把它抛成异常等于把"未登录"和"网络炸了"混成一类，调用方就没法区分
+     * "该重新登录"和"该重试"了。所以本方法只在<b>真故障</b>（HTTP 非 2xx、响应不是 JSON）时抛。
+     *
+     * <p>⚠️ <b>第 2 步失败不阻塞第 1 步的结果</b>：登录态已经答了，不该因为"顺带问的
+     * 要不要刷新"失败而整体失败。但也不会静默 —— 返回值里的
+     * {@link CredentialStatus#isRefreshChecked()} 会明确告诉你"这一项没问到"。
+     *
+     * @return 凭据状态；凭据无效时 {@code isLoggedIn()} 为 {@code false}（不抛异常）
+     * @throws BilibiliException HTTP 非 2xx，或响应不是合法 JSON
+     */
+    public CredentialStatus credentialStatus() {
+        CredentialStatus status = new CredentialStatus();
+
+        // ── ① nav：唯一的登录态判据（HTTP 200 也可能是"未登录"，判的是业务码与 isLogin）
+        HttpResponse<String> navResponse = BilibiliHttp.get(
+                BilibiliEndpoint.navUrl, BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
+        int httpStatus = navResponse.getStatus();
+        String body = navResponse.getBody();
+        log.debug("查询登录态响应：HTTP {}，body={}", httpStatus, brief(mask(body), 300));
+
+        if (httpStatus < 200 || httpStatus >= 300) {
+            // 与登录链路同一条红线：失败必须带证据（HTTP 状态 + 原文片段），
+            // 否则 412（出口风控）与 404（端点变了）在调用方眼里长得一模一样
+            throw new BilibiliException("查询登录态失败：HTTP " + httpStatus + "，原文=" + brief(body, 200));
+        }
+
+        ApiResponse<JSONObject> parsed = parseOrNull(body, new TypeReference<ApiResponse<JSONObject>>() { });
+        if (parsed == null) {
+            throw new BilibiliException("查询登录态失败：响应不是合法 JSON，原文=" + brief(body, 200));
+        }
+        status.setCode(parsed.getCode());
+        status.setMessage(firstNonBlank(parsed.getMessage(), parsed.getMsg()));
+
+        JSONObject data = parsed.getData();
+        boolean loggedIn = data != null && data.getBooleanValue("isLogin");
+        status.setLoggedIn(loggedIn);
+        if (loggedIn) {
+            // 只取这三项。nav 的 data 里还有 money（B 币余额）等隐私字段，一概不碰、不落日志
+            status.setUid(data.getLongValue("mid"));
+            status.setUname(data.getString("uname"));
+        }
+
+        log.info("凭据状态：{}", status.summary());
+        if (!loggedIn) {
+            return status;
+        }
+
+        // ── ② cookie/info：已登录才有必要问"要不要刷新"
+        fillRefreshState(status);
+        return status;
+    }
+
+    /**
+     * 补上「服务端认不认为该刷新了」（{@code cookie/info}）。
+     *
+     * <p>失败时<b>只记日志、不改主结果</b>，把 {@link CredentialStatus#isRefreshChecked()}
+     * 留在 {@code false} —— 调用方能看出"这一项没问到"，而不是拿到一个看起来正常、
+     * 实际没查过的默认值（那正是本库最忌讳的静默形态）。
+     *
+     * @param status 已确认登录的状态对象，就地补充刷新相关字段
+     */
+    private static void fillRefreshState(CredentialStatus status) {
+        try {
+            HttpResponse<String> response = BilibiliHttp.get(
+                    BilibiliEndpoint.passportCookieInfoUrl,
+                    BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
+            ApiResponse<JSONObject> parsed =
+                    parseOrNull(response.getBody(), new TypeReference<ApiResponse<JSONObject>>() { });
+            if (parsed == null || parsed.getCode() != 0 || parsed.getData() == null) {
+                log.warn("查询凭据刷新状态未得到结果：HTTP {}，code={}，原文={}",
+                        response.getStatus(), parsed == null ? null : parsed.getCode(),
+                        brief(response.getBody(), 160));
+                return;
+            }
+            JSONObject data = parsed.getData();
+            status.setRefreshChecked(true);
+            status.setRefreshNeeded(data.getBooleanValue("refresh"));
+            status.setRefreshTimestamp(data.getLongValue("timestamp"));
+            log.info("凭据刷新状态：refresh={}，timestamp={}",
+                    status.isRefreshNeeded(), status.getRefreshTimestamp());
+        } catch (BilibiliException e) {
+            log.warn("查询凭据刷新状态失败（不影响登录态判定）：{}", e.getMessage());
+        }
     }
 
     /**

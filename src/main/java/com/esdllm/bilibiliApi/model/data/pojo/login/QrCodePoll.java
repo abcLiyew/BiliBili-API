@@ -39,6 +39,9 @@ public class QrCodePoll {
      * <p>⚠️ 实测：web 端扫码登录下发的是<b>空串</b>（{@code "refresh_token":""}），
      * 所以"用 refresh_token 免掉 30 天一次人工扫码"这条路对 web 扫码<b>不成立</b>；
      * 到期时间看 {@link #timestamp} 与凭据的 {@code Expires}。
+     *
+     * <p>🔴 而且<b>即使拿到非空值也换不了 Cookie</b>：该流程在浏览器内靠
+     * <b>隐藏 iframe + WASM + postMessage</b> 完成（2026-09-16 查实，见 {@code INTERFACE_PLAN.md} B0.8）。
      */
     private String refresh_token;
 

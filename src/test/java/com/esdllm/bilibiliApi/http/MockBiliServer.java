@@ -73,6 +73,8 @@ public final class MockBiliServer implements AutoCloseable {
         final String[] sequence;
         /** 额外下发的 {@code Set-Cookie} 头（每个元素一个头），可为 null */
         final List<String> setCookies;
+        /** 本次响应的 HTTP 状态码，默认 200（见 {@link #registerStatus}） */
+        final int status;
         /** 命中次数（含重定向），供测试断言"底层确实被调了几次" */
         final java.util.concurrent.atomic.AtomicInteger hits = new java.util.concurrent.atomic.AtomicInteger();
         /**
@@ -94,22 +96,27 @@ public final class MockBiliServer implements AutoCloseable {
         volatile Map<String, String> lastHeaders = Map.of();
 
         Route(String body) {
-            this(body, null, null, null);
+            this(body, null, null, null, 200);
         }
 
         Route(String body, String redirectTo) {
-            this(body, redirectTo, null, null);
+            this(body, redirectTo, null, null, 200);
         }
 
         Route(String body, String[] sequence) {
-            this(body, null, sequence, null);
+            this(body, null, sequence, null, 200);
         }
 
         Route(String body, String redirectTo, String[] sequence, List<String> setCookies) {
+            this(body, redirectTo, sequence, setCookies, 200);
+        }
+
+        Route(String body, String redirectTo, String[] sequence, List<String> setCookies, int status) {
             this.body = body;
             this.redirectTo = redirectTo;
             this.sequence = sequence;
             this.setCookies = setCookies;
+            this.status = status;
         }
 
         /** 取第 {@code n} 次（0 基）命中的响应体；序列越界则重复最后一个 */
@@ -158,6 +165,25 @@ public final class MockBiliServer implements AutoCloseable {
      */
     public MockBiliServer register(String pathPrefix, String body) {
         routes.put(Objects.requireNonNull(pathPrefix), new Route(Objects.requireNonNull(body)));
+        return this;
+    }
+
+    /**
+     * 注册路径 → <b>指定 HTTP 状态码</b> + 响应体。
+     *
+     * <p><b>为什么非要有它</b>：{@link #register(String, String)} 固定回 200，而"HTTP 非 2xx"
+     * 恰恰是出站最需要能测的一类分支 —— {@code 412} 表示出口被风控（要换身份/换出口）、
+     * {@code 5xx} 表示服务端故障（要重试），两者处置完全不同；而它们在<b>业务码层面都表现为
+     * "body 里没有 code 字段"</b>，只靠 body 造不出来，必须能真的改状态码。
+     *
+     * @param pathPrefix 路径前缀（匹配规则同 {@link #register(String, String)}）
+     * @param status     HTTP 状态码，如 {@code 412} / {@code 500}
+     * @param body       响应体（可为空串 —— 顺带覆盖"非 2xx 且响应体为空"的情形）
+     * @return 本 server
+     */
+    public MockBiliServer registerStatus(String pathPrefix, int status, String body) {
+        routes.put(Objects.requireNonNull(pathPrefix),
+                new Route(Objects.requireNonNull(body), null, null, null, status));
         return this;
     }
 
@@ -370,7 +396,7 @@ public final class MockBiliServer implements AutoCloseable {
                 }
             }
             body = matched.bodyAt(n).getBytes(StandardCharsets.UTF_8);
-            status = 200;
+            status = matched.status;
         } else {
             String errJson = "{\"code\":-404,\"message\":\"fixture not registered: " + fullPath + "\"}";
             body = errJson.getBytes(StandardCharsets.UTF_8);

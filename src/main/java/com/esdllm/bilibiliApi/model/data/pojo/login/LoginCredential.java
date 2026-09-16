@@ -45,7 +45,12 @@ public class LoginCredential {
      */
     private long expiresAt;
 
-    /** 刷新令牌，可用于换新 Cookie（本库暂未实现刷新，先原样透出） */
+    /**
+     * 刷新令牌，<b>只做原样透出</b>。
+     *
+     * <p>🔴 本库<b>不实现</b>「用它换新 Cookie」：web 扫码实测下发空串；而且换 Cookie 那条链路是
+     * 浏览器内的隐藏 iframe + WASM + postMessage 流程（2026-09-16 查实，见 {@code INTERFACE_PLAN.md} B0.8）。
+     */
     private String refreshToken;
 
     /** 登录时刻（毫秒时间戳，取自 B 站返回的 {@code timestamp}） */

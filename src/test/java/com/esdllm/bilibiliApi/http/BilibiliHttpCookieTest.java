@@ -4,6 +4,12 @@ import kong.unirest.Unirest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -172,6 +178,78 @@ class BilibiliHttpCookieTest {
             assertTrue(rotated.hasCookie());
             assertEquals("SESSDATA=abc; buvid3=ANON; buvid4=ANON4",
                     BilibiliHttp.composeCookie(rotated.cookie()));
+        }
+    }
+
+    // ---------------------------------------------------------------- 启动时从文件读
+
+    @Test
+    @DisplayName("★ -Dbili.cookieFile：Cookie 从文件整串读入（真浏览器凭据桥的落盘格式）")
+    void readsCookieFromFile(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("bili-cookie.txt");
+        // 凭据桥写出来的就是这个形态：一整行 Cookie 头，末尾带换行，键序保持原样
+        Files.writeString(file, "  SESSDATA=abc; buvid3=USER; browser_resolution=1920*1080\n",
+                StandardCharsets.UTF_8);
+        System.setProperty(HttpPolicy.PROP_COOKIE_FILE, file.toString());
+        try {
+            HttpPolicy.reset();
+
+            assertTrue(HttpPolicy.hasCookie(), "文件里的 Cookie 应当被读入");
+            assertEquals("SESSDATA,buvid3,browser_resolution", HttpPolicy.cookieKeys(),
+                    "键序应保持文件里的顺序，首尾空白与末尾换行不该串进值里");
+            assertTrue(HttpPolicy.cookieProvidesDeviceId(), "带 buvid3 即自带设备指纹");
+        } finally {
+            System.clearProperty(HttpPolicy.PROP_COOKIE_FILE);
+        }
+    }
+
+    @Test
+    @DisplayName("★ 内联 -Dbili.cookie 优先于 -Dbili.cookieFile：两者同时配置时不打架")
+    void inlineCookieWinsOverFile(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("bili-cookie.txt");
+        Files.writeString(file, "SESSDATA=from-file", StandardCharsets.UTF_8);
+        System.setProperty(HttpPolicy.PROP_COOKIE, "SESSDATA=from-property");
+        System.setProperty(HttpPolicy.PROP_COOKIE_FILE, file.toString());
+        try {
+            HttpPolicy.reset();
+
+            assertEquals("SESSDATA", HttpPolicy.cookieKeys());
+            assertTrue(HttpPolicy.getCookie().contains("from-property"),
+                    "内联串应当胜出，文件不该覆盖它");
+        } finally {
+            System.clearProperty(HttpPolicy.PROP_COOKIE);
+            System.clearProperty(HttpPolicy.PROP_COOKIE_FILE);
+        }
+    }
+
+    @Test
+    @DisplayName("cookieFile 指向不存在的文件：按未注入处理，绝不抛异常（它跑在类初始化路径上）")
+    void missingCookieFileIsIgnored(@TempDir Path dir) {
+        System.setProperty(HttpPolicy.PROP_COOKIE_FILE, dir.resolve("nope.txt").toString());
+        try {
+            // 这里会往 stderr 打一行说明，属预期；关键是"不抛"——抛出去连类都加载不了
+            HttpPolicy.reset();
+
+            assertFalse(HttpPolicy.hasCookie());
+            assertEquals("", HttpPolicy.cookieKeys());
+        } finally {
+            System.clearProperty(HttpPolicy.PROP_COOKIE_FILE);
+        }
+    }
+
+    @Test
+    @DisplayName("cookieFile 是空白文件：等于未注入（不能发出空的 Cookie 头）")
+    void blankCookieFileIsIgnored(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("blank.txt");
+        Files.writeString(file, "\n \n", StandardCharsets.UTF_8);
+        System.setProperty(HttpPolicy.PROP_COOKIE_FILE, file.toString());
+        try {
+            HttpPolicy.reset();
+
+            assertFalse(HttpPolicy.hasCookie());
+            assertNull(HttpPolicy.getCookie());
+        } finally {
+            System.clearProperty(HttpPolicy.PROP_COOKIE_FILE);
         }
     }
 }

@@ -5,6 +5,7 @@ import com.esdllm.bilibiliApi.common.ShotChainInfo;
 import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.LiveRoom;
+import com.esdllm.bilibiliApi.model.data.pojo.login.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -258,6 +259,64 @@ class FacadeContractTest {
     }
 
     // ================================================================
+    // §2.1.6 第 6 个门面：Login（2026-09-16 新增）
+    // ================================================================
+
+    @Nested
+    @DisplayName("Login 门面")
+    class LoginFacade {
+
+        @Test
+        @DisplayName("Login 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(Login.class);
+            assertPublicNoArgCtor(Login.class);
+
+            // 取得凭据：扫码
+            assertSignature(Login.class, "getLoginQrCode", QrCodeLogin.class);
+            assertSignature(Login.class, "getLoginStatus", QrLoginStatus.class, String.class);
+            assertSignature(Login.class, "waitForLogin", LoginCredential.class, String.class, long.class);
+
+            // 取得凭据：密码 / 短信
+            assertSignature(Login.class, "getCaptcha", LoginCaptcha.class);
+            assertSignature(Login.class, "getRsaKey", RsaKeyInfo.class);
+            assertSignature(Login.class, "loginByPassword", LoginCredential.class,
+                    String.class, String.class, LoginCaptcha.class, GeeTestValidation.class);
+            assertSignature(Login.class, "sendSmsCode", SmsSendResult.class,
+                    String.class, LoginCaptcha.class, GeeTestValidation.class);
+            assertSignature(Login.class, "sendSmsCode", SmsSendResult.class,
+                    String.class, String.class, LoginCaptcha.class, GeeTestValidation.class);
+            assertSignature(Login.class, "loginBySms", LoginCredential.class,
+                    String.class, String.class, String.class);
+            assertSignature(Login.class, "loginBySms", LoginCredential.class,
+                    String.class, String.class, String.class, String.class);
+
+            // 校验凭据（2026-09-16 新增）：问服务端"这枚还活着吗"
+            assertSignature(Login.class, "getCredentialStatus", CredentialStatus.class);
+        }
+
+        @Test
+        @DisplayName("Login 门面所有网络方法必须声明 throws IOException")
+        void declares() {
+            for (String name : List.of("getLoginQrCode", "getCaptcha", "getRsaKey", "getCredentialStatus")) {
+                assertDeclares(Login.class, name, IOException.class);
+            }
+            assertDeclares(Login.class, "getLoginStatus", IOException.class, String.class);
+            assertDeclares(Login.class, "waitForLogin", IOException.class, String.class, long.class);
+            assertDeclares(Login.class, "loginByPassword", IOException.class,
+                    String.class, String.class, LoginCaptcha.class, GeeTestValidation.class);
+            assertDeclares(Login.class, "sendSmsCode", IOException.class,
+                    String.class, LoginCaptcha.class, GeeTestValidation.class);
+            assertDeclares(Login.class, "sendSmsCode", IOException.class,
+                    String.class, String.class, LoginCaptcha.class, GeeTestValidation.class);
+            assertDeclares(Login.class, "loginBySms", IOException.class,
+                    String.class, String.class, String.class);
+            assertDeclares(Login.class, "loginBySms", IOException.class,
+                    String.class, String.class, String.class, String.class);
+        }
+    }
+
+    // ================================================================
     // §2.2 冻结模型
     // ================================================================
 
@@ -345,12 +404,13 @@ class FacadeContractTest {
     // ================================================================
 
     @Test
-    @DisplayName("5 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
+    @DisplayName("6 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
     void facadePackageNamesUnchanged() {
-        List<Class<?>> facades = List.of(Dynamic.class, Live.class, CardInfo.class, BilibiliClient.class, ShortChain.class);
+        List<Class<?>> facades = List.of(Dynamic.class, Live.class, CardInfo.class,
+                BilibiliClient.class, ShortChain.class, Login.class);
         for (Class<?> facade : facades) {
             assertClassInFacadePackage(facade);
         }
-        assertEquals(5, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
+        assertEquals(6, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
     }
 }
