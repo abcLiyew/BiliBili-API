@@ -7,10 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 离线单测：覆盖 {@link RenderModelLoader#parseLegacy} 与新增的 {@link RenderModel.Type} 映射。
@@ -35,9 +32,8 @@ class RenderModelLoaderLegacyTest {
         boolean hasImage = false;
         boolean hasText = false;
         for (RenderModel.Block b : model.getBlocks()) {
-            if (b instanceof RenderModel.ImageBlock) {
+            if (b instanceof RenderModel.ImageBlock ib) {
                 hasImage = true;
-                RenderModel.ImageBlock ib = (RenderModel.ImageBlock) b;
                 assertFalse(ib.getPics().isEmpty(), "封面图不能为空");
                 assertNotNull(ib.getPics().get(0).getUrl(), "封面 url 不能为 null");
             }
@@ -73,7 +69,7 @@ class RenderModelLoaderLegacyTest {
 
     @Test
     @DisplayName("★ LIVE_RCMD：标题取自 live_rcmd.content.live_play_info.title（content 是双重编码的 JSON 串）")
-    void 直播推荐() {
+    void liveRecommendation() {
         // 真实响应里 content 的值是一个 **JSON 字符串**（不是对象），标题埋在 live_play_info 下。
         // 原来读 content.title 永远取不到 → 卡片只剩头像昵称。
         JSONObject playInfo = new JSONObject();
@@ -128,7 +124,7 @@ class RenderModelLoaderLegacyTest {
 
     @Test
     @DisplayName("LIVE_RCMD 的 content 若被摊平（将来改结构）也能取到标题")
-    void 直播推荐扁平兜底() {
+    void liveRecommendationFlatFallback() {
         JSONObject content = new JSONObject();
         content.put("type", 1);
         content.put("title", "摊平后的标题");
@@ -154,6 +150,7 @@ class RenderModelLoaderLegacyTest {
                 for (RenderModel.Span s : ((RenderModel.TextBlock) b).getSpans()) {
                     if ("摊平后的标题".equals(s.getText())) {
                         found = true;
+                        break;
                     }
                 }
             }

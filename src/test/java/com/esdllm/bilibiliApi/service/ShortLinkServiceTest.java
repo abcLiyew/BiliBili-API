@@ -1,25 +1,16 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.LiveRoom;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link ShortLinkService} 直接单测。
@@ -53,7 +44,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("302 + Location → 返回跳转目标（验证 URL 改写钩子对关重定向路径也生效）")
-        void 正常() {
+        void happyPath() {
             mock.registerRedirect(SHORT_LINK_PATH, "https://www.bilibili.com/video/BV1tgPie2E3w");
 
             String location = ShortLinkService.INSTANCE.resolveLocation(
@@ -63,7 +54,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("响应没有 Location header → 返回 null（不抛异常）")
-        void 无Location() {
+        void noLocation() {
             // mock 未注册该路径 → 返回 404 + JSON body，没有 Location 头
             String location = ShortLinkService.INSTANCE.resolveLocation(
                     "http://localhost" + SHORT_LINK_PATH + "missing");
@@ -72,7 +63,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("不同短链可解析到不同类型的目标")
-        void 多种目标() {
+        void variousTargets() {
             mock.registerRedirect("/shortLink/vid/", "https://www.bilibili.com/video/BV1xx");
             mock.registerRedirect("/shortLink/live/", "https://live.bilibili.com/732");
             mock.registerRedirect("/shortLink/opus/", "https://www.bilibili.com/opus/123");
@@ -92,7 +83,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("BV 开头 → 走 bvid 端点")
-        void BV链() throws IOException {
+        void bvChain() throws IOException {
             mock.register(VIEW_PATH + "?bvid=",
                     Files.readString(Path.of("src/test/resources/fixtures/video-view.json")));
 
@@ -103,7 +94,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("非 BV 开头 → 截掉前 2 字符当 aid（'av123' → 123）")
-        void av链() throws IOException {
+        void avChain() throws IOException {
             mock.register(VIEW_PATH + "?aid=",
                     Files.readString(Path.of("src/test/resources/fixtures/video-view.json")));
 
@@ -115,14 +106,14 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("非 BV 且不是数字 → NumberFormatException（调用方编程错误应显式暴露）")
-        void 非法chainId() {
+        void invalidChainId() {
             assertThrows(NumberFormatException.class,
                     () -> ShortLinkService.INSTANCE.getVideoInfoFromChain("xx-not-a-number"));
         }
 
         @Test
         @DisplayName("端点失败 → 抛 IOException")
-        void 端点失败() {
+        void endpointFailure() {
             assertThrows(IOException.class,
                     () -> ShortLinkService.INSTANCE.getVideoInfoFromChain("BV1unknown"));
         }
@@ -134,7 +125,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("直播间：roomId 直接作为入参")
-        void 直播间() throws IOException {
+        void liveRoomTarget() throws IOException {
             mock.register(LIVE_PATH + "?room_id=",
                     Files.readString(Path.of("src/test/resources/fixtures/live-room.json")));
 
@@ -145,7 +136,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("动态卡片：chainId 直接透传给详情端点")
-        void 动态卡片() throws IOException {
+        void dynamicCardTarget() throws IOException {
             mock.register(DETAIL_PATH + "?id=",
                     Files.readString(Path.of("src/test/resources/fixtures/dynamic-detail-legacy.json")));
 
@@ -158,7 +149,7 @@ class ShortLinkServiceTest {
 
         @Test
         @DisplayName("动态卡片端点失败 → 抛 IOException")
-        void 动态失败() {
+        void dynamicFailure() {
             assertThrows(IOException.class,
                     () -> ShortLinkService.INSTANCE.getDynamicCardFromChain("9999999"));
         }
@@ -166,7 +157,7 @@ class ShortLinkServiceTest {
 
     @Test
     @DisplayName("单例入口非 null；未注册的短链返回 null（不抛异常）")
-    void 单例可用() {
+    void singletonAvailable() {
         assertNotNull(ShortLinkService.INSTANCE);
         // 未注册该路径 → server 返回 404（无 Location 头）→ resolveLocation 给 null
         assertNull(ShortLinkService.INSTANCE.resolveLocation(

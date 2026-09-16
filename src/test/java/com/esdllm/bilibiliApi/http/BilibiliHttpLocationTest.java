@@ -6,11 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link BilibiliHttp#getNoRedirect} / {@link BilibiliHttp#getLocation} 单测。
@@ -44,7 +40,7 @@ class BilibiliHttpLocationTest {
 
     @Test
     @DisplayName("getLocation：302 + Location → 返回跳转目标")
-    void 正常读取Location() {
+    void readsLocationNormally() {
         mock.registerRedirect(SHORT_PATH, "https://www.bilibili.com/video/BV1tgPie2E3w");
 
         String location = BilibiliHttp.getLocation("http://localhost" + SHORT_PATH + "abc");
@@ -53,7 +49,7 @@ class BilibiliHttpLocationTest {
 
     @Test
     @DisplayName("getLocation：响应没有 Location（如 404）→ 返回 null，不抛异常")
-    void 无Location返回null() {
+    void nullWhenNoLocation() {
         // 未注册该路径 → mock 返回 404 + JSON body，没有 Location
         String location = BilibiliHttp.getLocation("http://localhost" + SHORT_PATH + "missing");
         assertNull(location, "读不到 Location 应给 null 让上层判空");
@@ -61,7 +57,7 @@ class BilibiliHttpLocationTest {
 
     @Test
     @DisplayName("getLocation：地址不可达 / 非法 → 返回 null，不抛异常")
-    void 不可达返回null() {
+    void nullWhenUnreachable() {
         // 端口 1 基本不会有人监听；连接失败应被吞成 null
         assertNull(BilibiliHttp.getLocation("http://127.0.0.1:1/never"));
         // 非法 URL
@@ -70,7 +66,7 @@ class BilibiliHttpLocationTest {
 
     @Test
     @DisplayName("getNoRedirect：确实关掉了自动重定向（状态是 302 而非最终页 200）")
-    void 确实关重定向() throws Exception {
+    void redirectsDisabled() throws Exception {
         mock.registerRedirect(SHORT_PATH, "https://www.bilibili.com/video/BV1xx");
 
         org.apache.http.HttpResponse resp =
@@ -87,13 +83,13 @@ class BilibiliHttpLocationTest {
 
     @Test
     @DisplayName("getNoRedirect：入参 null 时抛异常（调用方编程错误应显式暴露）")
-    void 入参null() {
+    void nullArgument() {
         assertThrows(Exception.class, () -> BilibiliHttp.getNoRedirect(null));
     }
 
     @Test
     @DisplayName("测试钩子对关重定向路径同样生效（改写 URL 后打到本机 mock）")
-    void 测试钩子生效() throws Exception {
+    void testHookTakesEffect() throws Exception {
         mock.registerRedirect(SHORT_PATH, "https://www.bilibili.com/video/BV1hook");
 
         // 用生产域名 b23.tv：URL 改写只替换 scheme+host，path 原样保留 →
@@ -106,7 +102,7 @@ class BilibiliHttpLocationTest {
 
     @Test
     @DisplayName("多次调用互不影响（无状态、无连接复用副作用）")
-    void 多次调用() {
+    void multipleCalls() {
         mock.registerRedirect(SHORT_PATH, "https://www.bilibili.com/video/BV1multi");
         for (int i = 0; i < 3; i++) {
             assertEquals("https://www.bilibili.com/video/BV1multi",

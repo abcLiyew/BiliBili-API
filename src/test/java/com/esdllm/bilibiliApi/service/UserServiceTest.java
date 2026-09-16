@@ -12,10 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link UserService} 直接单测。
@@ -46,7 +43,7 @@ class UserServiceTest {
 
     @Test
     @DisplayName("正常路径：返回完整信封（card + archive_count + follower + like_num）")
-    void 正常路径() throws IOException {
+    void happyPath() throws IOException {
         mock.register(CARD_PATH + "?mid=", Files.readString(Path.of(FIXTURE)));
 
         BilibiliCardResp resp = UserService.INSTANCE.getCard(3546774476163227L);
@@ -64,7 +61,7 @@ class UserServiceTest {
 
     @Test
     @DisplayName("uid 为 null → '不能为空'")
-    void uid为null() {
+    void uidIsNull() {
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> UserService.INSTANCE.getCard(null));
         assertTrue(e.getMessage().contains("uid不能为空"), "实际：" + e.getMessage());
@@ -72,7 +69,7 @@ class UserServiceTest {
 
     @Test
     @DisplayName("uid 为 0 或负数 → '不能小于0'（与 null 的文案区分开）")
-    void uid非法数值() {
+    void uidInvalidNumber() {
         BilibiliException zero = assertThrows(BilibiliException.class,
                 () -> UserService.INSTANCE.getCard(0L));
         assertTrue(zero.getMessage().contains("uid不能小于0"), "实际：" + zero.getMessage());
@@ -84,7 +81,7 @@ class UserServiceTest {
 
     @Test
     @DisplayName("参数校验发生在发请求之前（不发无意义的网络请求）")
-    void 校验前置() {
+    void validationRunsFirst() {
         // mock 未注册任何路径；若实现先发请求，会拿到 404 并抛"获取卡片信息失败"，
         // 而不是参数校验文案 —— 以此反证校验顺序
         BilibiliException e = assertThrows(BilibiliException.class,
@@ -95,7 +92,7 @@ class UserServiceTest {
 
     @Test
     @DisplayName("业务码非 0 → 抛 BilibiliException")
-    void 业务码非零() {
+    void nonZeroBusinessCode() {
         mock.register(CARD_PATH + "?mid=",
                 "{\"code\":-404,\"message\":\"无此项\",\"data\":null}");
         BilibiliException e = assertThrows(BilibiliException.class,
@@ -105,21 +102,21 @@ class UserServiceTest {
 
     @Test
     @DisplayName("code=0 但 data 为 null → 抛 BilibiliException（不是 NPE）")
-    void data为null() {
+    void nullData() {
         mock.register(CARD_PATH + "?mid=", "{\"code\":0,\"message\":\"0\",\"data\":null}");
         assertThrows(BilibiliException.class, () -> UserService.INSTANCE.getCard(1L));
     }
 
     @Test
     @DisplayName("响应不是合法 JSON → 抛 BilibiliException")
-    void 非法JSON() {
+    void invalidJson() {
         mock.register(CARD_PATH + "?mid=", "<html>blocked</html>");
         assertThrows(BilibiliException.class, () -> UserService.INSTANCE.getCard(1L));
     }
 
     @Test
     @DisplayName("未注册路径（404）→ 抛异常，不返回 null")
-    void 未注册路径() {
+    void unregisteredPath() {
         assertThrows(BilibiliException.class, () -> UserService.INSTANCE.getCard(88888L));
     }
 }

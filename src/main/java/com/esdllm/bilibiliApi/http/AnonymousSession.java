@@ -168,7 +168,9 @@ public final class AnonymousSession {
     // ------------------------------------------------------------------ 内部
 
     private static Identity obtain(int generation) {
-        String agent = UserAgentPool.at(generation - 1);
+        // 显式指定过 UA 时，"领指纹"这一跳也要用同一个 —— 它本身就是一次出站请求，
+        // 若这里还用池里的旧面孔，会出现"指纹请求一个 UA、业务请求另一个 UA"的自相矛盾。
+        String agent = HttpPolicy.userAgentFor(UserAgentPool.at(generation - 1));
 
         // —————————— 登录 Cookie 已自带设备指纹时，不必再领 anonymous 指纹 ——————————
         //
@@ -243,7 +245,7 @@ public final class AnonymousSession {
             cookie.append("buvid3=").append(buvid3);
         }
         if (buvid4 != null && !buvid4.isEmpty()) {
-            if (cookie.length() > 0) {
+            if (!cookie.isEmpty()) {
                 cookie.append("; ");
             }
             cookie.append("buvid4=").append(buvid4);

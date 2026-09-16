@@ -9,14 +9,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import javax.imageio.ImageIO;
-import java.awt.GraphicsEnvironment;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 联网冒烟测试：Java2D 长图渲染 PoC（默认跳过）。
@@ -38,7 +36,7 @@ class DynamicRenderPocTest {
 
     @Test
     @DisplayName("图文动态能渲染出长图（含正文、图片网格、互动数）")
-    void 渲染图文动态() throws Exception {
+    void rendersOpusDynamic() throws Exception {
         String id = System.getProperty("bili.renderId", DEFAULT_ID);
 
         RenderModel model = RenderModelLoader.load(id);

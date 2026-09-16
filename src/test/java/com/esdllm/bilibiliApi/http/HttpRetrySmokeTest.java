@@ -94,7 +94,7 @@ class HttpRetrySmokeTest {
 
     @Test
     @DisplayName("503 会被退避重试直到成功：2 次 503 + 1 次 200 = 恰好 3 次请求")
-    void 网关错误退避重试() throws IOException {
+    void retriesGatewayErrorWithBackoff() throws IOException {
         deterministicBackoff();
         HttpPolicy.setMaxAttempts(4);
         HttpPolicy.setBaseDelayMs(120L);
@@ -114,7 +114,7 @@ class HttpRetrySmokeTest {
 
     @Test
     @DisplayName("429 限流会被重试（4xx 里的瞬态例外）")
-    void 限流状态码重试() throws IOException {
+    void retriesRateLimitStatus() throws IOException {
         deterministicBackoff();
         HttpPolicy.setMaxAttempts(3);
         HttpPolicy.setBaseDelayMs(60L);
@@ -129,7 +129,7 @@ class HttpRetrySmokeTest {
 
     @Test
     @DisplayName("4101139 不重试：只打一次就原样返回")
-    void 不可重试只请求一次() throws IOException {
+    void nonRetryableRequestsOnce() throws IOException {
         deterministicBackoff();
         HttpPolicy.setMaxAttempts(4);
         HttpPolicy.setBaseDelayMs(10L);
@@ -145,7 +145,7 @@ class HttpRetrySmokeTest {
 
     @Test
     @DisplayName("命中 412 风控：轮换一次身份后重试，随后放弃（恰好 2 次请求、代数 +1）")
-    void 风控轮换身份后重试一次() throws IOException {
+    void rotatesIdentityOnceOnRiskControl() throws IOException {
         deterministicBackoff();
         HttpPolicy.setMaxAttempts(3);
         HttpPolicy.setMaxRotations(1);
@@ -164,7 +164,7 @@ class HttpRetrySmokeTest {
 
     @Test
     @DisplayName("关掉身份轮换后，风控只请求一次（策略开关有效）")
-    void 关闭轮换则不重试风控() throws IOException {
+    void noRotationMeansNoRetryOnRiskControl() throws IOException {
         deterministicBackoff();
         HttpPolicy.setMaxAttempts(3);
         HttpPolicy.setRotateOnRiskControl(false);
@@ -178,7 +178,7 @@ class HttpRetrySmokeTest {
 
     @Test
     @DisplayName("全局最小间隔生效：3 次请求被摊开到约 2 个间隔")
-    void 限流摊平请求() throws IOException {
+    void rateLimitPacesRequests() throws IOException {
         HttpPolicy.setMaxAttempts(1);
         HttpPolicy.setMinRequestIntervalMs(150L);
         RateLimiter.reset();

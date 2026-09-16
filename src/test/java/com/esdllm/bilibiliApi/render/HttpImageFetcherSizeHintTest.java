@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * {@link HttpImageFetcher#withSizeHint} 单测。
@@ -23,13 +24,13 @@ class HttpImageFetcherSizeHintTest {
 
     @Test
     @DisplayName("raw（hintW<=0）→ 原样返回，不加任何后缀")
-    void raw不加后缀() {
+    void rawGetsNoSuffix() {
         assertEquals(BFS, HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.raw(BFS)));
     }
 
     @Test
     @DisplayName("非 hdslb/bfs 资源 → 原样返回（加后缀会让 CDN 404）")
-    void 非bfs域名不加后缀() {
+    void nonBfsDomainGetsNoSuffix() {
         assertEquals(CDN, HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.width(CDN, 300)),
                 "jsdelivr 这类 CDN 不认识 B 站的 @ 后缀语法");
         assertEquals("https://i0.hdslb.com/some/other.png",
@@ -40,28 +41,28 @@ class HttpImageFetcherSizeHintTest {
 
     @Test
     @DisplayName("square → @{w}w_{h}h_1c{ext}（1:1 居中裁剪）")
-    void 方形裁剪() {
+    void squareCrop() {
         assertEquals("https://i0.hdslb.com/bfs/archive/abc.jpg@200w_200h_1c.jpg",
                 HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.square(BFS, 200)));
     }
 
     @Test
     @DisplayName("width（hintH<=0）→ @{w}w{ext}（只限宽度、等比缩放）")
-    void 只限宽度() {
+    void widthOnly() {
         assertEquals("https://i0.hdslb.com/bfs/archive/abc.jpg@300w.jpg",
                 HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.width(BFS, 300)));
     }
 
     @Test
     @DisplayName("emoji/png 资源同样加后缀，且扩展名取自原地址")
-    void png扩展名() {
+    void pngExtension() {
         assertEquals("https://i0.hdslb.com/bfs/emote/tv_abc.png@20w_20h_1c.png",
                 HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.square(EMOJI, 20)));
     }
 
     @Test
     @DisplayName("地址里已有 @ 后缀 → 先截掉旧后缀再加新的（避免 @a@b 叠加）")
-    void 去掉旧后缀() {
+    void replacesOldSuffix() {
         String withOld = "https://i0.hdslb.com/bfs/archive/abc.jpg@100w.jpg";
         assertEquals("https://i0.hdslb.com/bfs/archive/abc.jpg@500w.jpg",
                 HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.width(withOld, 500)));
@@ -69,20 +70,20 @@ class HttpImageFetcherSizeHintTest {
 
     @Test
     @DisplayName("无扩展名（无 '.'）→ 原样返回，不瞎猜扩展名")
-    void 无扩展名() {
+    void noExtension() {
         String noExt = "https://i0.hdslb.com/bfs/archive/noext";
         assertEquals(noExt, HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.width(noExt, 300)));
     }
 
     @Test
     @DisplayName("null url → 原样返回 null（不抛异常）")
-    void null地址() {
-        assertEquals(null, HttpImageFetcher.withSizeHint(new HttpImageFetcher.Request(null, 200, 200)));
+    void nullUrl() {
+        assertNull(HttpImageFetcher.withSizeHint(new HttpImageFetcher.Request(null, 200, 200)));
     }
 
     @Test
     @DisplayName("带 query 的地址 → 原样返回（扩展名含 '?' 判为不可靠，不加后缀）")
-    void 带query不加后缀() {
+    void urlWithQueryGetsNoSuffix() {
         String q = "https://i0.hdslb.com/bfs/archive/abc.jpg?v=2";
         assertEquals(q, HttpImageFetcher.withSizeHint(HttpImageFetcher.Request.width(q, 300)),
                 "含 query 时 lastIndexOf('.') 算出的'扩展名'是 '.jpg?v=2'，不可靠 → 宁可不缩放也不能拼出畸形 URL");
@@ -90,7 +91,7 @@ class HttpImageFetcherSizeHintTest {
 
     @Test
     @DisplayName("以 '.' 结尾的地址 → 原样返回（不越界、不拼畸形后缀）")
-    void 点结尾() {
+    void endsWithDot() {
         String trailing = "https://i0.hdslb.com/bfs/archive/x.";
         assertEquals(trailing, HttpImageFetcher.withSizeHint(
                 HttpImageFetcher.Request.width(trailing, 300)));

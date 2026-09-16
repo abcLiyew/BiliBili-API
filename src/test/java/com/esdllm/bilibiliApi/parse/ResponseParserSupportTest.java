@@ -4,10 +4,7 @@ import com.esdllm.bilibiliApi.exception.BilibiliException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link ResponseParserSupport} 单测 —— 解析流水线的统一收口。
@@ -30,7 +27,7 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("正常路径：code=0 且 data 非空 → 原样返回 data")
-    void 正常路径() {
+    void happyPath() {
         String payload = "hello";
         ApiResponse<String> r = resp(0, "0", "", payload);
         String got = ResponseParserSupport.unwrap(r, "拉取数据");
@@ -39,7 +36,7 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("resp 为 null → 抛 BilibiliException，且消息含动作名")
-    void resp为null() {
+    void nullResponse() {
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> ResponseParserSupport.unwrap(null, "拉取数据"));
         assertTrue(e.getMessage().contains("拉取数据"), "消息应含动作名，实际：" + e.getMessage());
@@ -48,7 +45,7 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("code != 0 → 抛带业务码的 BilibiliException（经 ErrorMapper 语义化）")
-    void code非零() {
+    void nonZeroCode() {
         ApiResponse<String> r = resp(4101105, "id 不存在", "", null);
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> ResponseParserSupport.unwrap(r, "获取动态详情"));
@@ -59,7 +56,7 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("风控码 -352 → 抛异常且码正确（这条决定上层会不会盲重试）")
-    void 风控码() {
+    void riskControlCode() {
         ApiResponse<String> r = resp(-352, "风控", "", null);
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> ResponseParserSupport.unwrap(r, "获取动态列表"));
@@ -69,7 +66,7 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("code=0 但 data 为 null → 抛 BilibiliException（不是 NPE）")
-    void data为null() {
+    void nullData() {
         ApiResponse<String> r = resp(0, "0", "", null);
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> ResponseParserSupport.unwrap(r, "拉取数据"));
@@ -79,7 +76,7 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("message 为空时回退用 msg 字段")
-    void message回退到msg() {
+    void fallsBackToMsg() {
         // message 为 null、msg 有值
         ApiResponse<String> r1 = resp(-1, null, "来自msg的错误", null);
         BilibiliException e1 = assertThrows(BilibiliException.class,
@@ -97,7 +94,7 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("message 与 msg 都有值时优先 message")
-    void message优先() {
+    void prefersMessage() {
         ApiResponse<String> r = resp(-1, "来自message", "来自msg", null);
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> ResponseParserSupport.unwrap(r, "拉取数据"));
@@ -106,11 +103,11 @@ class ResponseParserSupportTest {
 
     @Test
     @DisplayName("两者都空时给'无错误信息'占位，不出现 null 字面量")
-    void 两者都空() {
+    void bothBlank() {
         ApiResponse<String> r = resp(-1, null, null, null);
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> ResponseParserSupport.unwrap(r, "拉取数据"));
         assertTrue(e.getMessage().contains("无错误信息"));
-        assertTrue(!e.getMessage().contains("null"), "不该把 Java 的 null 字面量拼进用户可见文案");
+        assertFalse(e.getMessage().contains("null"), "不该把 Java 的 null 字面量拼进用户可见文案");
     }
 }

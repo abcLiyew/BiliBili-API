@@ -8,10 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.awt.image.BufferedImage;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link Java2DImageRenderer} 离线渲染单测。
@@ -58,7 +55,7 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("最小模型能渲染出图：宽度固定、高度为正、类型 TYPE_INT_RGB")
-    void 最小模型渲染() {
+    void rendersMinimalModel() {
         BufferedImage img = new Java2DImageRenderer().render(minimalModel());
         assertNotNull(img, "渲染结果不能为 null（旧 Selenium 路径曾返回'空白但非 null'的图，这条锁住新实现不退化）");
         assertEquals(EXPECTED_WIDTH, img.getWidth(), "宽度由 CONTENT_WIDTH + 左右 padding 决定");
@@ -69,7 +66,7 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("图片确实是白底（不是全透明/全黑）")
-    void 白底() {
+    void whiteBackground() {
         BufferedImage img = new Java2DImageRenderer().render(minimalModel());
         int corner = img.getRGB(0, 0) & 0xFFFFFF;
         assertEquals(0xFFFFFF, corner, "左上角应是白色背景；若为黑色说明 fillRect 没生效");
@@ -77,7 +74,7 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("画布上确实画了东西（正文像素不是纯白）")
-    void 有内容像素() {
+    void hasContentPixels() {
         BufferedImage img = new Java2DImageRenderer().render(minimalModel());
         int nonWhite = 0;
         // 只抽样上半部分，避免整图遍历拖慢
@@ -94,7 +91,7 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("高度随内容增长（长正文比短正文高）")
-    void 高度随内容增长() {
+    void heightGrowsWithContent() {
         RenderModel shortM = minimalModel();
 
         RenderModel longM = minimalModel();
@@ -113,7 +110,7 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("无 blocks（只有头部）也能渲染，不抛异常不返回 null")
-    void 空blocks() {
+    void emptyBlocks() {
         RenderModel m = new RenderModel();
         m.getAuthor().setName("n");
         BufferedImage img = new Java2DImageRenderer().render(m);
@@ -123,17 +120,17 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("作者的字段全为 null 也能渲染（不 NPE）—— 真实响应字段常缺失")
-    void 空作者字段() {
+    void blankAuthorFields() {
         RenderModel m = new RenderModel();
         // 完全不设 author 的任何字段
         BufferedImage img = new Java2DImageRenderer().render(m);
         assertNotNull(img);
-        assertTrue(img.getWidth() == EXPECTED_WIDTH);
+        assertEquals(EXPECTED_WIDTH, img.getWidth());
     }
 
     @Test
     @DisplayName("六种 Type 都能渲染（VIDEO/ARTICLE/LIVE 走兜底分支不崩）")
-    void 各类型都能渲染() {
+    void rendersEveryBlockType() {
         for (RenderModel.Type t : RenderModel.Type.values()) {
             RenderModel m = minimalModel();
             m.setType(t);
@@ -145,7 +142,7 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("EMOJI 片段缺图 → 画占位框，不静默丢字")
-    void emoji缺图不丢字() {
+    void missingEmojiKeepsText() {
         RenderModel m = minimalModel();
         RenderModel.TextBlock tb = new RenderModel.TextBlock();
         RenderModel.Span text = new RenderModel.Span();
@@ -174,7 +171,7 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("ImageBlock 的图抓不到 → 占位块，不抛异常")
-    void 图片块缺图不崩() {
+    void missingImageDoesNotCrash() {
         RenderModel m = minimalModel();
         RenderModel.ImageBlock ib = new RenderModel.ImageBlock();
         RenderModel.Pic pic = new RenderModel.Pic();
@@ -191,13 +188,13 @@ class Java2DImageRendererTest {
 
     @Test
     @DisplayName("null 模型 → 抛异常（调用方编程错误应显式暴露，而不是产出空白图）")
-    void null模型() {
+    void nullModel() {
         assertThrows(Exception.class, () -> new Java2DImageRenderer().render(null));
     }
 
     @Test
     @DisplayName("同一个 renderer 实例可重复渲染（无状态残留）")
-    void 可重复渲染() {
+    void renderIsRepeatable() {
         Java2DImageRenderer renderer = new Java2DImageRenderer();
         BufferedImage a = renderer.render(minimalModel());
         BufferedImage b = renderer.render(minimalModel());

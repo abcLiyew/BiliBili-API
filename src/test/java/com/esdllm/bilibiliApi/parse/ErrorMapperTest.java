@@ -5,11 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link ErrorMapper} 单测 —— 抗压层的地基。
@@ -30,7 +26,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("四个风控码全部命中")
-        void 风控码() {
+        void riskControlCode() {
             assertTrue(ErrorMapper.isRiskControl(412), "HTTP 412 是风控页");
             assertTrue(ErrorMapper.isRiskControl(-352), "-352 是动态接口最常见的风控码");
             assertTrue(ErrorMapper.isRiskControl(-509), "-509 是请求过于频繁");
@@ -39,7 +35,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("非风控码不得误判")
-        void 非风控码() {
+        void nonRiskControlCode() {
             assertFalse(ErrorMapper.isRiskControl(0), "成功码不是风控");
             assertFalse(ErrorMapper.isRiskControl(4101139), "参数名错误不是风控（重试无意义但也不加重风控）");
             assertFalse(ErrorMapper.isRiskControl(4101105), "id 不存在不是风控");
@@ -55,14 +51,14 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("code=0 不算可重试（它本来就不是失败）")
-        void 成功码() {
+        void successCode() {
             assertFalse(ErrorMapper.retryable(0),
                     "retryable 的语义是'失败后是否值得重试'；code=0 根本没失败");
         }
 
         @Test
         @DisplayName("明确不可重试的都要 false")
-        void 不可重试集() {
+        void noRetrySet() {
             // 风控类
             assertFalse(ErrorMapper.retryable(412));
             assertFalse(ErrorMapper.retryable(-352));
@@ -82,7 +78,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("名单外的码默认可重试（宁可多试一次）")
-        void 未列入名单() {
+        void notInList() {
             assertTrue(ErrorMapper.retryable(-1), "未知业务码按瞬态处理");
             assertTrue(ErrorMapper.retryable(-500), "未知负数码");
             assertTrue(ErrorMapper.retryable(502), "网关错误是瞬态");
@@ -100,7 +96,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("code/message/description 三者映射正确")
-        void 字段映射() {
+        void fieldMapping() {
             BilibiliException e = ErrorMapper.toException(-352, "风控了", "获取动态详情");
             assertEquals(-352, e.getCode());
             assertTrue(e.getMessage().contains("获取动态详情"), "message 应含动作前缀");
@@ -111,7 +107,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("不可重试的错误在 message 里带提示")
-        void 不可重试提示() {
+        void noRetryHint() {
             BilibiliException e = ErrorMapper.toException(4101105, "id 不存在", "获取动态详情");
             assertTrue(e.getMessage().contains("该错误不可重试"),
                     "让调用方一眼看出'别重试'，实际：" + e.getMessage());
@@ -119,7 +115,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("可重试的错误不带'不可重试'提示")
-        void 可重试无提示() {
+        void retryableWithoutHint() {
             BilibiliException e = ErrorMapper.toException(503, "网关错误", "获取动态详情");
             assertFalse(e.getMessage().contains("不可重试"),
                     "可重试的不该劝退调用方，实际：" + e.getMessage());
@@ -127,7 +123,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("message 为 null / 空白时给出'无错误信息'占位")
-        void 空message() {
+        void blankMessage() {
             BilibiliException nullMsg = ErrorMapper.toException(1, null, "拉取数据");
             assertTrue(nullMsg.getMessage().contains("无错误信息"));
 
@@ -149,7 +145,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("2xx 返回 null（表示'无需拦截'）")
-        void 成功状态() {
+        void successStatus() {
             assertNull(ErrorMapper.forHttpStatus(200, "获取动态详情"));
             assertNull(ErrorMapper.forHttpStatus(201, "获取动态详情"));
             assertNull(ErrorMapper.forHttpStatus(204, "获取动态详情"));
@@ -158,7 +154,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("412 有专门的、带'请勿自动重试'的文案")
-        void 风控412() {
+        void riskControl412() {
             BilibiliException e = ErrorMapper.forHttpStatus(412, "获取动态详情");
             assertNotNull(e);
             assertEquals(412, e.getCode());
@@ -169,7 +165,7 @@ class ErrorMapperTest {
 
         @Test
         @DisplayName("其它非 2xx 给出通用文案，code 即 HTTP 状态码")
-        void 其它错误() {
+        void otherErrors() {
             BilibiliException e404 = ErrorMapper.forHttpStatus(404, "获取动态详情");
             assertNotNull(e404);
             assertEquals(404, e404.getCode());

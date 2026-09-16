@@ -3,11 +3,9 @@ package com.esdllm.bilibiliApi.render;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.awt.Font;
+import java.awt.*;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link FontRegistry} 单测 —— headless 出图正确性的地基。
@@ -22,7 +20,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("内置字体加载成功（isBundled 为 true）")
-    void 内置字体可用() {
+    void builtinFontAvailable() {
         assertTrue(FontRegistry.isBundled(),
                 "jar 里应嵌入了 Noto Sans SC 子集：" + FontRegistry.CJK_FONT_RESOURCE
                         + "；若为 false，说明资源缺失或加载失败 —— headless 下正文会变豆腐块");
@@ -30,7 +28,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("字体族名非空（用于日志辨识实际生效的字体）")
-    void 族名非空() {
+    void familyNameNotBlank() {
         String family = FontRegistry.familyName();
         assertNotNull(family);
         assertFalse(family.isBlank());
@@ -38,7 +36,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("regular(size) 返回指定字号的字体")
-    void regular字号() {
+    void regularFontSize() {
         Font f = FontRegistry.regular(17f);
         assertNotNull(f);
         assertTrue(f.getSize() >= 16 && f.getSize() <= 18,
@@ -47,7 +45,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("emphasis(size) 返回指定字号的字体")
-    void emphasis字号() {
+    void emphasisFontSize() {
         Font f = FontRegistry.emphasis(18f);
         assertNotNull(f);
         assertTrue(f.getSize() >= 17 && f.getSize() <= 19,
@@ -56,7 +54,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("能显示常用中文（这是换 Java2D 的核心收益，必须锁住）")
-    void 能显示中文() {
+    void canDisplayChinese() {
         assertTrue(FontRegistry.canDisplay('中'), "『中』显示不出来 = 正文全是豆腐块");
         assertTrue(FontRegistry.canDisplay('文'));
         assertTrue(FontRegistry.canDisplay('测'));
@@ -65,7 +63,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("能显示中文标点与常见符号（避头尾逻辑用到的标点不能缺）")
-    void 能显示中文标点() {
+    void canDisplayChinesePunctuation() {
         assertTrue(FontRegistry.canDisplay('，'));
         assertTrue(FontRegistry.canDisplay('。'));
         assertTrue(FontRegistry.canDisplay('“'));
@@ -75,7 +73,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("能显示 ASCII（BV 号、URL、数字）")
-    void 能显示ASCII() {
+    void canDisplayAscii() {
         assertTrue(FontRegistry.canDisplay('B'));
         assertTrue(FontRegistry.canDisplay('V'));
         assertTrue(FontRegistry.canDisplay('0'));
@@ -85,7 +83,7 @@ class FontRegistryTest {
 
     @Test
     @DisplayName("canDisplay 对码位入参也工作（emoji 码位返回 false 是预期，不抛异常）")
-    void canDisplay码位() {
+    void canDisplayCodePoint() {
         // 不硬断言 emoji 的 true/false —— 子集字体未必含 emoji（那会走 CDN 贴图分支）；
         // 只要求"不抛异常且给出确定的布尔值"
         boolean cjk = FontRegistry.canDisplay('字');

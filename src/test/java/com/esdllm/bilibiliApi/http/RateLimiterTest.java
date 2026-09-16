@@ -23,7 +23,7 @@ class RateLimiterTest {
 
     @Test
     @DisplayName("间隔为 0 时不等待（关闭限流）")
-    void 关闭限流不等待() {
+    void noWaitWhenDisabled() {
         HttpPolicy.setMinRequestIntervalMs(0L);
         RateLimiter.reset();
 
@@ -38,7 +38,7 @@ class RateLimiterTest {
 
     @Test
     @DisplayName("连续取名额被摊平到最小间隔（10 次至少花 9 个间隔）")
-    void 连续取名额被摊平() {
+    void consecutivePermitsPaced() {
         long interval = 120L;
         HttpPolicy.setMinRequestIntervalMs(interval);
         RateLimiter.reset();
@@ -58,7 +58,7 @@ class RateLimiterTest {
 
     @Test
     @DisplayName("reset 后首个名额不再等待")
-    void reset后立即放行() {
+    void resetsImmediately() {
         HttpPolicy.setMinRequestIntervalMs(600L);
         RateLimiter.acquire();      // 占用排期
         RateLimiter.reset();        // 清空排期

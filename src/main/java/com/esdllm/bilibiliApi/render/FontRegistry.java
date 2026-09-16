@@ -2,7 +2,7 @@ package com.esdllm.bilibiliApi.render;
 
 import lombok.extern.slf4j.Slf4j;
 
-import java.awt.Font;
+import java.awt.*;
 import java.io.InputStream;
 
 /**

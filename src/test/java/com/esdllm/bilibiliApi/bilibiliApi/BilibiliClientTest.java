@@ -12,11 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * <b>BilibiliClient 门面回归测试</b>。
@@ -35,12 +31,11 @@ class BilibiliClientTest {
     private static final String FIXTURE_PATH = "/x/web-interface/view";
 
     private MockBiliServer mock;
-    private String fixtureBody;
     private BilibiliClient client;
 
     @BeforeEach
     void setUp() throws IOException {
-        fixtureBody = Files.readString(Path.of("src/test/resources/fixtures/video-view.json"));
+        String fixtureBody = Files.readString(Path.of("src/test/resources/fixtures/video-view.json"));
         mock = MockBiliServer.start()
                 .register(FIXTURE_PATH + "?bvid=", fixtureBody)
                 .register(FIXTURE_PATH + "?aid=", fixtureBody);

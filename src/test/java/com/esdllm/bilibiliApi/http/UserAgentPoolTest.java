@@ -7,11 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashSet;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link UserAgentPool} 单测。
@@ -36,7 +32,7 @@ class UserAgentPoolTest {
 
     @Test
     @DisplayName("defaultAgent() 与 BilibiliEndpoint.userAgent 逐字相同（兼容不变量）")
-    void defaultAgent与配置一致() {
+    void defaultAgentMatchesConfig() {
         assertNotNull(BilibiliEndpoint.userAgent);
         assertEquals(BilibiliEndpoint.userAgent, UserAgentPool.defaultAgent(),
                 "第 0 个 UA 必须是原 UA，否则'不轮换时行为不变'这条兼容声明就破了");
@@ -46,7 +42,7 @@ class UserAgentPoolTest {
 
     @Test
     @DisplayName("index 取模：at(size) 回到 at(0)")
-    void 取模() {
+    void wrapsAround() {
         int n = UserAgentPool.size();
         assertEquals(UserAgentPool.at(0), UserAgentPool.at(n));
         assertEquals(UserAgentPool.at(1), UserAgentPool.at(n + 1));
@@ -55,7 +51,7 @@ class UserAgentPoolTest {
 
     @Test
     @DisplayName("负数索引不越界（floorMod 语义）")
-    void 负数索引() {
+    void negativeIndex() {
         int n = UserAgentPool.size();
         // floorMod(-1, 4) == 3
         assertEquals(UserAgentPool.at(n - 1), UserAgentPool.at(-1));
@@ -65,7 +61,7 @@ class UserAgentPoolTest {
 
     @Test
     @DisplayName("极端索引不越界")
-    void 极端索引() {
+    void extremeIndex() {
         assertNotNull(UserAgentPool.at(Integer.MAX_VALUE));
         assertNotNull(UserAgentPool.at(99999));
         // 不臆断具体取到第几个 —— 只要求"不抛异常且落在池内"
@@ -82,7 +78,7 @@ class UserAgentPoolTest {
 
     @Test
     @DisplayName("池内 UA 互不相同（否则'换 UA'等于没换）")
-    void UA不重复() {
+    void userAgentsAreDistinct() {
         Set<String> uniq = new HashSet<>();
         for (int i = 0; i < UserAgentPool.size(); i++) {
             String ua = UserAgentPool.at(i);
@@ -96,8 +92,31 @@ class UserAgentPoolTest {
 
     @Test
     @DisplayName("返回的字符串是池内常量本身（无拷贝、无拼接副作用）")
-    void 返回常量本身() {
+    void returnsConstantItself() {
         assertSame(UserAgentPool.at(0), UserAgentPool.at(0),
                 "同一索引应返回同一个字符串常量引用");
+    }
+
+    @Test
+    @DisplayName("EDGE_WINDOWS 就是默认面孔，且与改造前的 UA 逐字一致")
+    void defaultFaceIsEdgeAndUnchanged() {
+        assertEquals(BilibiliEndpoint.userAgent, UserAgentPool.EDGE_WINDOWS,
+                "改动不能悄悄换掉默认面孔的版本号 —— 换了就是行为变更");
+        assertSame(UserAgentPool.EDGE_WINDOWS, UserAgentPool.at(0));
+    }
+
+    @Test
+    @DisplayName("edgeWindows 按版本号拼 UA；版本为空时回落默认面孔")
+    void buildsEdgeUserAgent() {
+        String ua = UserAgentPool.edgeWindows("140.0.0.0");
+        assertTrue(ua.startsWith("Mozilla/5.0 (Windows NT 10.0; Win64; x64)"), ua);
+        assertTrue(ua.contains("Edg/140.0.0.0"), "Edge 标识要跟上版本：" + ua);
+        assertTrue(ua.contains("Chrome/140.0.0.0"), "真实 Edge 的 Chrome 版本与 Edg 一致：" + ua);
+        assertFalse(ua.contains("%s"), "模板占位符必须被替换干净：" + ua);
+
+        // 传空不能拼出畸形 UA，要老老实实回落
+        assertEquals(UserAgentPool.EDGE_WINDOWS, UserAgentPool.edgeWindows(null));
+        assertEquals(UserAgentPool.EDGE_WINDOWS, UserAgentPool.edgeWindows("   "));
+        assertEquals(UserAgentPool.EDGE_WINDOWS, UserAgentPool.edgeWindows(""));
     }
 }

@@ -5,6 +5,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -27,26 +29,31 @@ class BilibiliHttpTest {
         RateLimiter.reset();
     }
 
+    /**
+     * 把动态代理“钉”在一个不带类型参数的接口上。
+     *
+     * <p>{@link Proxy#newProxyInstance(Class, Constructor, InvocationHandler)} 的返回类型是 {@code Object}，直接强转成
+     * {@code HttpResponse<String>} 属于<b>未经检查的转换</b>：泛型信息在运行时已被擦除，
+     * 虚拟机只能校验"这是一个 HttpResponse"，校验不了"它的 body 是 String"，
+     * 于是编译器给出 unchecked 警告。改成强转这个非泛型的子接口后，转换是<b>受检</b>的
+     * （代理对象确实实现了它，运行时可校验），再向上转型为 {@code HttpResponse<String>}
+     * 属于安全的父类型引用，不再产生任何警告。
+     */
+    private interface StubResponse extends HttpResponse<String> {
+    }
+
     /** 造一个只回答 getStatus/getBody 的假响应 */
     private static HttpResponse<String> response(int status, String body) {
-        return (HttpResponse<String>) Proxy.newProxyInstance(
-                HttpResponse.class.getClassLoader(),
-                new Class<?>[]{HttpResponse.class},
-                (proxy, method, args) -> {
-                    switch (method.getName()) {
-                        case "getStatus":
-                            return status;
-                        case "getBody":
-                            return body;
-                        case "toString":
-                            return "StubResponse{" + status + ", " + body + "}";
-                        case "hashCode":
-                            return System.identityHashCode(proxy);
-                        case "equals":
-                            return proxy == args[0];
-                        default:
-                            return null;
-                    }
+        return (StubResponse) Proxy.newProxyInstance(
+                StubResponse.class.getClassLoader(),
+                new Class<?>[]{StubResponse.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getStatus" -> status;
+                    case "getBody" -> body;
+                    case "toString" -> "StubResponse{" + status + ", " + body + "}";
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> null;
                 });
     }
 
@@ -54,7 +61,7 @@ class BilibiliHttpTest {
 
     @Test
     @DisplayName("能从 JSON 体里取到 code，非 JSON 一律返回 null（不抛异常）")
-    void 业务码提取() {
+    void extractsBusinessCode() {
         assertEquals(0, BilibiliHttp.businessCode("{\"code\":0,\"data\":{}}").intValue());
         assertEquals(-352, BilibiliHttp.businessCode("{\"code\":-352,\"message\":\"风控\"}").intValue());
         assertEquals(4101139, BilibiliHttp.businessCode("{\"code\":4101139}").intValue());
@@ -74,14 +81,14 @@ class BilibiliHttpTest {
 
     @Test
     @DisplayName("HTTP 412 判为风控（响应体是 HTML 也要判对）")
-    void http412是风控() {
+    void http412IsRiskControl() {
         assertEquals(BilibiliHttp.Verdict.RISK_CONTROL,
                 BilibiliHttp.classify(response(412, "<html>blocked</html>")));
     }
 
     @Test
     @DisplayName("业务码 -352/-509/-412 判为风控")
-    void 风控业务码() {
+    void riskControlBusinessCode() {
         assertEquals(BilibiliHttp.Verdict.RISK_CONTROL, BilibiliHttp.classify(response(200, "{\"code\":-352}")));
         assertEquals(BilibiliHttp.Verdict.RISK_CONTROL, BilibiliHttp.classify(response(200, "{\"code\":-509}")));
         assertEquals(BilibiliHttp.Verdict.RISK_CONTROL, BilibiliHttp.classify(response(200, "{\"code\":-412}")));
@@ -89,13 +96,13 @@ class BilibiliHttpTest {
 
     @Test
     @DisplayName("code=0 判为成功")
-    void 成功() {
+    void success() {
         assertEquals(BilibiliHttp.Verdict.OK, BilibiliHttp.classify(response(200, "{\"code\":0,\"data\":{}}")));
     }
 
     @Test
     @DisplayName("4101139/4101105/-403 判为不可重试（重试多少次结果都一样）")
-    void 不可重试的业务码() {
+    void nonRetryableBusinessCode() {
         assertEquals(BilibiliHttp.Verdict.NO_RETRY, BilibiliHttp.classify(response(200, "{\"code\":4101139}")));
         assertEquals(BilibiliHttp.Verdict.NO_RETRY, BilibiliHttp.classify(response(200, "{\"code\":4101105}")));
         assertEquals(BilibiliHttp.Verdict.NO_RETRY, BilibiliHttp.classify(response(200, "{\"code\":-403}")));
@@ -104,7 +111,7 @@ class BilibiliHttpTest {
 
     @Test
     @DisplayName("网关类 5xx 判为可重试；500 与 4xx 判为不可重试")
-    void 状态码分类() {
+    void statusCodeClassification() {
         assertEquals(BilibiliHttp.Verdict.RETRY, BilibiliHttp.classify(response(502, "")));
         assertEquals(BilibiliHttp.Verdict.RETRY, BilibiliHttp.classify(response(503, "<html>maintenance</html>")));
         assertEquals(BilibiliHttp.Verdict.RETRY, BilibiliHttp.classify(response(504, "")));
@@ -118,7 +125,7 @@ class BilibiliHttpTest {
 
     @Test
     @DisplayName("408/425/429 虽是 4xx 但语义为瞬态，判为可重试")
-    void 瞬态4xx可重试() {
+    void transient4xxRetryable() {
         assertEquals(BilibiliHttp.Verdict.RETRY, BilibiliHttp.classify(response(408, "")));
         assertEquals(BilibiliHttp.Verdict.RETRY, BilibiliHttp.classify(response(425, "")));
         assertEquals(BilibiliHttp.Verdict.RETRY, BilibiliHttp.classify(response(429, "")));
@@ -126,7 +133,7 @@ class BilibiliHttpTest {
 
     @Test
     @DisplayName("2xx 但响应体不是 JSON：不在这一层下结论，交给上层报错")
-    void 非json的2xx() {
+    void nonJson2xx() {
         assertEquals(BilibiliHttp.Verdict.OK, BilibiliHttp.classify(response(200, "")));
         assertEquals(BilibiliHttp.Verdict.OK, BilibiliHttp.classify(response(200, "<html>ok</html>")));
     }

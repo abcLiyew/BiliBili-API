@@ -25,7 +25,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("未设置 base 时原样返回（生产路径，零副作用）")
-    void 未设置base() {
+    void baseNotSet() {
         String url = "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx";
         assertEquals(url, BilibiliHttp.applyTestBaseUrl(url),
                 "默认 null 必须原样返回 —— 生产行为不能被测试钩子改变");
@@ -33,7 +33,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("base 为空串时也原样返回")
-    void 空base() {
+    void blankBase() {
         BilibiliHttp.setTestBaseUrl("");
         String url = "https://api.bilibili.com/x/a?b=1";
         assertEquals(url, BilibiliHttp.applyTestBaseUrl(url));
@@ -41,7 +41,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("正常改写：scheme+host+port 被替换，path 与 query 原样保留")
-    void 正常改写() {
+    void rewritesNormally() {
         BilibiliHttp.setTestBaseUrl("http://127.0.0.1:18080");
         String url = "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx&p=2";
         assertEquals("http://127.0.0.1:18080/x/web-interface/view?bvid=BV1xx&p=2",
@@ -50,7 +50,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("带非默认端口的 base 也正确")
-    void 带端口() {
+    void withPort() {
         BilibiliHttp.setTestBaseUrl("http://localhost:9999");
         assertEquals("http://localhost:9999/room/v1/Room/get_info?room_id=732",
                 BilibiliHttp.applyTestBaseUrl(
@@ -59,7 +59,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("URL 无 scheme 时原样返回（不误伤相对路径）")
-    void 无scheme() {
+    void withoutScheme() {
         BilibiliHttp.setTestBaseUrl("http://127.0.0.1:18080");
         assertEquals("/x/a?b=1", BilibiliHttp.applyTestBaseUrl("/x/a?b=1"));
         assertEquals("not-a-url", BilibiliHttp.applyTestBaseUrl("not-a-url"));
@@ -67,7 +67,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("非 http scheme 也会被改写（实现按 '://' 定位，不挑协议）")
-    void 非http协议也会改写() {
+    void nonHttpSchemeAlsoRewritten() {
         BilibiliHttp.setTestBaseUrl("http://127.0.0.1:18080");
         // 实现只找 "://"，不校验协议类型 —— 这里锁定该行为，避免以后误以为它挑协议
         assertEquals("http://127.0.0.1:18080/x",
@@ -76,7 +76,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("URL 只有 host 没有 path 时返回 base 本身")
-    void 只有host() {
+    void hostOnly() {
         BilibiliHttp.setTestBaseUrl("http://127.0.0.1:18080");
         assertEquals("http://127.0.0.1:18080",
                 BilibiliHttp.applyTestBaseUrl("https://api.bilibili.com"));
@@ -84,14 +84,14 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("入参 null → 返回 null（不抛异常）")
-    void 入参null() {
+    void nullArgument() {
         BilibiliHttp.setTestBaseUrl("http://127.0.0.1:18080");
         assertNull(BilibiliHttp.applyTestBaseUrl(null));
     }
 
     @Test
     @DisplayName("clearTestBaseUrl 后恢复原样返回")
-    void clear后恢复() {
+    void restoresAfterClear() {
         String url = "https://api.bilibili.com/x/a";
         BilibiliHttp.setTestBaseUrl("http://127.0.0.1:18080");
         assertEquals("http://127.0.0.1:18080/x/a", BilibiliHttp.applyTestBaseUrl(url));
@@ -103,7 +103,7 @@ class BilibiliHttpHookTest {
 
     @Test
     @DisplayName("rewriteForTest 与 applyTestBaseUrl 行为一致（供其它包的测试验证改写）")
-    void rewriteForTest一致() {
+    void rewriteForTestConsistent() {
         String url = "https://api.bilibili.com/x/a?b=1";
         // 未设置时两者都原样
         assertEquals(BilibiliHttp.applyTestBaseUrl(url), BilibiliHttp.rewriteForTest(url));

@@ -48,4 +48,5 @@ build/
 /.workbuddy/
 /REFACTOR_PLAN.md
 /REFACTOR_PLAN_REVIEW.md
+/INTERFACE_PLAN.md
 *.tmp.txt

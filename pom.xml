@@ -6,7 +6,7 @@
 
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.28-beta</version>
+    <version>0.9.29-beta</version>
     <name>bilibili-api</name>
     <description>哔哩哔哩（Bilibili）常用数据接口的 Java 客户端：用户名片、视频、动态、直播间与短链解析。</description>
 
@@ -65,6 +65,17 @@
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- 测试：二维码渲染（仅测试期使用，scope=test 不进入下游依赖树）。
+             Login 门面只负责「拿到二维码内容」，把它画成可扫的图是调用方的事；
+             联调冒烟要让用户真能扫码，需要一份本地渲染实现，故只引 core
+             （只用 QRCodeWriter + BitMatrix，PNG 用 JDK 自带的 ImageIO 写，不引 javase）。 -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.3.3</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -31,6 +31,42 @@ public final class UserAgentPool {
     private UserAgentPool() {
     }
 
+    /**
+     * 默认面孔：Windows Edge，与 {@link BilibiliEndpoint#userAgent} 逐字一致（池中第 0 个）。
+     *
+     * <p>⚠️ 版本号停在 {@code Edg/131}（2024 年末）。当<b>匿名</b>面孔够用，
+     * 但<b>登录</b>时建议换成你本机真实浏览器的版本 —— 见
+     * {@link HttpPolicy#setUserAgent(String)} 与 {@link #edgeWindows(String)}。
+     */
+    public static final String EDGE_WINDOWS = AGENTS[0];
+
+    /** Windows Edge 的 UA 模板：两个 {@code %s} 分别是 Chrome 与 Edge 的版本（真实 Edge 上两者一致） */
+    private static final String EDGE_WINDOWS_TEMPLATE =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                    + "Chrome/%s Safari/537.36 Edg/%s";
+
+    /**
+     * 按版本号拼一个 Windows Edge 的 UA。
+     *
+     * <p>用途：让库发的 UA 跟上你本机真实浏览器的版本，而不是一直停在 {@code Edg/131}。
+     * <b>取版本号最省事的办法</b>是直接在浏览器里读整串 ——
+     * 地址栏敲 {@code javascript:navigator.userAgent} 回车，把结果给
+     * {@link HttpPolicy#setUserAgent(String)}；如果你只想给版本号，用本方法。
+     *
+     * <p>注意 Edge 的"关于"页显示的是 Edge 自己的版本，而 UA 里的版本号取自 Chromium，
+     * 两者可能差一位 —— 要精确就用上面那个读整串的办法。
+     *
+     * @param version 版本号，如 {@code "140.0.0.0"}；空白时返回 {@link #EDGE_WINDOWS}
+     * @return UA 字符串
+     */
+    public static String edgeWindows(String version) {
+        if (version == null || version.isBlank()) {
+            return EDGE_WINDOWS;
+        }
+        String v = version.trim();
+        return String.format(EDGE_WINDOWS_TEMPLATE, v, v);
+    }
+
     /** 池大小 */
     public static int size() {
         return AGENTS.length;

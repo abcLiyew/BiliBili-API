@@ -3,6 +3,7 @@ package com.esdllm.bilibiliApi.render;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.http.AnonymousSession;
 import com.esdllm.bilibiliApi.http.HttpPolicy;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.imageio.ImageIO;
@@ -12,16 +13,8 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URL;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * 小图片抓取器（头像 / 正文配图 / 表情贴图）。
@@ -67,18 +60,16 @@ public final class HttpImageFetcher {
                 }
             });
 
-    private static volatile boolean enabled = true;
-
-    private HttpImageFetcher() {
-    }
-
     /**
-     * 全局开关。无网络环境（单元测试）可关掉，此时所有请求直接返回 null。
+     * -- SETTER --
+     *  全局开关。无网络环境（单元测试）可关掉，此时所有请求直接返回 null。
      *
      * @param value true 允许联网抓图
      */
-    public static void setEnabled(boolean value) {
-        enabled = value;
+    @Setter
+    private static volatile boolean enabled = true;
+
+    private HttpImageFetcher() {
     }
 
     /**
@@ -187,7 +178,7 @@ public final class HttpImageFetcher {
             conn.setConnectTimeout(HttpPolicy.getConnectTimeoutMs());
             conn.setReadTimeout(HttpPolicy.getSocketTimeoutMs());
             // 用"当前身份"的 UA 与指纹，与 API 请求保持一致（同一身份的画像不能自相矛盾）
-            conn.setRequestProperty("User-Agent", AnonymousSession.userAgent());
+            conn.setRequestProperty("User-Agent", HttpPolicy.userAgentFor(AnonymousSession.userAgent()));
             conn.setRequestProperty("Accept", BilibiliEndpoint.accept);
             conn.setRequestProperty("Referer", BilibiliEndpoint.referer);
             String cookie = AnonymousSession.cookieHeader();

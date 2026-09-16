@@ -37,7 +37,7 @@ class DynamicImgSmokeTest {
 
     @Test
     @DisplayName("真实动态能截出长图，且尺寸合理")
-    void 截图() throws Exception {
+    void screenshot() throws Exception {
         String id = System.getProperty("bili.imgId", DEFAULT_ID);
 
         BufferedImage img = new Dynamic().getDynamicImg(id);

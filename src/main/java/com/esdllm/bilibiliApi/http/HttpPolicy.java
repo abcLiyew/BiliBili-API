@@ -1,5 +1,12 @@
 package com.esdllm.bilibiliApi.http;
 
+import lombok.Getter;
+import lombok.Setter;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -28,6 +35,12 @@ import java.util.concurrent.ThreadLocalRandom;
  *       注入<b>真实登录 Cookie</b>（浏览器里的 {@code SESSDATA} 等）。
  *       注入后与指纹 Cookie 合并，<b>用户 Cookie 的键优先</b>。
  *       本库<b>不内置任何凭据</b>，也不落盘。</li>
+ *   <li><b>User-Agent</b>：默认<b>跟着身份走</b> —— {@code UserAgentPool} 的第 0 个是 Windows Edge
+ *       （{@code Edg/131}），其余为 Chrome / macOS Safari，<b>轮换一次就换一副面孔</b>。
+ *       需要"固定一副面孔"时用 {@link #setUserAgent(String)} 显式指定，之后所有出站都用它、
+ *       不再随轮换变动。<b>登录场景建议显式指定</b>：凭据与面孔绑定，轮换会让
+ *       "刚登录成功"变成"马上 {@code -101}"；而且把 UA 对齐到你过验/扫码的那个浏览器，
+ *       能消掉"同一验证会话里两台设备"这类不一致特征（见 {@link #setUserAgent(String)}）。</li>
  * </ul>
  *
  * <p>所有字段都是 {@code volatile}，可运行期调整，线程安全。
@@ -61,22 +74,63 @@ public final class HttpPolicy {
     public static final String PROP_PROXY_PORT = "bili.proxy.port";
     /** 系统属性名：真实登录 Cookie（可选；为空表示只用匿名指纹） */
     public static final String PROP_COOKIE = "bili.cookie";
+    /** 系统属性名：显式 User-Agent（可选；为空表示跟随身份池） */
+    public static final String PROP_USER_AGENT = "bili.userAgent";
 
     // ---------------------------------------------------------------- 可变配置
 
+    @Getter
     private static volatile int maxAttempts = DEFAULT_MAX_ATTEMPTS;
+    @Getter
     private static volatile long baseDelayMs = DEFAULT_BASE_DELAY_MS;
+    @Getter
     private static volatile long maxDelayMs = DEFAULT_MAX_DELAY_MS;
+    @Getter
     private static volatile double multiplier = DEFAULT_MULTIPLIER;
+    @Getter
     private static volatile double jitterRatio = DEFAULT_JITTER_RATIO;
+    /**
+     * -- SETTER --
+     *  设置全局最小请求间隔。
+     *
+     * @param millis 毫秒；0 或负数表示关闭限流（不建议，见类注释）
+     */
+    @Setter
+    @Getter
     private static volatile long minRequestIntervalMs = DEFAULT_MIN_INTERVAL_MS;
+    @Setter
+    @Getter
     private static volatile boolean rotateOnRiskControl = true;
+    /**
+     * -- GETTER --
+     *  动态列表返回<b>空 items</b>时，是否换一副身份重试一次。
+     *  <p><b>为什么需要这个开关</b>：
+     *  有一种失败形态与"业务码"无关 ——
+     *  实测
+     *  但
+     * （静默空），<b>无法与"该 UP 真没发动态"区分</b>。
+     * <p>
+     *  的分类只看业务码，因此这类"语义空"只能在列表服务层兜底
+     *  （
+     * ）：空则换身份再取一次。
+     *  <p>默认开启。副作用是"确实没有动态的 UP"每次轮询都会消耗一代身份
+     *  （指纹接口每次调用一次，代价很低），若在意可关掉。
+     *
+     * @return 默认 {@code true}
+     */
+    @Setter
+    @Getter
     private static volatile boolean rotateOnEmptyFeed = true;
+    @Getter
     private static volatile int maxRotations = DEFAULT_MAX_ROTATIONS;
+    @Getter
     private static volatile int connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
+    @Getter
     private static volatile int socketTimeoutMs = DEFAULT_SOCKET_TIMEOUT_MS;
 
+    @Getter
     private static volatile String proxyHost = readStringProperty(PROP_PROXY_HOST);
+    @Getter
     private static volatile int proxyPort = readIntProperty(PROP_PROXY_PORT);
 
     /**
@@ -84,17 +138,44 @@ public final class HttpPolicy {
      *
      * <p>为空表示只走匿名指纹；非空时由 {@code BilibiliHttp} 与指纹 Cookie 合并成最终
      * {@code Cookie} 头，且<b>本值里的键优先</b>。
+     * -- GETTER --
+     *  当前注入的真实登录 Cookie（未注入时为
+     * ）。
+     *
+     * @return 归一化后的 Cookie 字符串，形如 {@code SESSDATA=xxx; bili_jct=xxx}
+
      */
+    @Getter
     private static volatile String cookie = normalizeCookie(readStringProperty(PROP_COOKIE));
+
+    /**
+     * 调用方<b>显式指定</b>的 User-Agent（{@code null} / 空白表示跟随身份池）。
+     *
+     * <p>说明见 {@link #setUserAgent(String)}。默认值来自系统属性
+     * {@value #PROP_USER_AGENT}，未设置时为 {@code null} ——
+     * 也就是"改造前的行为"（UA 跟着 {@link AnonymousSession} 的世代走）。
+     * -- GETTER --
+     *  当前显式指定的 User-Agent；未指定时为
+     * （= 跟随身份池）。
+     *
+     * @return UA 字符串或 {@code null}
+
+     */
+    @Getter
+    private static volatile String userAgent = readStringProperty(PROP_USER_AGENT);
+
+    /**
+     * 与 {@link #userAgent} <b>配套</b>的 Client Hints 请求头（{@code Sec-CH-UA} 一族）。
+     *
+     * <p>由 {@link #deriveClientHints(String)} 从 UA 推导，两者必须同源 ——
+     * "UA 说是 Edge、CH 说是 Chrome"比不发 CH 更可疑。空表表示不发（默认 / Safari 系）。
+     */
+    private static volatile Map<String, String> clientHints = deriveClientHints(userAgent);
 
     private HttpPolicy() {
     }
 
     // ---------------------------------------------------------------- 重试退避
-
-    public static int getMaxAttempts() {
-        return maxAttempts;
-    }
 
     /**
      * 设置最大尝试次数。
@@ -105,32 +186,16 @@ public final class HttpPolicy {
         maxAttempts = Math.max(1, attempts);
     }
 
-    public static long getBaseDelayMs() {
-        return baseDelayMs;
-    }
-
     public static void setBaseDelayMs(long millis) {
         baseDelayMs = Math.max(0L, millis);
-    }
-
-    public static long getMaxDelayMs() {
-        return maxDelayMs;
     }
 
     public static void setMaxDelayMs(long millis) {
         maxDelayMs = Math.max(0L, millis);
     }
 
-    public static double getMultiplier() {
-        return multiplier;
-    }
-
     public static void setMultiplier(double value) {
-        multiplier = value < 1.0d ? 1.0d : value;
-    }
-
-    public static double getJitterRatio() {
-        return jitterRatio;
+        multiplier = Math.max(value, 1.0d);
     }
 
     /**
@@ -169,53 +234,7 @@ public final class HttpPolicy {
 
     // ---------------------------------------------------------------- 限流
 
-    public static long getMinRequestIntervalMs() {
-        return minRequestIntervalMs;
-    }
-
-    /**
-     * 设置全局最小请求间隔。
-     *
-     * @param millis 毫秒；0 或负数表示关闭限流（不建议，见类注释）
-     */
-    public static void setMinRequestIntervalMs(long millis) {
-        minRequestIntervalMs = millis;
-    }
-
     // ---------------------------------------------------------------- 身份轮换
-
-    public static boolean isRotateOnRiskControl() {
-        return rotateOnRiskControl;
-    }
-
-    public static void setRotateOnRiskControl(boolean value) {
-        rotateOnRiskControl = value;
-    }
-
-    /**
-     * 动态列表返回<b>空 items</b>时，是否换一副身份重试一次。
-     *
-     * <p><b>为什么需要这个开关</b>：{@code v1/feed/space} 有一种失败形态与"业务码"无关 ——
-     * 实测 {@code code=0} 但 {@code data.items=[]}（静默空），<b>无法与"该 UP 真没发动态"区分</b>。
-     * {@link BilibiliHttp} 的分类只看业务码，因此这类"语义空"只能在列表服务层兜底
-     * （{@code DynamicService.getInfoList}）：空则换身份再取一次。
-     *
-     * <p>默认开启。副作用是"确实没有动态的 UP"每次轮询都会消耗一代身份
-     * （指纹接口每次调用一次，代价很低），若在意可关掉。
-     *
-     * @return 默认 {@code true}
-     */
-    public static boolean isRotateOnEmptyFeed() {
-        return rotateOnEmptyFeed;
-    }
-
-    public static void setRotateOnEmptyFeed(boolean value) {
-        rotateOnEmptyFeed = value;
-    }
-
-    public static int getMaxRotations() {
-        return maxRotations;
-    }
 
     public static void setMaxRotations(int times) {
         maxRotations = Math.max(0, times);
@@ -223,16 +242,8 @@ public final class HttpPolicy {
 
     // ---------------------------------------------------------------- 超时
 
-    public static int getConnectTimeoutMs() {
-        return connectTimeoutMs;
-    }
-
     public static void setConnectTimeoutMs(int millis) {
         connectTimeoutMs = Math.max(1, millis);
-    }
-
-    public static int getSocketTimeoutMs() {
-        return socketTimeoutMs;
     }
 
     public static void setSocketTimeoutMs(int millis) {
@@ -240,14 +251,6 @@ public final class HttpPolicy {
     }
 
     // ---------------------------------------------------------------- 代理
-
-    public static String getProxyHost() {
-        return proxyHost;
-    }
-
-    public static int getProxyPort() {
-        return proxyPort;
-    }
 
     /** 是否配置了可用代理（主机非空且端口合法） */
     public static boolean hasProxy() {
@@ -275,15 +278,6 @@ public final class HttpPolicy {
     // ---------------------------------------------------------------- Cookie
 
     /**
-     * 当前注入的真实登录 Cookie（未注入时为 {@code null}）。
-     *
-     * @return 归一化后的 Cookie 字符串，形如 {@code SESSDATA=xxx; bili_jct=xxx}
-     */
-    public static String getCookie() {
-        return cookie;
-    }
-
-    /**
      * 注入真实登录 Cookie。
      *
      * <p><b>什么时候需要</b>：调用某端点持续拿到 {@code -352} 或 412，且确认不是网络问题时。
@@ -292,6 +286,23 @@ public final class HttpPolicy {
      *
      * <p>注入后本值会与匿名指纹 Cookie 合并，<b>本值里的键优先</b>；
      * 传 {@code null} 或空白等价于 {@link #clearCookie()}。
+     *
+     * <p><b>💡 一个不显眼但有用的用法：只注入设备身份，不含登录态</b>
+     * （{@code setCookie("buvid3=…; buvid4=…")}）。
+     * 此时 {@link #cookieProvidesDeviceId()} 为真，{@link AnonymousSession} 会跳过
+     * "向 {@code frontend/finger/spi} 领一套全新随机指纹"那一步，出站带的就是<b>你指定的那台设备</b>。
+     *
+     * <p><b>为什么可能要这么做</b>（2026-09-16 真机引出，<b>属于首要假设、尚未证实</b>）：
+     * 本库每次运行都领一套<b>全新随机</b>的 {@code buvid3}，因此在 B 站眼里每一次都是
+     * <b>一台从没见过的设备</b>。这与两个已确证的观测同时吻合：
+     * ① 登录提醒恒写<b>「未知设备」</b>（真人用 Edge 登录时写「Edge」）；
+     * ② 密码登录恒返回 {@code data.status=2}「本次登录环境存在风险, 需使用手机号进行验证或绑定」，
+     * 而<b>短信登录成功</b>（它本身就是"手机号验证"，正好满足这条要求）。
+     * 若假设成立，把浏览器自己的 {@code buvid3}/{@code buvid4} 交进来（等于"同一台设备换一个客户端登录"），
+     * 提醒就应当认出这台设备、密码登录也不再被要求二次验证。
+     *
+     * <p>这与本库既有的"注入你自己的 Cookie"是同一类操作 —— 用的都是<b>你自己的身份</b>，
+     * 不是伪造。判别方法（A/B）：同一台机器、同一个浏览器，只切换这一个变量各登录一次，看提醒与 {@code status}。
      *
      * @param rawCookie 完整 Cookie 字符串
      */
@@ -363,6 +374,104 @@ public final class HttpPolicy {
         return hasCookie() ? maskCookie(cookie) : "";
     }
 
+    // ---------------------------------------------------------------- User-Agent
+
+    /**
+     * 是否已显式指定 User-Agent。
+     *
+     * @return 指定过返回 {@code true}
+     */
+    public static boolean hasUserAgent() {
+        String value = userAgent;
+        return value != null && !value.isBlank();
+    }
+
+    /**
+     * 显式指定出站 User-Agent：<b>固定不变、不随身份轮换</b>。
+     *
+     * <p><b>为什么需要这个开关</b>（2026-09-16，登录链路真机实测引出）：
+     * 本库的 UA 默认<b>跟着身份走</b> —— {@link UserAgentPool} 里第 0 个是 Windows Edge，
+     * 另几个是 Chrome / macOS Safari，<b>身份轮换一次就连 UA 一起换</b>。
+     * 这对"匿名抓数据"是<b>对的</b>（UA 与指纹同代才自洽，见 {@code UserAgentPool} 的说明），
+     * 但对<b>登录</b>是错的：凭据是跟"某一副面孔"绑定的，登录成功后若又发生一次轮换，
+     * 后续请求就换了 UA，表现是"刚登录成功，转头就 -101"。
+     *
+     * <p>指定后<b>所有出站</b>（含领指纹、登录、短链、抓图）都用这一个值，直到
+     * {@link #clearUserAgent()} 或 {@link #reset()}。
+     *
+     * <p><b>传给什么值</b>：最省事的是"你自己的浏览器" ——
+     * 地址栏敲 {@code javascript:navigator.userAgent} 回车，把结果原样给它，
+     * 这样库发的 UA 与你在浏览器里过极验/扫码时<b>天然一致</b>
+     * （不一致本身就是"同一会话两台设备"的风险特征）。也可以用
+     * {@link UserAgentPool#edgeWindows(String)} 按版本号拼一个。
+     *
+     * <p>⚠️ <b>别用陈年版本号</b>：本库内置默认值停在 {@code Edg/131}（2024 年末），
+     * 作为匿名面孔够用，但拿它去登录，等于自报"我是一年多没更新的客户端" ——
+     * 这正是登录场景应该覆盖它的理由。
+     *
+     * <p><b>会一并启用 Client Hints</b>：本方法同时按新 UA 推导 {@code Sec-CH-UA} 一族
+     * （见 {@link #clientHints()}），两者同源。理由只是<b>把出站形状对齐真实浏览器</b> ——
+     * Chromium 系在 HTTPS 下一定带这族头，少了它，请求头就与真人浏览器不一致。
+     *
+     * <p>⚠️ <b>但它不是「未知设备」的解药</b>（2026-09-16 真机把原先的推断否掉了）：
+     * 曾据"走本库登录 → B 站提醒写「未知设备」、真人用 Edge → 写「Edge」"推断
+     * "只换 UA 字符串不够、补上 CH 就会认出来"。真机补齐 UA + CH 后重跑，
+     * 密码登录与短信登录的提醒<b>依旧写「未知设备」</b> ⇒ <b>这条提醒不由 UA / CH 决定</b>。
+     * 当前的首要假设在 {@link #setCookie(String)} 的说明里（判据是"这是不是一台我认识的设备"，
+     * 设备身份在 B 站侧是 {@code buvid3} / {@code buvid4}，而本库每次运行都领一套全新的）。
+     * 别再照"换个 UA 就好了"的思路往下找 —— 这条弯路已经走过两次。
+     *
+     * <p>Safari / Firefox 的 UA 不会得到 CH（它们本来就不发，
+     * 硬造一套比不发更假）—— 见 {@link #deriveClientHints(String)}。
+     *
+     * @param value UA 字符串；{@code null} 或空白等价于 {@link #clearUserAgent()}
+     */
+    public static void setUserAgent(String value) {
+        String normalized = (value == null || value.isBlank()) ? null : value.trim();
+        userAgent = normalized;
+        clientHints = deriveClientHints(normalized);
+    }
+
+    /** 清除显式 UA 与配套的 Client Hints，回到"跟随身份池"（即改造前的行为） */
+    public static void clearUserAgent() {
+        userAgent = null;
+        clientHints = Map.of();
+    }
+
+    /**
+     * 当前应附加的 Client Hints（{@code Sec-CH-UA} / {@code Sec-CH-UA-Mobile} /
+     * {@code Sec-CH-UA-Platform}），由显式 UA 推导而来。
+     *
+     * <p>出站代码统一遍历它加头，从而"UA 与 CH 同源"只有一个实现点。
+     *
+     * @return 头名 → 头值（保序）；未显式指定 UA、或 UA 属于不发 CH 的浏览器时为空表
+     */
+    public static Map<String, String> clientHints() {
+        return clientHints;
+    }
+
+    /**
+     * 本次出站<b>实际</b>要用的 UA：有显式值用它，否则用身份自带的那一个。
+     *
+     * <p>所有出站代码都经这里取 UA，于是"显式优先于身份池"只有<b>一个</b>实现点。
+     *
+     * <p><b>为什么发送那一刻才取，而不是在身份里存好</b>：身份是<b>缓存</b>的
+     * （{@link AnonymousSession#current()}）。调用方经常是"先跑过一次请求、再
+     * {@code setUserAgent(...)}、再跑登录" —— 此时身份早已生成，若 UA 在生成身份时就固化下来，
+     * 显式设置将<b>静默不生效</b>，而这类"设了没反应"的缺陷最难查。
+     *
+     * @param identityAgent 身份自带的 UA，可为 {@code null}
+     * @return 实际要发出去的 UA；两处都没有时回落到池内默认面孔
+     */
+    public static String userAgentFor(String identityAgent) {
+        String override = userAgent;
+        if (override != null && !override.isBlank()) {
+            return override;
+        }
+        return (identityAgent == null || identityAgent.isBlank())
+                ? UserAgentPool.defaultAgent() : identityAgent;
+    }
+
     // ---------------------------------------------------------------- 整体
 
     /** 把全部参数恢复为默认值（注意：代理与 Cookie 会重新按系统属性读取，而非强制清空） */
@@ -381,6 +490,8 @@ public final class HttpPolicy {
         proxyHost = readStringProperty(PROP_PROXY_HOST);
         proxyPort = readIntProperty(PROP_PROXY_PORT);
         cookie = normalizeCookie(readStringProperty(PROP_COOKIE));
+        userAgent = readStringProperty(PROP_USER_AGENT);
+        clientHints = deriveClientHints(userAgent);
     }
 
     /** 一行摘要，便于排障时确认实际生效的策略 */
@@ -393,11 +504,115 @@ public final class HttpPolicy {
                 + ", 空列表轮换=" + rotateOnEmptyFeed
                 + ", 超时=" + connectTimeoutMs + "/" + socketTimeoutMs + "ms"
                 + ", 代理=" + (hasProxy() ? proxyHost + ":" + proxyPort : "直连")
+                + ", UA=" + (hasUserAgent() ? "显式(" + userAgent + ")" : "跟随身份池")
+                + ", ClientHints=" + (clientHints.isEmpty() ? "无" : String.join(",", clientHints.keySet()))
                 + ", Cookie=" + (hasCookie() ? "已注入(" + maskCookie(cookie) + ")" : "仅匿名指纹")
                 + "}";
     }
 
     // ---------------------------------------------------------------- 内部
+
+    /**
+     * 从显式 UA 推导配套的 Client Hints。
+     *
+     * <p><b>为什么要配套发</b>：真实 Chromium 系浏览器在 HTTPS 下<b>一定</b>带 {@code Sec-CH-UA} 一族，
+     * 少发就等于让出站形状与真人浏览器不一致。这里只是<b>对齐形状</b>。
+     *
+     * <p>⚠️ <b>它并不能解释「未知设备」</b>：曾据真机现象（本库登录 → 提醒写「未知设备」；
+     * 真人用 Edge → 写「Edge」）推断"补上 CH 就能被认出来"，随即被真机否定 ——
+     * 补齐 UA + CH 后重跑，提醒<b>依旧</b>写「未知设备」。详见
+     * {@link #setUserAgent(String)} 与该方法的说明，别再把这条当线索。
+     *
+     * <p><b>Safari / Firefox 返回空表</b>：它们本来就不发 CH（Safari 至今不支持，
+     * Firefox 只在特定条件下发）。给它们硬造一套，比不发更假。
+     *
+     * @param ua 显式 UA；{@code null} / 空白返回空表
+     * @return 头名 → 头值（保序）
+     */
+    private static Map<String, String> deriveClientHints(String ua) {
+        if (ua == null || ua.isBlank()) {
+            return Map.of();
+        }
+        String lower = ua.toLowerCase(Locale.ROOT);
+        // 判据是 Chrome/ 而不是 "safari/"：Safari 的 UA 是 Version/17.4 Safari/605.1.15，无 Chrome/
+        if (!lower.contains("chrome/")) {
+            return Map.of();
+        }
+        String version = chromeMajor(ua);
+        if (version.isEmpty()) {
+            return Map.of();
+        }
+        boolean edge = lower.contains("edg/");
+        String brand = edge
+                ? "\"Microsoft Edge\";v=\"" + version + "\""
+                : "\"Google Chrome\";v=\"" + version + "\"";
+
+        Map<String, String> hints = new LinkedHashMap<>();
+        // grease 品牌是 Chromium 刻意塞进 CH 的"占位品牌"（各家各版本取值不同，本身不承载信息）。
+        // 少了它反而是异常形态，所以照给一个。
+        hints.put("Sec-CH-UA",
+                brand + ", \"Chromium\";v=\"" + version + "\", \"Not=A?Brand\";v=\"24\"");
+        hints.put("Sec-CH-UA-Mobile", lower.contains("mobile") ? "?1" : "?0");
+        hints.put("Sec-CH-UA-Platform", "\"" + platformOf(lower) + "\"");
+        // 只读视图：clientHints() 是 public，不能把可变 Map 交出去（调用方一个 put 就改了全局出站形状）
+        return Collections.unmodifiableMap(hints);
+    }
+
+    /**
+     * 取 UA 里 {@code Chrome/x.y.z.w} 的<b>主版本号</b>。
+     *
+     * <p>CH 里只放主版本（真实浏览器就是这么发的：{@code v="140"} 而不是 {@code v="140.0.0.0"}）。
+     *
+     * @param ua UA 字符串
+     * @return 主版本，如 {@code "140"}；取不到返回空串
+     */
+    private static String chromeMajor(String ua) {
+        int at = ua.indexOf("Chrome/");
+        if (at < 0) {
+            return "";
+        }
+        int start = at + "Chrome/".length();
+        int end = start;
+        while (end < ua.length()
+                && (Character.isDigit(ua.charAt(end)) || ua.charAt(end) == '.')) {
+            end++;
+        }
+        String full = ua.substring(start, end);
+        int dot = full.indexOf('.');
+        return dot < 0 ? full : full.substring(0, dot);
+    }
+
+    /**
+     * 从 UA 判断平台（CH 的合法取值：{@code Windows} / {@code macOS} / {@code Linux} /
+     * {@code Android} / {@code iOS} / {@code Chrome OS}）。
+     *
+     * <p>认不出来时返回空串 —— 那正是浏览器"不愿说"时的合法形态；
+     * 猜一个平台出来反而是在撒谎。
+     *
+     * @param lowerUa 已小写的 UA
+     * @return 平台名；未知时为空串
+     */
+    private static String platformOf(String lowerUa) {
+        if (lowerUa.contains("windows")) {
+            return "Windows";
+        }
+        if (lowerUa.contains("android")) {
+            return "Android";
+        }
+        if (lowerUa.contains("iphone") || lowerUa.contains("ipad")) {
+            return "iOS";
+        }
+        if (lowerUa.contains("crkey") || lowerUa.contains("cros")) {
+            return "Chrome OS";
+        }
+        if (lowerUa.contains("macintosh") || lowerUa.contains("mac os x")) {
+            return "macOS";
+        }
+        if (lowerUa.contains("linux")) {
+            return "Linux";
+        }
+        return "";
+    }
 
     /**
      * 归一化 Cookie：去首尾空白、去掉空片段。
@@ -415,12 +630,12 @@ public final class HttpPolicy {
             if (trimmed.isEmpty()) {
                 continue;
             }
-            if (sb.length() > 0) {
+            if (!sb.isEmpty()) {
                 sb.append("; ");
             }
             sb.append(trimmed);
         }
-        return sb.length() == 0 ? null : sb.toString();
+        return sb.isEmpty() ? null : sb.toString();
     }
 
     /**

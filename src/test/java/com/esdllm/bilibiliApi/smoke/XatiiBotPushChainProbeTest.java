@@ -15,8 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * <b>XatiiBot 推送链路验证探针</b>（默认跳过）。
@@ -65,7 +64,7 @@ class XatiiBotPushChainProbeTest {
 
     @Test
     @DisplayName("完整链路：Live.getUid → Dynamic.getDynamicInfoList → CardInfo.getUserName → Dynamic.getDynamicImg")
-    void 完整推送链路() throws Exception {
+    void fullPushChain() throws Exception {
         String uid = System.getProperty("bili.uid", DEFAULT_UID);
         String roomIdProp = System.getProperty("bili.roomId");
 
@@ -74,7 +73,7 @@ class XatiiBotPushChainProbeTest {
         System.out.println();
 
         // ---------- §1 Live.getUid（可选）----------
-        Long uidFromLive = null;
+        Long uidFromLive;
         if (roomIdProp != null && !roomIdProp.isBlank()) {
             long roomId = Long.parseLong(roomIdProp.trim());
             // 与 PushInfoServiceImpl.dynamicPush 的写法一致：uid 是从直播间号反查出来的
@@ -158,8 +157,7 @@ class XatiiBotPushChainProbeTest {
                     list.size(), nullTime, relative);
 
             // ★ 这是本轮改造最关键的不变量
-            assertTrue(nullTime == 0,
-                    "time 出现 null！说明 pub_time 字段又取错了 —— XatiiBot 的 getTime().startsWith(\"刚刚\") 会抛 NPE 并静默吞掉，推送永久失效");
+            assertEquals(0, nullTime, "time 出现 null！说明 pub_time 字段又取错了 —— XatiiBot 的 getTime().startsWith(\"刚刚\") 会抛 NPE 并静默吞掉，推送永久失效");
             if (relative == 0) {
                 // 断言只能证明"能拿到 time"，不能凭空造出一条新动态。
                 // 该 UP 最近没发动态时，feed 里全是 `5月30日` / `8月1日` 这种**绝对日期**

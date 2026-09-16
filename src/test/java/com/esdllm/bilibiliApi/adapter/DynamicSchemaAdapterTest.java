@@ -13,11 +13,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link DynamicSchemaAdapter} 的确定性单测。
@@ -49,13 +45,13 @@ class DynamicSchemaAdapterTest {
 
     @Test
     @DisplayName("modules 是对象 → LEGACY")
-    void 判别旧schema() throws IOException {
+    void detectsLegacySchema() throws IOException {
         assertEquals(SchemaShape.LEGACY, DynamicSchemaAdapter.detect(itemOf("dynamic-detail-legacy.json")));
     }
 
     @Test
     @DisplayName("modules 是数组 → DESKTOP")
-    void 判别新schema() throws IOException {
+    void detectsDesktopSchema() throws IOException {
         assertEquals(SchemaShape.DESKTOP, DynamicSchemaAdapter.detect(itemOf("dynamic-detail-desktop.json")));
     }
 
@@ -63,7 +59,7 @@ class DynamicSchemaAdapterTest {
 
     @Test
     @DisplayName("旧 schema：作者 / 关联视频 / 互动数 全部落到冻结模型")
-    void 旧schema映射() throws IOException {
+    void mapsLegacySchema() throws IOException {
         BilibiliDynamicResp.Data.Card card = DynamicSchemaAdapter.toCard(itemOf("dynamic-detail-legacy.json"));
         BilibiliDynamicResp.Data.Card.Desc desc = card.getDesc();
 
@@ -97,7 +93,7 @@ class DynamicSchemaAdapterTest {
 
     @Test
     @DisplayName("新 schema：作者多一层 user，内容在 dyn_archive / dyn_draw")
-    void 新schema映射() throws IOException {
+    void mapsDesktopSchema() throws IOException {
         BilibiliDynamicResp.Data.Card card = DynamicSchemaAdapter.toCard(itemOf("dynamic-detail-desktop.json"));
         BilibiliDynamicResp.Data.Card.Desc desc = card.getDesc();
 
@@ -123,7 +119,7 @@ class DynamicSchemaAdapterTest {
 
     @Test
     @DisplayName("两套 schema 都必须保证下游 getDesc().getUser_profile().getInfo().getUname() 可用")
-    void 下游链式取值不为null() throws IOException {
+    void downstreamChainedGettersNotNull() throws IOException {
         for (String fixture : new String[]{"dynamic-detail-legacy.json", "dynamic-detail-desktop.json"}) {
             BilibiliDynamicResp.Data.Card card = DynamicSchemaAdapter.toCard(itemOf(fixture));
             // 与 XatiiBot BilibiliAnalysisImpl.java:132/137 的取值方式逐字一致
@@ -136,14 +132,14 @@ class DynamicSchemaAdapterTest {
 
     @Test
     @DisplayName("item 缺失 → BilibiliException（不得抛 NPE）")
-    void item缺失() {
+    void itemMissing() {
         BilibiliException e = assertThrows(BilibiliException.class, () -> DynamicSchemaAdapter.toCard(null));
         assertTrue(e.getMessage().contains("item"), "异常消息应说明 item 缺失，实际：" + e.getMessage());
     }
 
     @Test
     @DisplayName("modules 缺失 → BilibiliException")
-    void modules缺失() {
+    void modulesMissing() {
         JSONObject item = new JSONObject();
         item.put("id_str", "1");
         BilibiliException e = assertThrows(BilibiliException.class, () -> DynamicSchemaAdapter.toCard(item));
@@ -152,7 +148,7 @@ class DynamicSchemaAdapterTest {
 
     @Test
     @DisplayName("id_str 缺失 → BilibiliException")
-    void id缺失() {
+    void idMissing() {
         JSONObject item = new JSONObject();
         item.put("modules", new JSONObject());
         BilibiliException e = assertThrows(BilibiliException.class, () -> DynamicSchemaAdapter.toCard(item));

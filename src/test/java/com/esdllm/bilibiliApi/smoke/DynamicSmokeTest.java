@@ -10,9 +10,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 联网冒烟测试：验证「换源后的 {@code getDynamicDetail} 在真实环境里真的能取到数据」。
@@ -44,7 +42,7 @@ class DynamicSmokeTest {
 
     @Test
     @DisplayName("新格式 id：能取到详情，且下游读取的两条路径非空")
-    void 新格式id() throws IOException {
+    void newFormatId() throws IOException {
         BilibiliDynamicResp.Data.Card card = new Dynamic().getDynamicDetail(NEW_FORMAT_ID);
 
         assertNotNull(card, "card 不能为 null");
@@ -63,7 +61,7 @@ class DynamicSmokeTest {
 
     @Test
     @DisplayName("旧格式 id：同样能取到详情（id 格式双向兼容）")
-    void 旧格式id() throws IOException {
+    void legacyFormatId() throws IOException {
         BilibiliDynamicResp.Data.Card card = new Dynamic().getDynamicDetail(OLD_FORMAT_ID);
         assertNotNull(card.getDesc().getDynamic_id_str());
         assertNotNull(card.getDesc().getUser_profile().getInfo().getUname());
@@ -74,7 +72,7 @@ class DynamicSmokeTest {
 
     @Test
     @DisplayName("不存在的 id：抛 IOException（不是 RuntimeException 穿透），且消息里带 B 站错误码")
-    void 不存在的id() {
+    void nonExistentId() {
         // 关键回归点：失败必须落在签名声明的 IOException 上，
         // 否则下游 XatiiBot 的 catch (IOException) 兜不住，会把消息处理器打挂
         IOException e = assertThrows(IOException.class,
@@ -86,7 +84,7 @@ class DynamicSmokeTest {
 
     @Test
     @DisplayName("空 id：仍抛 BilibiliException（调用方编程错误，不走 IOException）")
-    void 空id() {
+    void blankId() {
         assertThrows(RuntimeException.class, () -> new Dynamic().getDynamicDetail(""));
     }
 
@@ -108,7 +106,7 @@ class DynamicSmokeTest {
      */
     @Test
     @DisplayName("P2-A-1：desktop feed 的 pub_text 是相对时间文案（含'刚刚'的可能性）")
-    void pub_text是相对时间文案() throws Exception {
+    void pubTextIsRelativeTimeText() throws Exception {
         // 连续调 3 次，验证「新身份首次调 feed 是否静默返空」这一现象（2026-09-13 实测发现）
         int[] sizes = new int[3];
         for (int i = 0; i < 3; i++) {
@@ -148,7 +146,7 @@ class DynamicSmokeTest {
      */
     @Test
     @DisplayName("P2-A-2：置顶 tag 与各类型动态的字段映射（DRAW/AV/FORWARD 覆盖率）")
-    void tag与字段映射() throws Exception {
+    void tagAndFieldMapping() throws Exception {
         List<Dynamic.DynamicInfo> list = new Dynamic().getDynamicInfoList(SPACE_MID);
         assertNotNull(list);
 

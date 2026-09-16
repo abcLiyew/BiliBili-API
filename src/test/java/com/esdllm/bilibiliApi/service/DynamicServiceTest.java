@@ -7,21 +7,14 @@ import com.esdllm.bilibiliApi.http.HttpPolicy;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
 import com.esdllm.bilibiliApi.render.HttpImageFetcher;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link DynamicService} 直接单测 —— 本库最复杂的一个 Service。
@@ -97,7 +90,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("正常路径：LEGACY schema → 冻结 Card 的两条下游路径都有值")
-        void 正常() throws IOException {
+        void happyPath() throws IOException {
             mock.register(DETAIL_PATH + "?id=", Files.readString(Path.of(LEGACY_FIXTURE)));
 
             BilibiliDynamicResp.Data.Card card = DynamicService.INSTANCE.getDetail("1247016318199136288");
@@ -112,14 +105,14 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("dynamicId 为 null/空 → 抛 BilibiliException（runtime，不是 IOException）")
-        void 参数校验() {
+        void argumentValidation() {
             assertThrows(BilibiliException.class, () -> DynamicService.INSTANCE.getDetail(null));
             assertThrows(BilibiliException.class, () -> DynamicService.INSTANCE.getDetail(""));
         }
 
         @Test
         @DisplayName("业务码非 0 → 抛 IOException（受检，下游 catch(IOException) 能兜住）")
-        void 业务码非零() {
+        void nonZeroBusinessCode() {
             mock.register(DETAIL_PATH + "?id=",
                     "{\"code\":4101105,\"message\":\"啥都木有\",\"data\":null}");
             IOException e = assertThrows(IOException.class,
@@ -130,7 +123,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("HTTP 412 风控 → 抛 IOException 且消息点明风控")
-        void 风控412() {
+        void riskControl412() {
             mock.register(DETAIL_PATH + "?id=", "<html>blocked</html>");
             // mock 返回 200 + HTML，会走到"响应不是合法 JSON"分支；也属 IOException
             IOException e = assertThrows(IOException.class,
@@ -140,7 +133,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("data 里没有 item → 抛 IOException")
-        void 缺item() {
+        void missingItem() {
             mock.register(DETAIL_PATH + "?id=", "{\"code\":0,\"message\":\"0\",\"data\":{}}");
             IOException e = assertThrows(IOException.class,
                     () -> DynamicService.INSTANCE.getDetail("1"));
@@ -149,7 +142,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("响应不是合法 JSON → 抛 IOException（消息含前 120 字便于排障）")
-        void 非法JSON() {
+        void invalidJson() {
             mock.register(DETAIL_PATH + "?id=", "totally-not-json");
             assertThrows(IOException.class, () -> DynamicService.INSTANCE.getDetail("1"));
         }
@@ -165,7 +158,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("正常路径：解析出 2 条，time 来自 pub_time（含 pub_action 拼接）")
-        void 正常() throws IOException {
+        void happyPath() throws IOException {
             mock.register(FEED_PATH + "?host_mid=", Files.readString(Path.of(FEED_FIXTURE)));
 
             List<Dynamic.DynamicInfo> list = DynamicService.INSTANCE.getInfoList("946974");
@@ -184,14 +177,14 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("uid 为 null/空 → 抛 BilibiliException")
-        void 参数校验() {
+        void argumentValidation() {
             assertThrows(BilibiliException.class, () -> DynamicService.INSTANCE.getInfoList(null));
             assertThrows(BilibiliException.class, () -> DynamicService.INSTANCE.getInfoList(""));
         }
 
         @Test
         @DisplayName("【失败形态 A】code=-352 风控 → 抛 BilibiliException（注意：runtime，非 IOException）")
-        void 失败形态A_风控() {
+        void failureModeA_riskControl() {
             mock.register(FEED_PATH + "?host_mid=", "{\"code\":-352,\"message\":\"-352\",\"ttl\":1}");
             // ⚠️ 实测的异常语义：getInfoList 声明了 throws IOException，但**实际抛的是
             // BilibiliException**（方法内的所有失败分支都 throw BilibiliException）。
@@ -205,7 +198,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("【失败形态 B】code=0 但 items 为空 → 换身份重试一次后仍空 → 返回空列表")
-        void 失败形态B_静默空() throws IOException {
+        void failureModeB_silentEmpty() throws IOException {
             mock.register(FEED_PATH + "?host_mid=", EMPTY_FEED);
 
             List<Dynamic.DynamicInfo> list = DynamicService.INSTANCE.getInfoList("946974");
@@ -220,7 +213,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("data 为 null → 返回空列表（不抛异常）")
-        void data为null() throws IOException {
+        void nullData() throws IOException {
             mock.register(FEED_PATH + "?host_mid=", "{\"code\":0,\"message\":\"0\",\"data\":null}");
             List<Dynamic.DynamicInfo> list = DynamicService.INSTANCE.getInfoList("946974");
             assertNotNull(list);
@@ -229,7 +222,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("items 键缺失 → 返回空列表")
-        void 缺items键() throws IOException {
+        void missingItemsKey() throws IOException {
             mock.register(FEED_PATH + "?host_mid=", "{\"code\":0,\"message\":\"0\",\"data\":{}}");
             List<Dynamic.DynamicInfo> list = DynamicService.INSTANCE.getInfoList("946974");
             assertTrue(list.isEmpty());
@@ -237,7 +230,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("响应不是合法 JSON → 抛 BilibiliException（同 getInfoList 的其它失败分支）")
-        void 非法JSON() {
+        void invalidJson() {
             mock.register(FEED_PATH + "?host_mid=", "<html>风控页</html>");
             assertThrows(BilibiliException.class,
                     () -> DynamicService.INSTANCE.getInfoList("1"));
@@ -245,7 +238,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("含无 module_dynamic 的条目 → 该条被跳过，其余正常返回（不是整列丢弃）")
-        void 跳过无module条目() throws IOException {
+        void skipsItemsWithoutModule() throws IOException {
             String mixed = "{\"code\":0,\"data\":{\"items\":["
                     // 第一条：无 modules → 跳过
                     + "{\"id_str\":\"1\",\"type\":\"DYNAMIC_TYPE_LIVE_RCMD\"},"
@@ -273,7 +266,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("第一次空、第二次有内容 → 返回第二次结果；底层被调 2 次；身份代数递增")
-        void 空后重试成功() throws IOException {
+        void emptyThenRetrySucceeds() throws IOException {
             mock.registerSequence(FEED_PATH + "?host_mid=", EMPTY_FEED,
                     Files.readString(Path.of(FEED_FIXTURE)));
 
@@ -289,7 +282,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("两次都空 → 返回空列表，且只重试一次（不循环）")
-        void 两次都空_只重试一次() throws IOException {
+        void retriesOnlyOnceWhenStillEmpty() throws IOException {
             // 给 3 个 body：若实现会循环，第 3 次就会被消费
             mock.registerSequence(FEED_PATH + "?host_mid=", EMPTY_FEED, EMPTY_FEED, EMPTY_FEED);
 
@@ -302,7 +295,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("关掉开关（rotateOnEmptyFeed=false）→ 不重试，底层只被调 1 次")
-        void 关掉开关不重试() throws IOException {
+        void noRetryWhenDisabled() throws IOException {
             HttpPolicy.setRotateOnEmptyFeed(false);
             try {
                 mock.registerSequence(FEED_PATH + "?host_mid=", EMPTY_FEED,
@@ -319,7 +312,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("第一次就非空 → 不轮换身份（不能白耗指纹）")
-        void 非空不轮换() throws IOException {
+        void noRotationWhenNotEmpty() throws IOException {
             mock.register(FEED_PATH + "?host_mid=", Files.readString(Path.of(FEED_FIXTURE)));
 
             int generationBefore = AnonymousSession.generation();
@@ -333,7 +326,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("风控码 -352 → 抛 BilibiliException，且列表层不再叠加重试（走的是另一条分支）")
-        void 风控不触发空列表重试() {
+        void riskControlDoesNotTriggerEmptyRetry() {
             // 关掉 HTTP 层的风控轮换，才能把"列表层是否额外重试"单独隔离出来观察；
             // 否则 -352 会让 BilibiliHttp 自己轮换重试一次，命中数变成 2，断言说不清是谁干的。
             HttpPolicy.setRotateOnRiskControl(false);
@@ -360,14 +353,14 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("dynamicId 为 null/空 → 抛 BilibiliException")
-        void 参数校验() {
+        void argumentValidation() {
             assertThrows(BilibiliException.class, () -> DynamicService.INSTANCE.getImg(null));
             assertThrows(BilibiliException.class, () -> DynamicService.INSTANCE.getImg(""));
         }
 
         @Test
         @DisplayName("端点全部不可用 → 抛 IOException（不返回空白图）")
-        void 取数失败() {
+        void fetchFailure() {
             // 未注册任何动态端点 → opus 与 v1/detail 都 404
             IOException e = assertThrows(IOException.class,
                     () -> DynamicService.INSTANCE.getImg("9999999999"));
@@ -385,7 +378,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("正常路径：一次请求解析多条，且每条都带 uid / userName（供调用方按订阅过滤）")
-        void 正常() throws IOException {
+        void happyPath() throws IOException {
             // 形态取自 2026-09-14 真机实测的 feed/all 响应（items[].modules.module_author.{mid,name,pub_time}）
             mock.register(FOLLOW_PATH,
                     "{\"code\":0,\"data\":{\"has_more\":true,\"items\":["
@@ -419,7 +412,7 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("含推荐项（LIVE_RCMD 无 module_dynamic）→ 仍会解析出条目，过滤是调用方的责任")
-        void 推荐项需调用方过滤() throws IOException {
+        void recommendationsFilteredByCaller() throws IOException {
             mock.register(FOLLOW_PATH,
                     "{\"code\":0,\"data\":{\"items\":[{\"id_str\":\"1\",\"type\":\"DYNAMIC_TYPE_LIVE_RCMD\","
                             + "\"modules\":{\"module_author\":{\"mid\":\"999\",\"name\":\"直播推荐\"}}},"
@@ -438,11 +431,11 @@ class DynamicServiceTest {
 
         @Test
         @DisplayName("-412 request was banned → 抛异常（这是 feed/space 被封的真实形态）")
-        void 被封() {
+        void banned() {
             mock.register(FOLLOW_PATH, "{\"code\":-412,\"message\":\"request was banned\",\"ttl\":1}");
 
             BilibiliException e = assertThrows(BilibiliException.class,
-                    () -> DynamicService.INSTANCE.getFollowFeed());
+                    DynamicService.INSTANCE::getFollowFeed);
             assertTrue(e.getMessage().contains("-412"), "实际：" + e.getMessage());
         }
     }

@@ -12,10 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link VideoService} 直接单测。
@@ -43,7 +40,7 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("按 bvid 取：正常映射")
-    void 按bvid正常() throws IOException {
+    void byBvidHappyPath() throws IOException {
         mock.register(VIEW_PATH + "?bvid=", Files.readString(Path.of(FIXTURE)));
 
         VideoInfo v = VideoService.INSTANCE.getVideoInfo("BV1tgPie2E3w");
@@ -59,7 +56,7 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("按 aid 取：正常映射")
-    void 按aid正常() throws IOException {
+    void byAidHappyPath() throws IOException {
         mock.register(VIEW_PATH + "?aid=", Files.readString(Path.of(FIXTURE)));
 
         VideoInfo v = VideoService.INSTANCE.getVideoInfo(114065439463311L);
@@ -70,7 +67,7 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("bvid 为 null → 抛 BilibiliException('BV号不能为空')")
-    void bvid为null() {
+    void bvidIsNull() {
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> VideoService.INSTANCE.getVideoInfo((String) null));
         assertTrue(e.getMessage().contains("BV号不能为空"), "实际：" + e.getMessage());
@@ -78,7 +75,7 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("aid 为 null / 0 / 负数 → 抛 BilibiliException('AV号不能为空')")
-    void aid非法() {
+    void aidInvalid() {
         assertTrue(assertThrows(BilibiliException.class,
                 () -> VideoService.INSTANCE.getVideoInfo((Long) null))
                 .getMessage().contains("AV号不能为空"));
@@ -92,7 +89,7 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("参数校验在发请求之前")
-    void 校验前置() {
+    void validationRunsFirst() {
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> VideoService.INSTANCE.getVideoInfo((Long) null));
         assertTrue(e.getMessage().contains("AV号不能为空"),
@@ -101,7 +98,7 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("业务码非 0 → 抛 BilibiliException（含错误码信息）")
-    void 业务码非零() {
+    void nonZeroBusinessCode() {
         mock.register(VIEW_PATH + "?bvid=",
                 "{\"code\":-404,\"message\":\"啥都木有\",\"data\":null}");
         BilibiliException e = assertThrows(BilibiliException.class,
@@ -111,7 +108,7 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("响应不是合法 JSON → 抛 BilibiliException（消息里带定位线索）")
-    void 非法JSON() {
+    void invalidJson() {
         mock.register(VIEW_PATH + "?bvid=", "not-a-json");
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> VideoService.INSTANCE.getVideoInfo("BV1xx"));
@@ -121,13 +118,13 @@ class VideoServiceTest {
 
     @Test
     @DisplayName("未注册路径（404）→ 抛异常")
-    void 未注册路径() {
+    void unregisteredPath() {
         assertThrows(BilibiliException.class, () -> VideoService.INSTANCE.getVideoInfo("BV1unknown"));
     }
 
     @Test
     @DisplayName("两个入口共用同一份响应解析（同一 fixture 下字段一致）")
-    void 两入口一致() throws IOException {
+    void twoEntryPointsAgree() throws IOException {
         mock.register(VIEW_PATH + "?bvid=", Files.readString(Path.of(FIXTURE)))
                 .register(VIEW_PATH + "?aid=", Files.readString(Path.of(FIXTURE)));
 

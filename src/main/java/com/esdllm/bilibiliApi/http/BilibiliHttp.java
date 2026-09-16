@@ -5,8 +5,10 @@ import com.alibaba.fastjson.JSONObject;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.parse.ErrorMapper;
 import kong.unirest.GetRequest;
+import kong.unirest.HttpRequestWithBody;
 import kong.unirest.HttpResponse;
 import kong.unirest.Unirest;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpHost;
 import org.apache.http.client.HttpClient;
@@ -65,7 +67,12 @@ public final class BilibiliHttp {
      *
      * <p><b>示例</b>：把 {@code https://api.bilibili.com/x/web-interface/view?bvid=BV1xx}
      * 改成 {@code http://127.0.0.1:8080/x/web-interface/view?bvid=BV1xx}，让本地 server 返回 fixture。
+     * -- SETTER --
+     * 设置测试 base URL（
+     *  表示关闭）。生产代码不应调用。
+
      */
+    @Setter
     private static volatile String testBaseUrl;
 
     static {
@@ -95,11 +102,6 @@ public final class BilibiliHttp {
             log.warn("关闭 Unirest cookie 管理失败（可能已有客户端先行建立），Cookie 头可能被 cookie 罐叠加：{}",
                     e.toString());
         }
-    }
-
-    /** 设置测试 base URL（{@code null} 表示关闭）。生产代码不应调用。 */
-    public static void setTestBaseUrl(String baseUrl) {
-        testBaseUrl = baseUrl;
     }
 
     /** 关闭测试 base URL 改写。生产代码不应调用。 */
@@ -141,6 +143,60 @@ public final class BilibiliHttp {
      * @return 最后一次拿到的响应
      */
     public static HttpResponse<String> get(String url, String accept, String referer) {
+        return execute(url, identity -> send(url, identity, accept, referer));
+    }
+
+    /**
+     * 发起 <b>POST（{@code application/x-www-form-urlencoded}）</b>并返回响应原文。
+     *
+     * <p>与 {@link #get(String, String, String)} 走<b>同一套</b>限流 / 重试退避 / 风控轮换 /
+     * 指纹 / 代理 —— 见 {@link #execute}。账号登录（密码 / 短信）全部是 POST，缺了这条出口，
+     * 那两条链路就只能绕过本类自己发请求，等于同时失去上面五项。
+     *
+     * <p><b>为什么用 form 而不是 JSON</b>：passport 域的登录接口都只吃
+     * {@code application/x-www-form-urlencoded}（与 B 站前端
+     * {@code curl --data-urlencode} 的形状一致）。
+     *
+     * @param url  完整地址
+     * @param form 表单字段（值不得为 null；按插入顺序提交）
+     * @return 最后一次拿到的响应
+     */
+    public static HttpResponse<String> postForm(String url, Map<String, String> form) {
+        return postForm(url, form, null, null);
+    }
+
+    /**
+     * 与 {@link #postForm(String, Map)} 相同，但可覆盖 {@code Accept} / {@code Referer}。
+     *
+     * @param url     完整地址
+     * @param form    表单字段，可为 {@code null}（按空表单发）
+     * @param accept  覆盖 {@code Accept}；{@code null}/空白表示用默认
+     * @param referer 覆盖 {@code Referer}；{@code null}/空白表示用默认
+     * @return 最后一次拿到的响应
+     */
+    public static HttpResponse<String> postForm(String url, Map<String, String> form,
+                                                String accept, String referer) {
+        Map<String, String> safeForm = form == null ? Map.of() : form;
+        return execute(url, identity -> sendPost(url, identity, safeForm, accept, referer));
+    }
+
+    /** 一次出站尝试：把"用哪一代身份发"交给调用方决定，其余（重试/轮换/退避）由 {@link #execute} 统一管 */
+    @FunctionalInterface
+    private interface Sender {
+        HttpResponse<String> send(AnonymousSession.Identity identity);
+    }
+
+    /**
+     * 重试 / 退避 / 风控轮换的<b>统一循环</b> —— GET 与 POST 共用一份，避免两套策略各自漂移。
+     *
+     * <p>策略表见类注释；这里只强调一条：{@code RISK_CONTROL} 时<b>不盲重试</b>，
+     * 而是换一副身份再试（最多 {@link HttpPolicy#getMaxRotations()} 次）。
+     *
+     * @param url    仅用于日志与最终异常消息
+     * @param sender 单次发送动作（每轮拿到当前身份）
+     * @return 最后一次拿到的响应（可能是错误状态，交由调用方语义化）
+     */
+    private static HttpResponse<String> execute(String url, Sender sender) {
         int maxAttempts = HttpPolicy.getMaxAttempts();
         int rotations = 0;
         HttpResponse<String> lastResponse = null;
@@ -150,7 +206,7 @@ public final class BilibiliHttp {
             RateLimiter.acquire();
 
             try {
-                HttpResponse<String> response = send(url, AnonymousSession.current(), accept, referer);
+                HttpResponse<String> response = sender.send(AnonymousSession.current());
                 lastResponse = response;
                 lastError = null;
 
@@ -211,7 +267,7 @@ public final class BilibiliHttp {
         url = applyTestBaseUrl(url);
         boolean customHead = (accept != null && !accept.isBlank()) || (referer != null && !referer.isBlank());
         GetRequest request = Unirest.get(url)
-                .header("User-Agent", identity.userAgent())
+                .header("User-Agent", HttpPolicy.userAgentFor(identity.userAgent()))
                 .header("Accept", accept == null || accept.isBlank() ? BilibiliEndpoint.accept : accept)
                 .header("Referer", referer == null || referer.isBlank() ? BilibiliEndpoint.referer : referer)
                 .connectTimeout(HttpPolicy.getConnectTimeoutMs())
@@ -221,11 +277,61 @@ public final class BilibiliHttp {
         if (cookie != null && !cookie.isEmpty()) {
             request.header("Cookie", cookie);
         }
+        // 显式指定过 UA 时，配套的 Client Hints 一起发（真实 Chromium 系在 HTTPS 下必带这族头，
+        // 少发就是出站形状与真人浏览器不一致）。⚠️ 这只是对齐形状：2026-09-16 真机已否定
+        // "补上 CH 就会被认成 Edge"——补齐后登录提醒依旧写「未知设备」，别再把这条当线索
+        //（真正的判据见 HttpPolicy.setCookie 的说明）。未显式指定时是空表。
+        HttpPolicy.clientHints().forEach(request::header);
         logOutgoingIdentity(identity, cookie, customHead ? "JSON+页面 Referer" : "默认文档头");
         if (HttpPolicy.hasProxy()) {
             request.proxy(HttpPolicy.getProxyHost(), HttpPolicy.getProxyPort());
         }
         return request.asString();
+    }
+
+    /**
+     * 发一次 POST（{@code application/x-www-form-urlencoded}）。
+     *
+     * <p><b>为什么用 Unirest 的 {@code fields(...)} 而不是自己拼 body</b>：
+     * 在没调 {@code multiPartContent()} 的前提下，Unirest 会把字段编码成
+     * {@code application/x-www-form-urlencoded} 并设置好 {@code Content-Type}；
+     * 而自己拼串走 {@code body(String)} 会被强制成 {@code text/plain}
+     * （{@code StringBody} 自带的内容类型），B 站登录接口不认这个形状。
+     *
+     * <p>与 {@link #send} 一样：UA / Accept / Referer / 指纹 Cookie / 超时 / 代理 一个不少，
+     * POST 不该成为绕过这套伪装的旁路。
+     *
+     * @param url      完整地址（未做测试 base 改写）
+     * @param identity 本次使用的身份
+     * @param form     表单字段
+     * @param accept   覆盖 {@code Accept}，可为 {@code null}
+     * @param referer  覆盖 {@code Referer}，可为 {@code null}
+     * @return Unirest 响应
+     */
+    private static HttpResponse<String> sendPost(String url, AnonymousSession.Identity identity,
+                                                 Map<String, String> form, String accept, String referer) {
+        String target = applyTestBaseUrl(url);
+        boolean customHead = (accept != null && !accept.isBlank()) || (referer != null && !referer.isBlank());
+        HttpRequestWithBody request = Unirest.post(target)
+                .header("User-Agent", HttpPolicy.userAgentFor(identity.userAgent()))
+                .header("Accept", accept == null || accept.isBlank() ? BilibiliEndpoint.accept : accept)
+                .header("Referer", referer == null || referer.isBlank() ? BilibiliEndpoint.referer : referer)
+                .connectTimeout(HttpPolicy.getConnectTimeoutMs())
+                .socketTimeout(HttpPolicy.getSocketTimeoutMs());
+
+        String cookie = composeCookie(identity.cookie());
+        if (cookie != null && !cookie.isEmpty()) {
+            request.header("Cookie", cookie);
+        }
+        // 与 send() 同理：UA 与 CH 同源发送（只是对齐形状，不是「未知设备」的解药 ——
+        // 真机已否定该推断，见 HttpPolicy.setUserAgent 的说明）
+        HttpPolicy.clientHints().forEach(request::header);
+        logOutgoingIdentity(identity, cookie, customHead ? "JSON+页面 Referer(POST)" : "默认文档头(POST)");
+        if (HttpPolicy.hasProxy()) {
+            request.proxy(HttpPolicy.getProxyHost(), HttpPolicy.getProxyPort());
+        }
+        Map<String, Object> fields = new LinkedHashMap<>(form);
+        return request.fields(fields).asString();
     }
 
     /** 上一次打印过的出站身份签名：只在"身份构成变化"时打一行，避免每轮刷屏 */
@@ -259,17 +365,24 @@ public final class BilibiliHttp {
         String source = HttpPolicy.cookieProvidesDeviceId()
                 ? "登录 Cookie"
                 : (identity.hasCookie() ? "匿名指纹" : "无");
-        String signature = keysOf(composedCookie) + "|" + source + "|" + requestShape;
+        String ua = HttpPolicy.userAgentFor(identity.userAgent());
+        Map<String, String> hints = HttpPolicy.clientHints();
+        String hintNames = hints.isEmpty() ? "无" : String.join(",", hints.keySet());
+        // 签名里必须带上 UA 与 CH：UA 改了却因为"身份没变"而不重打日志，
+        // 排障时就会看到一行**过期**的 UA —— 比没有日志更误导（"我明明设了"）
+        String signature = keysOf(composedCookie) + "|" + source + "|" + requestShape
+                + "|" + ua + "|" + hintNames;
         if (signature.equals(LAST_IDENTITY_SIGNATURE.getAndSet(signature))) {
             return;
         }
         if (!hasCookie) {
-            log.warn("出站身份：未携带任何 Cookie（匿名端点会被判 412）；指纹来源={}，请求头={}",
-                    source, requestShape);
+            log.warn("出站身份：未携带任何 Cookie（匿名端点会被判 412）；指纹来源={}，请求头={}，"
+                            + "UA=\"{}\"，ClientHints={}",
+                    source, requestShape, brief(ua, 40), hintNames);
             return;
         }
-        log.info("出站身份：Cookie 键=[{}]，设备指纹来源={}，请求头={}，UA=\"{}\"",
-                keysOf(composedCookie), source, requestShape, brief(identity.userAgent(), 40));
+        log.info("出站身份：Cookie 键=[{}]，设备指纹来源={}，请求头={}，UA=\"{}\"，ClientHints={}",
+                keysOf(composedCookie), source, requestShape, brief(ua, 40), hintNames);
     }
 
     /** 取 Cookie 的键名（逗号分隔，值不出），纯日志用 */
@@ -288,7 +401,7 @@ public final class BilibiliHttp {
             if (key.isEmpty()) {
                 continue;
             }
-            if (sb.length() > 0) {
+            if (!sb.isEmpty()) {
                 sb.append(',');
             }
             sb.append(key);
@@ -386,13 +499,14 @@ public final class BilibiliHttp {
     public static org.apache.http.HttpResponse getNoRedirect(String url) throws IOException {
         url = applyTestBaseUrl(url);
         HttpGet request = new HttpGet(url);
-        request.setHeader("User-Agent", AnonymousSession.userAgent());
+        request.setHeader("User-Agent", HttpPolicy.userAgentFor(AnonymousSession.userAgent()));
         request.setHeader("Accept", BilibiliEndpoint.accept);
         request.setHeader("Referer", BilibiliEndpoint.referer);
         String cookie = composeCookie(AnonymousSession.cookieHeader());
         if (cookie != null && !cookie.isEmpty()) {
             request.setHeader("Cookie", cookie);
         }
+        HttpPolicy.clientHints().forEach(request::setHeader);
 
         RequestConfig.Builder config = RequestConfig.custom()
                 .setConnectTimeout(HttpPolicy.getConnectTimeoutMs())

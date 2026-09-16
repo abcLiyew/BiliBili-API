@@ -1,10 +1,6 @@
 package com.esdllm.bilibiliApi.contract;
 
-import com.esdllm.bilibiliApi.bilibiliApi.BilibiliClient;
-import com.esdllm.bilibiliApi.bilibiliApi.CardInfo;
-import com.esdllm.bilibiliApi.bilibiliApi.Dynamic;
-import com.esdllm.bilibiliApi.bilibiliApi.Live;
-import com.esdllm.bilibiliApi.bilibiliApi.ShortChain;
+import com.esdllm.bilibiliApi.bilibiliApi.*;
 import com.esdllm.bilibiliApi.common.ShotChainInfo;
 import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
@@ -15,20 +11,12 @@ import org.junit.jupiter.api.Test;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
+import java.lang.reflect.*;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * 门面冻结契约测试。
@@ -124,8 +112,7 @@ class FacadeContractTest {
     private static void assertListOf(Class<?> owner, String name, Class<?> elementType, Class<?>... params) {
         Method m = locate(owner, name, params);
         Type generic = m.getGenericReturnType();
-        assertTrue(generic instanceof ParameterizedType,
-                () -> owner.getName() + "#" + name + " 应返回 List<...>");
+        assertInstanceOf(ParameterizedType.class, generic, () -> owner.getName() + "#" + name + " 应返回 List<...>");
         ParameterizedType pt = (ParameterizedType) generic;
         assertEquals(List.class, pt.getRawType(), "原始类型应是 java.util.List");
         assertEquals(elementType, pt.getActualTypeArguments()[0],
@@ -182,7 +169,8 @@ class FacadeContractTest {
     class LiveFacade {
 
         @Test
-        void 方法签名() {
+        @DisplayName("Live 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
             assertClassInFacadePackage(Live.class);
             assertPublicNoArgCtor(Live.class);
 
@@ -210,7 +198,8 @@ class FacadeContractTest {
     class CardInfoFacade {
 
         @Test
-        void 方法签名() {
+        @DisplayName("CardInfo 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
             assertClassInFacadePackage(CardInfo.class);
             assertPublicNoArgCtor(CardInfo.class);
             assertSignature(CardInfo.class, "getUserName", String.class, Long.class);
@@ -222,7 +211,8 @@ class FacadeContractTest {
     class BilibiliClientFacade {
 
         @Test
-        void 方法签名() {
+        @DisplayName("BilibiliClient 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
             assertClassInFacadePackage(BilibiliClient.class);
             assertPublicNoArgCtor(BilibiliClient.class);
 
@@ -247,7 +237,8 @@ class FacadeContractTest {
     class ShortChainFacade {
 
         @Test
-        void 方法签名() {
+        @DisplayName("ShortChain 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
             assertClassInFacadePackage(ShortChain.class);
             assertPublicNoArgCtor(ShortChain.class);
 
@@ -276,7 +267,7 @@ class FacadeContractTest {
 
         @Test
         @DisplayName("必须是 Dynamic 的 public static 内部类（下游按 Dynamic.DynamicInfo 引用）")
-        void 嵌套类型() {
+        void nestedTypes() {
             Class<?> info = Dynamic.DynamicInfo.class;
             assertTrue(Modifier.isPublic(info.getModifiers()), "DynamicInfo 必须 public");
             assertTrue(Modifier.isStatic(info.getModifiers()),
@@ -286,7 +277,7 @@ class FacadeContractTest {
 
         @Test
         @DisplayName("字段名/类型不变（Lombok getter 依赖它们）")
-        void 字段() {
+        void fields() {
             Class<?> info = Dynamic.DynamicInfo.class;
             assertField(info, "dynamicId", String.class);
             assertField(info, "tag", String.class);
@@ -303,7 +294,7 @@ class FacadeContractTest {
 
         @Test
         @DisplayName("下游实际调用的 4 个 getter 必须在且返回 String")
-        void 下游使用的getter() {
+        void gettersUsedByDownstream() {
             Class<?> info = Dynamic.DynamicInfo.class;
             assertSignature(info, "getTime", String.class);
             assertSignature(info, "getBvid", String.class);
@@ -318,7 +309,7 @@ class FacadeContractTest {
 
         @Test
         @DisplayName("嵌套链路 Data.Card.Desc.UserProfile.Info 全部保留")
-        void 嵌套结构() {
+        void nestedStructure() {
             assertNotNull(BilibiliDynamicResp.Data.class);
             assertNotNull(BilibiliDynamicResp.Data.Card.class);
             assertNotNull(BilibiliDynamicResp.Data.Card.Desc.class);
@@ -336,7 +327,7 @@ class FacadeContractTest {
 
         @Test
         @DisplayName("下游实际读取的两条路径：desc.dynamic_id_str 与 desc.user_profile.info.uname")
-        void 下游使用的路径() {
+        void pathsUsedByDownstream() {
             Class<?> card = BilibiliDynamicResp.Data.Card.class;
             assertSignature(card, "getDesc", BilibiliDynamicResp.Data.Card.Desc.class);
 
@@ -355,7 +346,7 @@ class FacadeContractTest {
 
     @Test
     @DisplayName("5 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
-    void 门面包名不变() {
+    void facadePackageNamesUnchanged() {
         List<Class<?>> facades = List.of(Dynamic.class, Live.class, CardInfo.class, BilibiliClient.class, ShortChain.class);
         for (Class<?> facade : facades) {
             assertClassInFacadePackage(facade);

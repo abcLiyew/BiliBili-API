@@ -138,6 +138,135 @@ public class BilibiliEndpoint {
     /** 关注流页面地址，用作该端点的 Referer（与真实网页一致）。 */
     public static final String followFeedReferer = "https://t.bilibili.com/";
 
+    // ---------------------------------------------------------------- 登录（passport 域）
+
+    /**
+     * {@code x/passport-login/web/qrcode/generate} —— <b>申请登录二维码</b>。
+     *
+     * <p>GET、<b>无参数、无鉴权</b>，返回二维码内容（一个登录页 URL）与 32 字符的
+     * {@code qrcode_key}。密钥<b>有效期 180 秒</b>，超时后必须重新申请（旧 key 再轮询只会拿到 86038）。
+     *
+     * <p>注意域名是 {@code passport.bilibili.com}，<b>不是</b>数据域 {@code api.bilibili.com} ——
+     * 登录域与数据域是两套，拼相对路径时会踩空。
+     */
+    public static final String passportQrCodeUrl = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate";
+
+    /**
+     * {@code x/passport-login/web/qrcode/poll?qrcode_key=} —— <b>轮询扫码状态</b>。
+     *
+     * <p>⚠️ <b>本端点最大的坑</b>：外层 {@code code} <b>恒为 0</b>（含义是"这个接口调用成功了"），
+     * 真正的扫码状态在 {@code data.code} 里（{@code 0} / 86038 / 86090 / 86101）。
+     * 只读外层码会把"还没扫码"当成"登录成功"，然后拿着空凭据继续跑 —— 且全程不报错。
+     * 判状态一律用 {@code data.code}，见 {@link com.esdllm.bilibiliApi.model.data.pojo.login.QrLoginState}。
+     *
+     * <p>⚠️ <b>第二个坑（2026-09-16 真机实测，文档已过时）</b>：登录成功后下发的
+     * {@code data.url} <b>只有一枚 ticket，不含任何凭据</b>：
+     * <pre>
+     * <a href="https://passport.biligame.com/x/passport-login/web/crossDomain?ticket=">...</a>…&amp;gourl=…&amp;first_domain=.bilibili.com
+     * </pre>
+     * 四项 Cookie（{@code SESSDATA} / {@code bili_jct} / {@code DedeUserID} /
+     * {@code DedeUserID__ckMd5}）是随响应的 {@code Set-Cookie} <b>响应头</b>下发的。
+     * 沿用老文档"从 {@code data.url} 解析凭据"的写法<b>必然失败且毫无痕迹</b>
+     * （HTTP 200、无异常、日志一行没有）—— 真机第一次扫码就是栽在这里。
+     *
+     * <p>本库确实<b>刻意关掉了</b> Unirest 的 cookie 罐（见 {@code BilibiliHttp} 静态块），
+     * 但那只关掉"回放"，原始响应头照旧可读。取凭据因此是三级：
+     * {@code Set-Cookie}（主）→ {@code data.url}（兼容旧格式）→ 响应原文（兜底），
+     * 见 {@code LoginService#credentialOf}。任一来源都要<b>先 URL 解码</b> ——
+     * 带 {@code %2C} 的原始串不是可用凭据。
+     */
+    public static final String passportQrCodePollUrl = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=";
+
+    /**
+     * passport 域的 Referer（登录页）。
+     *
+     * <p>登录类端点若发数据域的站根 Referer（{@link #referer}），与真实浏览器形状不符：
+     * 用户是"在登录页扫码"的，Referer 应当是登录页本身。
+     */
+    public static final String passportReferer = "https://passport.bilibili.com/login";
+
+    /**
+     * {@code x/passport-login/captcha?source=main_web} —— <b>申请验证码前置信息</b>。
+     *
+     * <p>GET、无参数（{@code source} 除外）、无鉴权。密码登录与短信登录都要先过它，
+     * 拿到三件套：{@code token}（B 站侧的登录令牌）、{@code geetest.gt}、
+     * {@code geetest.challenge}（极验侧参数）。
+     *
+     * <p>⚠️ <b>返回的不是"一张图"</b>（2026-09-16 实测）：{@code type} 恒为 {@code geetest}，
+     * 是<b>极验 v3 全屏版</b>（背景图 + 滑动/点选，且提交时必须带一个本地 JS 生成的 {@code w} 参数
+     * —— 操作轨迹 + 浏览器指纹）。因此它<b>无法</b>像图形验证码那样"渲染成图让用户输入"，
+     * 只能由调用方在浏览器里用极验官方 JS 过验，再把 {@code validate} / {@code seccode} 回传。
+     * 本库因此<b>不含任何浏览器/打码逻辑</b>，只负责"把参数交给你、把你过验的结果送出去"。
+     *
+     * <p>响应里另有 {@code tencent:{appid:""}} 字段（实测为空）。若哪天 {@code type} 变成腾讯系，
+     * 说明验证码换了供应商 —— 届时本库的 {@code GeeTestValidation} 参数会直接被拒，
+     * 且异常里会带上原始响应，不会静默失败。
+     */
+    public static final String passportCaptchaUrl =
+            "https://passport.bilibili.com/x/passport-login/captcha?source=main_web";
+
+    /**
+     * {@code x/passport-login/web/key} —— <b>取 RSA 公钥与盐</b>（密码登录专用）。
+     *
+     * <p>GET、无参数、无鉴权。响应 {@code data} 含两项：{@code hash}（16 字符盐，
+     * <b>有效期仅 20 秒</b>）与 {@code key}（PEM 格式 RSA 公钥）。
+     *
+     * <p>密码的加密口径：{@code base64(RSA_PKCS1(hash + 明文密码))} ——
+     * 盐拼在明文<b>前面</b>、一并加密，输出 base64（不是 hex）。
+     * 因为它与 {@code /login} 之间有 20 秒窗口，两者必须<b>紧挨着</b>调用，
+     * 不要在中间插入其它请求或让用户交互。
+     */
+    public static final String passportWebKeyUrl = "https://passport.bilibili.com/x/passport-login/web/key";
+
+    /**
+     * {@code x/passport-login/web/login} —— <b>账号密码登录</b>。
+     *
+     * <p>POST {@code application/x-www-form-urlencoded}。参数：
+     * {@code username}（手机号或邮箱）、{@code password}（上一步的 base64 密文）、
+     * {@code keep=0}、{@code source=main_web}，以及极验四件套
+     * {@code token} / {@code challenge} / {@code validate} / {@code seccode}。
+     *
+     * <p><b>凭据同样走 {@code Set-Cookie}</b>（与扫码登录一致，见
+     * {@link #passportQrCodePollUrl} 的说明）；{@code data.url} 是游戏分站跨域地址，
+     * 有时带凭据、有时只有 ticket，因此取凭据仍是三级回退。
+     *
+     * <p>⚠️ {@code data.message} 可能是"本次登录环境存在风险, 需使用手机号进行验证或绑定" ——
+     * 这是<b>风控要求二次验证</b>，不是网络错误。本库会把它原样带进异常，交由调用方决定是否走短信链路。
+     */
+    public static final String passportWebLoginUrl = "https://passport.bilibili.com/x/passport-login/web/login";
+
+    /**
+     * {@code x/passport-login/web/sms/send} —— <b>发送短信验证码</b>（短信登录第一步）。
+     *
+     * <p>POST form。参数：{@code cid}（国际冠字码，中国大陆为 {@code 86}）、{@code tel}、
+     * {@code source=main_web}，以及极验四件套。
+     *
+     * <p>响应 {@code data.captcha_key} 是第二步的凭据。<b>两条时效约束</b>：
+     * 同一手机号 <b>60 秒</b>内只能发一次（重复发返回 {@code 1003}），
+     * 验证码本身 <b>5 分钟</b>过期（过期返回 {@code 1007}）。
+     *
+     * <p>⚠️ 极验的 {@code validate} 是<b>一次性</b>的：用过一次就失效，再次提交返回 {@code 2406}。
+     * 所以"发短信"与"密码登录"<b>不能共用同一份过验结果</b>，必须各过各的。
+     */
+    public static final String passportSmsSendUrl = "https://passport.bilibili.com/x/passport-login/web/sms/send";
+
+    /**
+     * {@code x/passport-login/web/login/sms} —— <b>用短信验证码登录</b>（短信登录第二步）。
+     *
+     * <p>POST form。参数：{@code cid}、{@code tel}、{@code code}（用户收到的 6 位数字）、
+     * {@code source=main_web}、{@code captcha_key}（上一步返回）。
+     *
+     * <p><b>本步不需要极验</b> —— 人工门槛只有"手机收码"这一个，这也是短信登录相对密码登录
+     * 的唯一优势（代价是每次登录都要收码，不可能是无人值守的形态）。
+     */
+    public static final String passportSmsLoginUrl = "https://passport.bilibili.com/x/passport-login/web/login/sms";
+
+    /** 登录来源：独立登录页（网页版默认）。{@code main_mini} 是小窗登录，本库不用 */
+    public static final String passportLoginSource = "main_web";
+
+    /** 中国大陆国际冠字码。短信登录默认用它，境外号码需另行指定 */
+    public static final String passportCidChina = "86";
+
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**
      * @deprecated 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线
