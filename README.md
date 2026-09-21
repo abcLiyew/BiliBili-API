@@ -105,7 +105,7 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 ```bash
 mvn install
 ```
-- 2 在[Release](https://github.com/abcLiyew/BiliBili-API/releases/tag/beta)中下载最新版本的jar包，并将其复制到本地Maven仓库中。
+- 2 在[Release](https://github.com/abcLiyew/BiliBili-API/releases/tag/0.9.29-beta)中下载最新版本的jar包，并将其复制到本地Maven仓库中。
 在你的Maven项目中，将以上代码添加到`pom.xml`文件的`<dependencies>`标签内，即可引入本库。
 ```xml
 <dependency>
