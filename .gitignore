@@ -36,4 +36,17 @@ build/
 
 ### Mac OS ###
 .DS_Store
-/src/test/
+
+### 测试运行时产物（截图） ###
+/screenshot.png
+/dynamic.png
+/dynamic_content_full.png
+/full_screenshot_debug.png
+/.idea/
+
+### 工作区/AI 记忆与内部文档（不入库） ###
+/.workbuddy/
+/REFACTOR_PLAN.md
+/REFACTOR_PLAN_REVIEW.md
+/INTERFACE_PLAN.md
+*.tmp.txt

@@ -1,209 +1,101 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
-
-
-import com.alibaba.fastjson.JSON;
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.BilibiliCardResp;
 import com.esdllm.bilibiliApi.model.data.pojo.Card;
-import kong.unirest.HttpResponse;
+import com.esdllm.bilibiliApi.service.UserService;
 
 import java.io.IOException;
 import java.util.Objects;
 
 /**
- * @decription 名片信息获取
+ * 名片信息获取门面。
+ *
+ * <p>P1 起本门面的数据获取部分迁到 {@code service.UserService.getCard(Long)}，
+ * 本门面仅做"取一次 → 单槽缓存 → 字段映射"。
+ *
+ * <p><b>单槽缓存</b>（§6.4 "现状即如此，别改坏"）：{@link #resp} 字段沿用现状，
+ * 跨多次 getter 复用，避免对同一 uid 重复打接口。{@code isCached(uid)} 是命中检查。
+ *
  * @author 饿死的流浪猫
  */
 public class CardInfo {
+    /** 单槽缓存，与原版逐字保持一致（非线程安全——见 §6.4）。 */
     private BilibiliCardResp resp;
-    private static final String BaseUrl = BilibiliConfig.cardBaseUrl;
 
     /**
-     * 获取Bilibili名片信息
-     * @param bilibiliUid bilibili用户的Uid
-     * @return BilibiliCardResp对象
+     * 获取 Bilibili 名片信息（每次调 {@link UserService#getCard} 取一次结果写入 {@link #resp}）。
+     *
+     * @param bilibiliUid bilibili 用户的 uid
+     * @return 不可为 null 的 {@link BilibiliCardResp}
+     * @throws BilibiliException uid 为空 / ≤ 0、网络/JSON/业务错误
+     * @throws IOException 保留的 {@code throws} 声明——实现路径上并不会抛（Service 层已转译）
+     * @deprecated 见 §2.1，必保签名——保留兼容，XatiiBot 不直接调，仅保留给历史引用方
      */
+    @Deprecated
     public BilibiliCardResp getBilibiliLiveResp(Long bilibiliUid) throws BilibiliException, IOException {
-        if (Objects.isNull(bilibiliUid)){
-        throw new BilibiliException("uid不能为空");
-        }
-        if (bilibiliUid <= 0){
-            throw new BilibiliException("uid不能小于0");
-        }
-        if (resp!=null&&resp.getData().getCard().getMid().equals(bilibiliUid.toString())){
+        return loadCard(bilibiliUid);
+    }
+
+    /**
+     * 取卡片信息：缓存命中直接复用，否则重新拉取并统一转成 {@link BilibiliException}。
+     */
+    private BilibiliCardResp loadCard(Long bilibiliUid) {
+        if (isCached(bilibiliUid)) {
             return resp;
         }
-        String url = BaseUrl + bilibiliUid;
-
-        HttpResponse<String> response = ApiBase.getCloseableHttpResponse(url);
-
-        BilibiliCardResp resp;
-        try {
-            resp = JSON.parseObject(response.getBody(), BilibiliCardResp.class);
-        }catch (Exception e){
-            throw new  BilibiliException(e);
-        }
-        if (Objects.isNull(resp.getData())||resp.getCode()!=0){
-            throw new BilibiliException("获取卡片信息失败");
-        }
-        this.resp = resp;
-        return resp;
+        BilibiliCardResp card = UserService.INSTANCE.getCard(bilibiliUid);
+        this.resp = card;
+        return card;
     }
 
     /**
-     * 获取用户稿件数量
-     * @param bilibiliUid bilibili用户的Uid
-     * @return int 用户稿件数量
+     * 判断当前缓存是否命中指定 uid（参 §6.4）。
      */
-    public Integer getArchiveCount(Long bilibiliUid)  {
-        if (Objects.isNull(resp)){
-            try {
-                return getBilibiliLiveResp(bilibiliUid).getData().getArchive_count();
-            } catch (IOException e) {
-                throw new BilibiliException("获取卡片信息失败"+e);
-
-            }
+    private boolean isCached(Long bilibiliUid) {
+        if (resp == null || resp.getData() == null || resp.getData().getCard() == null) {
+            return false;
         }
-        if (resp.getData().getCard().getMid().equals(bilibiliUid.toString())){
-            return resp.getData().getArchive_count();
-        }
-        try {
-            return getBilibiliLiveResp(bilibiliUid).getData().getArchive_count();
-        } catch (IOException e) {
-            throw new  BilibiliException(e);
-        }
+        return Objects.equals(resp.getData().getCard().getMid(), String.valueOf(bilibiliUid));
     }
 
-    /**
-     * 获取用户名片信息
-     * @param bilibiliUid bilibili用户的Uid
-     * @return 名片信息
-     */
-
-    public Card getCard(Long bilibiliUid)  {
-       try {
-           return getBilibiliLiveResp(bilibiliUid).getData().getCard();
-       } catch (IOException e) {
-           throw new  BilibiliException(e);
-       }
-     }
-
-    /**
-     * 获取用户名
-     * @param bilibiliUid bilibili用户的Uid
-     * @return String 用户名
-     */
-    public String getUserName(Long bilibiliUid)  {
-        if (Objects.isNull(resp)) {
-            try {
-                return getBilibiliLiveResp(bilibiliUid).getData().getCard().getName();
-            } catch (IOException e) {
-                throw new  BilibiliException("获取卡片信息失败"+e);
-
-            }
-        }
-        if (resp.getData().getCard().getMid().equals(bilibiliUid.toString())){
-            return resp.getData().getCard().getName();
-        }
-        try {
-            return getBilibiliLiveResp(bilibiliUid).getData().getCard().getName();
-        } catch (IOException e) {
-            throw new  BilibiliException(e);
-        }
+    /** 用户稿件数量 */
+    public Integer getArchiveCount(Long bilibiliUid) {
+        return loadCard(bilibiliUid).getData().getArchive_count();
     }
-    /**
-     * 获取用户头像
-     * @param bilibiliUid bilibili用户的Uid
-     * @return String 用户头像url
-     */
+
+    /** 名片核心信息 */
+    public Card getCard(Long bilibiliUid) {
+        return loadCard(bilibiliUid).getData().getCard();
+    }
+
+    /** 用户名 */
+    public String getUserName(Long bilibiliUid) {
+        return loadCard(bilibiliUid).getData().getCard().getName();
+    }
+
+    /** 用户头像 URL */
     public String getFace(Long bilibiliUid) {
-        if (Objects.isNull(resp)){
-            try {
-                return getBilibiliLiveResp(bilibiliUid).getData().getCard().getFace();
-            } catch (IOException e) {
-                throw new  BilibiliException("获取卡片信息失败"+e);
-
-            }
-        }
-        if (resp.getData().getCard().getMid().equals(bilibiliUid.toString())){
-            return resp.getData().getCard().getFace();
-        }
-        try {
-            return getBilibiliLiveResp(bilibiliUid).getData().getCard().getFace();
-        } catch (IOException e) {
-            throw new  BilibiliException(e);
-        }
+        return loadCard(bilibiliUid).getData().getCard().getFace();
     }
-    /**
-     * 获取用户等级
-     * @param bilibiliUid bilibili用户的Uid
-     * @return Integer 用户等级
-     */
+
+    /** 用户等级 */
     public Integer getLevel(Long bilibiliUid) {
-        if (Objects.isNull(resp)){
-            try {
-                return getBilibiliLiveResp(bilibiliUid).getData().getCard().getLevel_info().getCurrent_level();
-            } catch (IOException e) {
-                throw new  BilibiliException("获取卡片信息失败"+e);
-
-            }
-        }
-        if (resp.getData().getCard().getMid().equals(bilibiliUid.toString())){
-            return resp.getData().getCard().getLevel_info().getCurrent_level();
-        }
-        try {
-            return getBilibiliLiveResp(bilibiliUid).getData().getCard().getLevel_info().getCurrent_level();
-        } catch (IOException e) {
-            throw new  BilibiliException(e);
-        }
+        return loadCard(bilibiliUid).getData().getCard().getLevel_info().getCurrent_level();
     }
-    /**
-     * 获取用户签名
-     * @param bilibiliUid bilibili用户的Uid
-     * @return String 用户签名
-     */
+
+    /** 用户签名 */
     public String getSign(Long bilibiliUid) {
-        if (Objects.isNull(resp)) {
-            try {
-                return getBilibiliLiveResp(bilibiliUid).getData().getCard().getSign();
-            } catch (IOException e) {
-                throw new  BilibiliException("获取卡片信息失败"+e);
+        return loadCard(bilibiliUid).getData().getCard().getSign();
+    }
 
-            }
-        }
-        if (resp.getData().getCard().getMid().equals(bilibiliUid.toString())){
-            return resp.getData().getCard().getSign();
-        }
-        try {
-            return getBilibiliLiveResp(bilibiliUid).getData().getCard().getSign();
-        } catch (IOException e) {
-            throw new  BilibiliException(e);
-        }
-    }
-    /**
-     * 获取用户粉丝数
-     * @param bilibiliUid bilibili用户的Uid
-     * @return Integer 用户关注数
-     */
+    /** 用户粉丝数 */
     public Integer getFollower(Long bilibiliUid) {
-        try {
-            return getBilibiliLiveResp(bilibiliUid).getData().getFollower();
-        } catch (IOException e) {
-            throw new  BilibiliException(e);
-        }
+        return loadCard(bilibiliUid).getData().getFollower();
     }
-    /**
-     * 获取用户点赞数
-     * @param bilibiliUid bilibili用户的Uid
-     * @return Integer 用户关注数
-     */
+
+    /** 用户点赞数 */
     public Integer getLikeNum(Long bilibiliUid) {
-        try {
-            return getBilibiliLiveResp(bilibiliUid).getData().getLike_num();
-        } catch (IOException e) {
-            throw new  BilibiliException(e);
-        }
+        return loadCard(bilibiliUid).getData().getLike_num();
     }
 }

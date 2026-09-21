@@ -1,725 +1,314 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
-
-import com.alibaba.fastjson.JSON;
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
-import com.esdllm.bilibiliApi.model.BilibiliVideoResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.video.Staff;
-import kong.unirest.HttpResponse;
-import lombok.extern.slf4j.Slf4j;
+import com.esdllm.bilibiliApi.service.VideoService;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 
-@Slf4j
+/**
+ * 视频信息获取门面。
+ *
+ * <p>P1 起本门面的数据获取部分迁到 {@code service.VideoService.getVideoInfo(String/Long)}，
+ * 本门面仅做"取一次 → 单槽缓存 → 字段映射"。
+ *
+ * <p><b>单槽缓存</b>（§6.4 "现状即如此，别改坏"）：{@link #videoInfo} 字段沿用现状，
+ * 跨多次 getter 复用，避免对同一 bvid/aid 重复打接口。{@code isCached} 重载两个版本
+ * （BV 号 / AV 号）。
+ *
+ * @author 饿死的流浪猫
+ */
 public class BilibiliClient {
+
+    /** 单槽缓存，与原版逐字保持一致（非线程安全——见 §6.4）。 */
     private VideoInfo videoInfo = null;
+
     /**
-     * 获取视频信息
-     * @param bvid 视频BV号
-     * @return 视频信息
+     * 取视频信息（按 BV 号）。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @return 不可为 null 的 {@link VideoInfo}
+     * @throws IOException 业务/网络异常
      */
     public VideoInfo getVideoInfo(String bvid) throws IOException {
-        if (bvid == null ) {
-            throw new BilibiliException("BV号不能为空");
+        try {
+            return resolve(bvid);
+        } catch (BilibiliException e) {
+            throw new IOException("获取视频信息失败，错误在" + BilibiliClient.class.getName() + "，错误消息：" + e.getMessage(), e);
         }
-        if (videoInfo!=null&&videoInfo.getBvid().equals(bvid)){
-            return videoInfo;
-        }
-        String videoBaseUrl = BilibiliConfig.videoBaseUrl;
-        return getVideoInfoBase(videoBaseUrl + bvid);
     }
 
     /**
-     * 获取视频信息
-     * @param aid 视频AV号
-     * @return 视频信息
+     * 取视频信息（按 AV 号）。
+     *
+     * @param aid AV 号（数字 id）
+     * @return 不可为 null 的 {@link VideoInfo}
+     * @throws IOException 业务/网络异常
      */
     public VideoInfo getVideoInfo(Long aid) throws IOException {
-        if (aid == null||aid<=0) {
-            throw new BilibiliException("AV号不能为空");
-        }
-        if (videoInfo!=null&& Objects.equals(videoInfo.getAid(), aid)){
-            return videoInfo;
-        }
-        String videoAvBaseUrl = BilibiliConfig.videoAvBaseUrl;
-        return getVideoInfoBase(videoAvBaseUrl + aid);
-    }
-
-    /**
-     * 获取视频信息
-     * @param reqUrl 请求地址
-     * @return 视频信息
-     */
-    private VideoInfo getVideoInfoBase(String reqUrl) throws IOException {
-        HttpResponse<String> response = ApiBase.getCloseableHttpResponse(reqUrl);
-        BilibiliVideoResp resp;
         try {
-            resp = JSON.parseObject(response.getBody(), BilibiliVideoResp.class);
-        } catch (Exception e) {
-            throw new BilibiliException("获取视频信息失败 错误在"+BilibiliClient.class.getName()+"错误消息："+e);
+            return resolve(aid);
+        } catch (BilibiliException e) {
+            throw new IOException("获取视频信息失败，错误在" + BilibiliClient.class.getName() + "，错误消息：" + e.getMessage(), e);
         }
-        if (resp == null || resp.getCode() != 0) {
-            throw new BilibiliException("获取视频信息失败");
-        }
-        VideoInfo data = resp.getData();
-        videoInfo = data;
-        return data;
     }
 
     /**
-     * 获取视频av号
-     * @param bvid 视频BV号
-     * @return 视频av号
+     * 命中检查（BV 号）。
      */
-    public Long getVideoAv(String bvid) {
-        if (bvid == null ) {
+    private boolean isCached(String bvid) {
+        return videoInfo != null && bvid != null && Objects.equals(videoInfo.getBvid(), bvid);
+    }
+
+    /**
+     * 命中检查（AV 号）。
+     */
+    private boolean isCached(Long aid) {
+        return videoInfo != null && aid != null && Objects.equals(videoInfo.getAid(), aid);
+    }
+
+    /**
+     * 单槽缓存 + 委托 VideoService 取一次的统一入口。
+     */
+    private VideoInfo resolve(String bvid) {
+        if (bvid == null) {
             throw new BilibiliException("BV号不能为空");
         }
-        if (videoInfo!=null&&videoInfo.getBvid().equals(bvid)){
-            return videoInfo.getAid();
+        if (isCached(bvid)) {
+            return videoInfo;
         }
-        try {
-            return getVideoInfo(bvid).getAid();
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败 错误在"+BilibiliClient.class.getName()+"错误消息： "+e);
-        }
+        VideoInfo v = VideoService.INSTANCE.getVideoInfo(bvid);
+        videoInfo = v;
+        return v;
     }
+
     /**
-     * 获取视频bv号
-     * @param aid 视频AV号
-     * @return 视频bv号
+     * 单槽缓存 + 委托 VideoService 取一次的统一入口（AV 号版）。
      */
-    public String getVideoBv(Long aid) {
-        if (aid == null||aid<=0) {
+    private VideoInfo resolve(Long aid) {
+        if (aid == null || aid <= 0) {
             throw new BilibiliException("AV号不能为空");
         }
-        if (videoInfo!=null&& Objects.equals(videoInfo.getAid(), aid)){
-            return videoInfo.getBvid();
+        if (isCached(aid)) {
+            return videoInfo;
         }
-        try {
-            return getVideoInfo(aid).getBvid();
-        } catch (IOException e) {
-            throw new BilibiliException("获取BV号异常 错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
+        VideoInfo v = VideoService.INSTANCE.getVideoInfo(aid);
+        videoInfo = v;
+        return v;
     }
-    /**
-     * 获取视频封面url
-     * @param bvid 视频BV号
-     * @return 视频封面url
-     */
+
+    // —— 字段访问（41 个：bvid/aid 两个重载集合，共 22 个 getter）——
+
+    /** 取视频 av 号 */
+    public Long getVideoAv(String bvid) {
+        return resolve(bvid).getAid();
+    }
+
+    /** 取视频 bv 号（按 av） */
+    public String getVideoBv(Long aid) {
+        return resolve(aid).getBvid();
+    }
+
+    /** 视频封面（按 bvid） */
     public String getVideoCoverUrl(String bvid) {
-        if (videoInfo !=null&& videoInfo.getBvid().equals(bvid)){
-            return videoInfo.getPic();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+",错误消息："+e);
-        }
-        return info.getPic();
+        return resolve(bvid).getPic();
     }
-    /**
-     * 获取视频封面url
-     * @param aid 视频AV号
-     * @return 视频封面url
-     */
+
+    /** 视频封面（按 aid） */
     public String getVideoCoverUrl(Long aid) {
-        if (videoInfo !=null&& Objects.equals(videoInfo.getAid(), aid)){
-            return videoInfo.getPic();
-        }
-        try {
-            return getVideoCoverUrl(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取封面失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
+        return resolve(aid).getPic();
     }
-    /**
-     * 获取视频标题
-     * @param bvid 视频BV号
-     * @return 视频标题
-     */
+
+    /** 视频标题（按 bvid） */
     public String getVideoTitle(String bvid) {
-        if (videoInfo != null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getTitle();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频消息失败，错误在"+BilibiliClient.class.getName()+",错误消息："+e);
-        }
-        return info.getTitle();
+        return resolve(bvid).getTitle();
     }
-    /**
-     * 获取视频标题
-     * @param aid 视频AV号
-     * @return 视频标题
-     */
+
+    /** 视频标题（按 aid） */
     public String getVideoTitle(Long aid) {
-        if (videoInfo != null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getTitle();
-        }
-        try {
-            return getVideoTitle(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取标题失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
+        return resolve(aid).getTitle();
     }
-     /**
-     * 获取视频简介
-     * @param bvid 视频BV号
-     * @return 视频简介
-     */
+
+    /** 视频简介（按 bvid） */
     public String getVideoDesc(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getDesc();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
-        return info.getDesc();
+        return resolve(bvid).getDesc();
     }
-    /**
-     * 获取视频简介
-     * @param aid 视频AV号
-     * @return 视频简介
-     */
+
+    /** 视频简介（按 aid） */
     public String getVideoDesc(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getDesc();
-        }
-        try {
-            return getVideoDesc(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频简介信息失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
+        return resolve(aid).getDesc();
     }
-    /**
-     * 获取视频时长
-     * @param bvid 视频BV号
-     * @return 视频时长
-     */
+
+    /** 视频时长（按 bvid） */
     public Integer getVideoDuration(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getDuration();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频消息失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
-        return info.getDuration();
+        return resolve(bvid).getDuration();
     }
-    /**
-     * 获取视频时长
-     * @param aid 视频AV号
-     * @return 视频时长
-     */
+
+    /** 视频时长（按 aid） */
     public Integer getVideoDuration(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getDuration();
-        }
-        try {
-            return getVideoDuration(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频时长失败，错误在"+BilibiliClient.class.getName()+",错误消息："+e);
-        }
+        return resolve(aid).getDuration();
     }
-    /**
-     * 获取视频发布时间
-     * @param bvid 视频BV号
-     * @return 视频发布时间
-     */
+
+    /** 视频发布时间戳（按 bvid） */
     public Long getVideoPubdate(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getPubdate();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
-        return info.getPubdate();
+        return resolve(bvid).getPubdate();
     }
-    /**
-     * 获取视频发布时间
-     * @param aid 视频AV号
-     * @return 视频发布时间
-     */
+
+    /** 视频发布时间戳（按 aid） */
     public Long getVideoPubdate(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getPubdate();
-        }
-        try {
-            return getVideoPubdate(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取发布时间失败，错误在"+BilibiliClient.class.getName()+"，错误消息："+e);
-        }
+        return resolve(aid).getPubdate();
     }
-    /**
-     * 获取视频播放量
-     * @param bvid 视频BV号
-     * @return 视频播放量
-     */
+
+    /** 视频播放量（按 bvid） */
     public Long getVideoPlayCount(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getView();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
-        return info.getStat().getView();
+        return resolve(bvid).getStat().getView();
     }
-    /**
-     * 获取视频播放量
-     * @param aid 视频AV号
-     * @return 视频播放量
-     */
+
+    /** 视频播放量（按 aid） */
     public Long getVideoPlayCount(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getView();
-        }
-        try {
-            return getVideoPlayCount(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取播放量失败，错误在"+BilibiliClient.class.getName()+"错误消息："+e);
-        }
+        return resolve(aid).getStat().getView();
     }
-    /**
-     * 获取视频弹幕数
-     * @param bvid 视频BV号
-     * @return 视频弹幕数
-     */
+
+    /** 视频弹幕数（按 bvid） */
     public Long getVideoDanmuCount(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getDanmaku();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);
-        }
-        return info.getStat().getDanmaku();
+        return resolve(bvid).getStat().getDanmaku();
     }
-    /**
-     * 获取视频弹幕数
-     * @param aid 视频AV号
-     * @return 视频弹幕数
-     */
+
+    /** 视频弹幕数（按 aid） */
     public Long getVideoDanmuCount(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getDanmaku();
-        }
-        try {
-            return getVideoDanmuCount(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取弹幕数量失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);
-        }
+        return resolve(aid).getStat().getDanmaku();
     }
-    /**
-     * 获取视频评论数
-     * @param bvid 视频BV号
-     * @return 视频评论数
-     */
+
+    /** 视频评论数（按 bvid） */
     public Long getVideoCommentCount(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getReply();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getStat().getReply();
+        return resolve(bvid).getStat().getReply();
     }
-    /**
-     * 获取视频评论数
-     * @param aid 视频AV号
-     * @return 视频评论数
-     */
+
+    /** 视频评论数（按 aid） */
     public Long getVideoCommentCount(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getReply();
-        }
-        try {
-            return getVideoCommentCount(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getStat().getReply();
     }
-    /**
-     * 获取视频收藏数
-     * @param bvid 视频BV号
-     * @return 视频收藏数
-     */
+
+    /** 视频收藏数（按 bvid） */
     public Long getVideoFavoriteCount(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getFavorite();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getStat().getFavorite();
+        return resolve(bvid).getStat().getFavorite();
     }
-    /**
-     * 获取视频收藏数
-     * @param aid 视频AV号
-     * @return 视频收藏数
-     */
+
+    /** 视频收藏数（按 aid） */
     public Long getVideoFavoriteCount(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getFavorite();
-        }
-        try {
-            return getVideoFavoriteCount(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getStat().getFavorite();
     }
-    /**
-     * 获取视频硬币数
-     * @param bvid 视频BV号
-     * @return 视频硬币数
-     */
+
+    /** 视频硬币数（按 bvid） */
     public Long getVideoCoinCount(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getCoin();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getStat().getCoin();
+        return resolve(bvid).getStat().getCoin();
     }
-    /**
-     * 获取视频硬币数
-     * @param aid 视频AV号
-     * @return 视频硬币数
-     */
+
+    /** 视频硬币数（按 aid） */
     public Long getVideoCoinCount(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getCoin();
-        }
-        try {
-            return getVideoCoinCount(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getStat().getCoin();
     }
-    /**
-     * 获取视频分享数
-     * @param bvid 视频BV号
-     * @return 视频分享数
-     */
+
+    /** 视频分享数（按 bvid） */
     public Long getVideoShareCount(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getShare();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getStat().getShare();
+        return resolve(bvid).getStat().getShare();
     }
-    /**
-     * 获取视频分享数
-     * @param aid 视频AV号
-     * @return 视频分享数
-     */
+
+    /** 视频分享数（按 aid） */
     public Long getVideoShareCount(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getShare();
-        }
-        try {
-            return getVideoShareCount(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getStat().getShare();
     }
-    /**
-     * 获取视频当前排名
-     * @param bvid 视频BV号
-     * @return 视频当前排名
-     */
+
+    /** 视频当前排名（按 bvid） */
     public Long getVideoCurrentRank(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getNow_rank();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getStat().getNow_rank();
+        return resolve(bvid).getStat().getNow_rank();
     }
-    /**
-     * 获取视频当前排名
-     * @param aid 视频AV号
-     * @return 视频当前排名
-     */
+
+    /** 视频当前排名（按 aid） */
     public Long getVideoCurrentRank(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getNow_rank();
-        }
-        try {
-            return getVideoCurrentRank(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getStat().getNow_rank();
     }
-    /**
-     * 获取视频历史最高排名
-     * @param bvid 视频BV号
-     * @return 视频历史最高排名
-     */
+
+    /** 视频历史最高排名（按 bvid） */
     public Long getVideoHistoryRank(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStat().getHis_rank();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getStat().getHis_rank();
+        return resolve(bvid).getStat().getHis_rank();
     }
-    /**
-     * 获取视频历史最高排名
-     * @param aid 视频AV号
-     * @return 视频历史最高排名
-     */
+
+    /** 视频历史最高排名（按 aid） */
     public Long getVideoHistoryRank(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStat().getHis_rank();
-        }
-        try {
-            return getVideoHistoryRank(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getStat().getHis_rank();
     }
-    /**
-     * 获取up主的uid
-     * @param bvid 视频BV号
-     * @return up主的uid
-     */
+
+    /** up 主 uid（按 bvid） */
     public Long getVideoUpUid(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getOwner().getMid();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getOwner().getMid();
+        return resolve(bvid).getOwner().getMid();
     }
-    /**
-     * 获取up主的uid
-     * @param aid 视频AV号
-     * @return up主的uid
-     */
+
+    /** up 主 uid（按 aid） */
     public Long getVideoUpUid(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getOwner().getMid();
-        }
-        try {
-            return getVideoUpUid(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getOwner().getMid();
     }
-    /**
-     * 获取up主的昵称
-     * @param bvid 视频BV号
-     * @return up主的昵称
-     */
+
+    /** up 主昵称（按 bvid） */
     public String getVideoUpName(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getOwner().getName();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getOwner().getName();
+        return resolve(bvid).getOwner().getName();
     }
-    /**
-     * 获取up主的昵称
-     * @param aid 视频AV号
-     * @return up主的昵称
-     */
+
+    /** up 主昵称（按 aid） */
     public String getVideoUpName(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getOwner().getName();
-        }
-        try {
-            return getVideoUpName(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getOwner().getName();
     }
-    /**
-     * 获取up主的头像url
-     * @param bvid 视频BV号
-     * @return up主的头像url
-     */
+
+    /** up 主头像 URL（按 bvid） */
     public String getVideoUpFace(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getOwner().getFace();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getOwner().getFace();
+        return resolve(bvid).getOwner().getFace();
     }
-    /**
-     * 获取up主的头像url
-     * @param aid 视频AV号
-     * @return up主的头像url
-     */
+
+    /** up 主头像 URL（按 aid） */
     public String getVideoUpFace(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getOwner().getFace();
-        }
-        try {
-            return getVideoUpFace(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getOwner().getFace();
     }
-    /**
-     * 获取视频分P数
-     * @param bvid 视频BV号
-     * @return 视频分P数
-     */
+
+    /** 视频分 P 数（按 bvid） */
     public Integer getVideoPartCount(String bvid) {
-        if (videoInfo != null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getPages().size();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getPages().size();
+        return resolve(bvid).getPages().size();
     }
-    /**
-     * 获取视频分P数
-     * @param aid 视频AV号
-     * @return 视频分P数
-     */
+
+    /** 视频分 P 数（按 aid） */
     public Integer getVideoPartCount(Long aid) {
-        if (videoInfo != null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getPages().size();
-        }
-        try {
-            return getVideoPartCount(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getPages().size();
     }
-    /**
-     * 获取是否为互动视频
-     * @param bvid 视频BV号
-     * @return 是否为互动视频
-     */
+
+    /** 是否为互动视频（按 bvid） */
     public Boolean getVideoIsInteraction(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getRights().getIs_stein_gate()==1;
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getRights().getIs_stein_gate()==1;
+        return Integer.valueOf(1).equals(resolve(bvid).getRights().getIs_stein_gate());
     }
-    /**
-     * 获取是否为互动视频
-     * @param aid 视频AV号
-     * @return 是否为互动视频
-     */
+
+    /** 是否为互动视频（按 aid） */
     public Boolean getVideoIsInteraction(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getRights().getIs_stein_gate()==1;
-        }
-        try {
-            return getVideoIsInteraction(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return Integer.valueOf(1).equals(resolve(aid).getRights().getIs_stein_gate());
     }
-    /**
-     * 获取合作成员列表
-     * @param bvid 视频BV号
-     * @return 合作成员列表
-     */
+
+    /** 合作成员列表（按 bvid） */
     public List<Staff> getStaffList(String bvid) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getStaff();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getStaff();
+        return resolve(bvid).getStaff();
     }
-    /**
-     * 获取合作成员列表
-     * @param aid 视频AV号
-     * @return 合作成员列表
-     */
+
+    /** 合作成员列表（按 aid） */
     public List<Staff> getStaffList(Long aid) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getStaff();
-        }
-        try {
-            return getStaffList(getVideoInfo(aid).getBvid());
-        } catch (IOException e) {
-            throw new BilibiliException("获取合作成员失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getStaff();
     }
-    /**
-     * 获取视频分P标题
-     * @param bvid 视频BV号
-     * @param page 视频分P序号
-     * @return 视频分P标题
-     */
+
+    /** 视频分 P 标题（按 bvid） */
     public String getVideoPartTitle(String bvid, Integer page) {
-        if (videoInfo!= null && videoInfo.getBvid().equals(bvid)) {
-            return videoInfo.getPages().get(page-1).getPart();
-        }
-        VideoInfo info;
-        try {
-            info = getVideoInfo(bvid);
-        } catch (IOException e) {
-            throw new BilibiliException("获取视频信息失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
-        return info.getPages().get(page-1).getPart();
+        return resolve(bvid).getPages().get(page - 1).getPart();
     }
-    /**
-     * 获取视频分P标题
-     * @param aid 视频AV号
-     * @param page 视频分P序号
-     * @return 视频分P标题
-     */
+
+    /** 视频分 P 标题（按 aid） */
     public String getVideoPartTitle(Long aid, Integer page) {
-        if (videoInfo!= null && Objects.equals(videoInfo.getAid(), aid)) {
-            return videoInfo.getPages().get(page-1).getPart();
-        }
-        try {
-            return getVideoPartTitle(getVideoInfo(aid).getBvid(), page);
-        } catch (IOException e) {
-            throw new BilibiliException("获取分P标题失败，错误在"+BilibiliClient.class.getName()+" ，错误消息："+e);        }
+        return resolve(aid).getPages().get(page - 1).getPart();
     }
 }

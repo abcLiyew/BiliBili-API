@@ -1,35 +1,31 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
-
-
-import com.alibaba.fastjson.JSON;
-import com.esdllm.bilibiliApi.config.BilibiliConfig;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
-import kong.unirest.HttpResponse;
+import com.esdllm.bilibiliApi.service.DynamicService;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
-import org.openqa.selenium.*;
-import org.openqa.selenium.Dimension;
-import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.chrome.ChromeOptions;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Objects;
 import java.util.List;
 
+/**
+ * 动态门面。
+ *
+ * <p>P1 起本门面仅做"调 {@link DynamicService} 一次、读字段返回"；
+ * 原 {@code ApiBase} 调用、JSON 解析、schema 适配、字段映射、长图渲染数据加载等
+ * 全部迁到服务层。
+ *
+ * <p><b>红线</b>：
+ * <ul>
+ *   <li>{@link DynamicInfo} 静态内部类（§2 红线，必须保留字段名/类型不变）；</li>
+ *   <li>3 个 public 方法的签名（含 {@code throws IOException} / {@code throws InterruptedException}）逐字不变；</li>
+ *   <li>对外行为：相同入参 → 相同返回值；异常路径按 §4.8.1 转译。</li>
+ * </ul>
+ *
+ * @author 饿死的流浪猫
+ */
 @Slf4j
 public class Dynamic {
     /**
@@ -42,11 +38,11 @@ public class Dynamic {
          */
         private String dynamicId;
         /**
-         * 标签，只有置顶动态有值，并且值为“置顶"
+         * 标签，只有置顶动态有值，并且值为"置顶"
          */
         private String tag;
         /**
-         * 发布时间+动作，如“04月20日 · 发布了动态视频”，“04月20日 · 投稿了视频”，如果是直播动态则值为“直播了”
+         * 发布时间+动作，如"04月20日 · 发布了动态视频"，"04月20日 · 投稿了视频"，如果是直播动态则值为"直播了"
          */
         private String time;
         /**
@@ -69,314 +65,115 @@ public class Dynamic {
          * 转发动态ID，如果为null，则该条动态不是转发动态
          */
         private String shareDynamicId;
+        /**
+         * 发布者 UID（{@code module_author.mid}）。
+         *
+         * <p><b>2026-09-14 新增（附加字段，不改动上面任何既有字段）</b>：
+         * 关注流 {@code feed/all} 一次返回多个 UP 的动态，调用方必须靠本字段把每条动态
+         * 归到"是哪条订阅的"。{@code feed/space}（按 uid 查）场景下等于请求时的 uid。
+         */
+        private String uid;
+        /**
+         * 发布者昵称（{@code module_author.name}）。
+         *
+         * <p>2026-09-14 新增。有了它，走关注流时不必再额外调一次名片接口取昵称
+         * （少一次出站请求，而请求密度正是风控敏感项）。
+         */
+        private String userName;
     }
 
     /**
-     * 获取动态详情
-     * @param dynamicId 动态ID
+     * 获取动态详情。
+     *
+     * <p>端点：{@code x/polymer/web-dynamic/v1/detail?id={dynamicId}}（实测匿名可用）。
+     * 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线（HTTP 404）。
+     *
+     * <p><b>异常约定</b>：所有失败在门面边界统一转成签名里声明的 {@link IOException}。
+     *
+     * @param dynamicId 动态ID（opus id / dynamic id 均可，新旧格式都支持）
      * @return 动态卡片详情
-     * @throws IOException IO异常
+     * @throws IOException IO异常，或取数失败（消息里含 B 站 code 与语义化说明）
      */
     public BilibiliDynamicResp.Data.Card getDynamicDetail(String dynamicId) throws IOException {
-        if(dynamicId == null || dynamicId.isEmpty()){
-            throw new BilibiliException("动态ID不能为空");
-        }
-        BilibiliDynamicResp resp;
-        String baseUrl = BilibiliConfig.dynamicBaseUrl;
-        String url = baseUrl + dynamicId;
-
-        try  {
-            HttpResponse<String> response = ApiBase.getCloseableHttpResponse(url);
-            resp = JSON.parseObject(response.getBody(), BilibiliDynamicResp.class);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        if (Objects.isNull(resp) ||resp.getCode() != 0){
-            throw new BilibiliException("获取动态详情失败");
-        }
-        return resp.getData().getCard();
+        return DynamicService.INSTANCE.getDetail(dynamicId);
     }
 
     /**
-     * 获取动态图片
-     * @param dynamicId 动态ID
-     * @return BufferedImage 动态图片
+     * 获取动态长图（Java2D 自绘，无浏览器依赖）。
+     *
+     * <p><b>签名兼容性</b>：签名仍为 {@code throws InterruptedException}（与本方法旧实现完全一致；
+     * Java 允许声明一个从未实际抛出的受检异常，这是合法的"占位声明"）。
+     * 渲染过程中抛出的 {@link IOException} 在边界处包成 {@link RuntimeException}，与本方法
+     * 旧实现的失败语义一致。{@code XatiiBot} 侧不需要任何改动。
+     *
+     * <p><b>覆盖范围</b>：同 {@code RenderModelLoader} —— 视频/转发动态在 opus 端点返回
+     * 空 {@code modules}，由 {@code RenderModelLoader} 自动回退至 {@code v1/detail}（旧 schema）。
+     *
+     * @param dynamicId 动态 ID
+     * @return 动态长图
      */
-
     public BufferedImage getDynamicImg(String dynamicId) throws InterruptedException {
-        // 配置 ChromeOptions
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless"); // 无头模式，不打开浏览器窗口
-        options.addArguments("--disable-gpu");
-        options.addArguments("--window-size=1280,10000"); // 增加窗口宽度和高度
-        options.addArguments("--no-sandbox");
-        options.addArguments("--disable-dev-shm-usage");
-        Thread.sleep(0);
-
-        // 创建 WebDriver
-        WebDriver driver = new ChromeDriver(options);
-        Thread.sleep(0);
-        log.info("正在加载页面...");
         try {
-            driver.get(BilibiliConfig.dynamicInfoUrl + dynamicId);
-
-            // 等待页面加载完成
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(5));
-            try {
-                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-opus-view")));
-            } catch (Exception e) {
-                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-item")));
-            }
-
-
-            // 使用JavaScript移除评论区和其他不需要的元素，并展开所有折叠内容
-            ((JavascriptExecutor) driver).executeScript(
-                    "var style = document.createElement('style'); " +
-                            "style.innerHTML = 'body { font-family: \"WenQuanYi Zen Hei\", \"DejaVu Sans\", sans-serif !important; }'; " +
-                            "document.head.appendChild(style);"+
-                    "var comments = document.querySelector('.opus-module-section.comment-container'); " +
-                            "if(comments) comments.remove(); " +
-                            "var header = document.querySelector('.z-top-container'); " +
-                            "if(header) header.remove(); " +
-                            "var footer = document.querySelector('.opus-detail-app'); " +
-                            "if(footer) footer.remove(); " +
-                            "var rightPanel = document.querySelector('.bili-tabs.opus-tabs'); " +
-                            "if(rightPanel) rightPanel.remove(); " +
-                            // 尝试展开所有可能的折叠内容
-                            "var expandButtons = document.querySelectorAll('.expand-btn'); " +
-                            "expandButtons.forEach(function(btn) { btn.click(); });" +
-                            // 移除可能影响截图的浮动元素
-                            "var floatElements = document.querySelectorAll('.float-panel, .fixed-panel, .popup-panel'); " +
-                            "floatElements.forEach(function(el) { if(el) el.remove(); });" );
-
-            log.info("页面加载完成，正在截图...");
-            // 定位动态内容区域
-            WebElement dynamicContent = driver.findElement(By.cssSelector(".bili-opus-view"));
-
-            // 获取动态内容的实际高度
-            Long scrollHeight = (Long) ((JavascriptExecutor) driver).executeScript(
-                    "return arguments[0].scrollHeight", dynamicContent);
-
-            // 使用JavaScript调整内容区域的样式，确保文字不重叠
-            ((JavascriptExecutor) driver).executeScript(
-                    "var textElements = document.querySelectorAll('.opus-module-content p, .opus-module-content span, .opus-module-content div');" +
-                            "for(var i=0; i<textElements.length; i++) {" +
-                            "  var el = textElements[i];" +
-                            "  el.style.lineHeight = '1.5';" +
-                            "  el.style.letterSpacing = '0.5px';" +
-                            "  el.style.position = 'static';" +
-                            "}");
-            // 获取动态内容的宽度和位置
-            int contentWidth = dynamicContent.getRect().width;
-            int contentX = dynamicContent.getRect().x;
-            dynamicContent.getRect();
-
-
-            // 使用新方法：直接设置窗口大小为内容大小，然后一次性截图
-            Dimension originalSize = driver.manage().window().getSize();
-            // 增加额外的高度余量，宽度也增加以容纳右移的内容
-            if (scrollHeight != null) {
-                driver.manage().window().setSize(new Dimension(contentX + contentWidth-10, scrollHeight.intValue() + 300));
-            }
-
-
-            // 滚动到顶部
-            ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, 0);");
-
-            // 尝试使用分段截图方法
-            BufferedImage fullImg;
-
-            // 方法1：如果内容不是特别长，尝试一次性截图
-            if (scrollHeight!=null&&scrollHeight < 15000) {
-                File screenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
-                fullImg = ImageIO.read(screenshot);
-            } else {
-                // 方法2：内容太长，使用分段截图并拼接
-                int viewportHeight = ((Long) Objects.requireNonNull(((JavascriptExecutor) driver).executeScript(
-                        "return window.innerHeight"))).intValue();
-                int totalHeight = 0;
-                if (scrollHeight != null) {
-                    totalHeight = scrollHeight.intValue();
-                }
-
-                // 创建一个足够大的图像来存储完整页面
-                fullImg = new BufferedImage(contentX + contentWidth, totalHeight, BufferedImage.TYPE_INT_RGB);
-                Graphics2D graphics = fullImg.createGraphics();
-
-                int yPosition = 0;
-                while (yPosition < totalHeight) {
-                    // 滚动到指定位置
-                    ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, " + yPosition + ");");
-
-                    // 截取当前可见区域
-                    File screenshot = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
-                    BufferedImage partImg = ImageIO.read(screenshot);
-
-                    // 将部分图像复制到完整图像
-                    graphics.drawImage(partImg, 0, yPosition, null);
-
-                    // 移动到下一部分
-                    yPosition += viewportHeight - 100; // 减去100像素以确保重叠，避免遗漏内容
-                }
-
-                graphics.dispose();
-            }
-
-            // 计算裁剪的起始位置，确保包含右移后的内容
-            int cropX = Math.max(0, contentX-100); // 左边界留一些余量
-            int cropWidth = Math.min(contentWidth+800, fullImg.getWidth() - cropX); // 宽度加一些余量
-            int cropHeight = 0;
-            if (scrollHeight != null) {
-                cropHeight = Math.max(scrollHeight.intValue(), fullImg.getHeight());
-            }
-
-            // 确保裁剪区域不超出图像边界
-            if (cropX + cropWidth > fullImg.getWidth()) {
-                cropWidth = fullImg.getWidth() - cropX;
-            }
-            log.info("Full image size: {} x {}", fullImg.getWidth(), fullImg.getHeight());
-            log.info("Crop region: x={}, y=0, width={}, height={}", cropX, cropWidth, cropHeight);
-            BufferedImage croppedImg = fullImg.getSubimage(cropX, 0, cropWidth, cropHeight-100);
-
-
-
-            // 恢复原始窗口大小
-            driver.manage().window().setSize(originalSize);
-            return croppedImg;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        } finally {
-            driver.close();
-            driver.quit();
+            return DynamicService.INSTANCE.getImg(dynamicId);
+        } catch (IOException e) {
+            // 失败的语义与本方法旧实现（Selenium 路线）保持一致——catch-all 包成 RuntimeException
+            throw new RuntimeException("动态图片渲染失败：" + e.getMessage(), e);
         }
     }
 
     /**
-     * 获取动态列表信息
-     * @param uid 用户UID
-     * @return List<DynamicInfo> 动态列表信息
+     * 获取指定用户的空间动态列表。
+     *
+     * <p><b>实现路径</b>：桌面端动态 feed 接口（{@code x/polymer/web-dynamic/v1/feed/space}）。
+     * {@code features=itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote} 不能漏
+     * （详见 {@code BilibiliEndpoint.dynamicFeedUrl}）。
+     *
+     * <p><b>签名兼容性</b>：保留 {@code throws InterruptedException} 合法占位声明（同
+     * {@link #getDynamicImg(String)}），{@code XatiiBot} 零改动。
+     *
+     * @param uid 用户 UID
+     * @return 动态列表
      */
     public List<DynamicInfo> getDynamicInfoList(String uid) throws InterruptedException {
-        List<DynamicInfo> dynamicInfoList = new ArrayList<>();
-        DynamicInfo dynamicInfo = new DynamicInfo();
-        String url = String.format(BilibiliConfig.dynamicListUrl, uid);
-        log.info("正在获取动态列表:{}", url);
-        // 配置 ChromeOptions
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--headless"); // 无头模式，不打开浏览器窗口
-        options.addArguments("--disable-gpu");
-        options.addArguments("--window-size=2080,1920");
-        options.addArguments("--no-sandbox");
-        options.addArguments("--disable-dev-shm-usage");
-        Thread.sleep(0);
-
-        // 创建 ChromeDriver
-        WebDriver driver = new ChromeDriver(options);
-        String pageSource;
         try {
-            driver.get(url);
-            // 等待页面加载完成
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-            try {
-                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list")));
-            } catch (Exception e) {
-                wait.until(ExpectedConditions.presenceOfElementLocated(By.cssSelector(".bili-dyn-list__items")));
-
-            }  // 获取页面源代码
-            pageSource = driver.getPageSource();
-
-            log.info("正在解析页面...");
-
-            // 使用 Jsoup 解析页面
-            Document doc = null;
-            if (pageSource != null) {
-                doc = Jsoup.parse(pageSource, url);
-            }
-            Elements dynamicElements = null;
-            if (doc != null) {
-                dynamicElements = doc.getElementsByClass("bili-dyn-item");
-            }
-            if (dynamicElements != null) {
-                for (Element dynamicElement : dynamicElements) {
-                    if (!dynamicElement.getElementsByClass("bili-dyn-content__orig__author").isEmpty()){
-                        String shareDynamicId = dynamicElement.getElementsByClass("bili-dyn-content__orig__major")
-                                .get(0).getElementsByClass("dyn-card-opus")
-                                .get(0).attr("dyn-id");
-                        dynamicInfo.setShareDynamicId(shareDynamicId);
-                    }
-                    if (!dynamicElement.getElementsByClass("bili-dyn-tag__text").isEmpty()){
-                        String tag = dynamicElement.getElementsByClass("bili-dyn-tag__text").get(0).text();
-                        dynamicInfo.setTag(tag);
-                    }
-                    if (!dynamicElement.getElementsByClass("dyn-card-opus").isEmpty()&&dynamicInfo.shareDynamicId==null) {
-                        String dyn_id = dynamicElement.getElementsByClass("dyn-card-opus").get(0).attr("dyn-id");
-                        dynamicInfo.setDynamicId(dyn_id);
-                    }
-                    if (!dynamicElement.getElementsByClass("bili-dyn-time fs-small bili-ellipsis").isEmpty()){
-                        String time = dynamicElement.getElementsByClass("bili-dyn-time fs-small bili-ellipsis").get(0).text();
-                        dynamicInfo.setTime(time);
-                    }
-                    if (!dynamicElement.getElementsByClass("dyn-card-opus__title").isEmpty()&&dynamicInfo.dynamicId!=null){
-                        String title = dynamicElement.getElementsByClass("dyn-card-opus__title").get(0).text();
-                        dynamicInfo.setTitle(title);
-                    }
-                    if (!dynamicElement.getElementsByClass("bili-rich-text__content").isEmpty()){
-                        String desc = dynamicElement.getElementsByClass("bili-rich-text__content").get(0).text();
-                        dynamicInfo.setDesc(desc);
-                    }
-                    if(!dynamicElement.getElementsByTag("img").isEmpty()){
-                        List<String> imageUrl = new ArrayList<>();
-                        for (Element img : dynamicElement.getElementsByTag("img")) {
-                            String src = img.attr("src");
-                            if (src.startsWith("//")) {
-                                src = "https:" + src;
-                            }
-                            if (src.indexOf('@')>0){
-                                src = src.substring(0, src.indexOf('@'));
-                            }
-                            if (src.isEmpty()){
-                                continue;
-                            }
-                            if (imageUrl.contains(src)){
-                                continue;
-                            }
-                            if (!src.contains("i0.hdslb.com/bfs/")){
-                                continue;
-                            }
-                            if (src.contains("emote")||src.contains("face")){
-                                continue;
-                            }
-                            imageUrl.add(src);
-                        }
-                        dynamicInfo.setImageUrl(imageUrl);
-                    }
-                    if (!dynamicElement.getElementsByTag("a").isEmpty()){
-                        for (Element a : dynamicElement.getElementsByTag("a")) {
-                            if (!a.attr("href").isEmpty()){
-                                String videoUrl = a.attr("href");
-                                if (videoUrl.startsWith("//")){
-                                    videoUrl = videoUrl.substring(2);
-                                }
-                                String[] split = videoUrl.split("/");
-                                for (String s : split){
-                                    if (s.startsWith("BV")){
-                                        dynamicInfo.setBvid(s.substring(0, 12));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    dynamicInfoList.add(dynamicInfo);
-                    dynamicInfo = new DynamicInfo();
-                }
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }finally {
-            //关闭 ChromeDriver
-            driver.close();
-            driver.quit();
+            return DynamicService.INSTANCE.getInfoList(uid);
+        } catch (IOException | BilibiliException e) {
+            throw new RuntimeException("获取动态列表失败：" + e.getMessage(), e);
         }
-        return dynamicInfoList;
+    }
+
+    /**
+     * 获取<b>关注流</b>动态列表（登录账号所关注 UP 的最新动态，一次请求覆盖全部）。
+     *
+     * <p>端点：{@code x/polymer/web-dynamic/v1/feed/all}。
+     *
+     * <p><b>为什么需要它</b>（2026-09-14 实测）：{@code feed/space} 会被 B 站 WAF
+     * 以 {@code {"code":-412,"message":"request was banned"}} <b>按客户端封禁</b> ——
+     * 同一台机器、同一枚有效 Cookie，{@code x/frontend/finger/spi} 返回 200、
+     * 本方法返回 200/code=0（15 万字节真实数据），只有 {@code feed/space} 这条路径被拒。
+     * 换 buvid、换请求头形状、拉长间隔都无效（不是频率问题，是"这条路被封"）。
+     *
+     * <p>因此当 {@code feed/space} 不可用时，关注流是<b>同机可用</b>的替代数据源，
+     * 而且更省请求：一轮只需 1 次请求（原来每个 uid 1 次）。
+     *
+     * <p><b>前提与限制</b>：
+     * <ul>
+     *   <li>需要登录 Cookie，且该账号<b>已关注</b>目标 UP —— 未关注的 UP 不会出现在这里；</li>
+     *   <li>返回里会混入推荐的直播/动态（如 {@code DYNAMIC_TYPE_LIVE_RCMD}），
+     *       调用方应按 {@link DynamicInfo#getUid()} 过滤；</li>
+     *   <li>只含最新一页（约 20 条），轮询间隔内足以覆盖。</li>
+     * </ul>
+     *
+     * <p>签名与 {@link #getDynamicInfoList(String)} 同款（保留占位声明），
+     * {@code XatiiBot} 侧不需要改动既有调用。
+     *
+     * @return 关注流动态列表（可能为空，永不为 null）
+     */
+    public List<DynamicInfo> getFollowFeed() throws InterruptedException {
+        try {
+            return DynamicService.INSTANCE.getFollowFeed();
+        } catch (IOException | BilibiliException e) {
+            throw new RuntimeException("获取关注流失败：" + e.getMessage(), e);
+        }
     }
 }

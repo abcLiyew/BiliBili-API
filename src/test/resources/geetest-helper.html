@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B 站登录 · 极验本地辅助页</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+         max-width: 760px; margin: 32px auto; padding: 0 16px; color: #1f2329; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 16px; }
+  .hint { color: #646a73; font-size: 13px; line-height: 1.8; }
+  #captcha { margin: 20px 0; min-height: 44px; }
+  #result { display: none; margin-top: 16px; }
+  pre { background: #f5f6f7; padding: 12px; border-radius: 6px; white-space: pre-wrap;
+        word-break: break-all; font-size: 12px; line-height: 1.7; }
+  button { padding: 8px 14px; border: 0; border-radius: 6px; background: #00a1d6;
+           color: #fff; font-size: 14px; cursor: pointer; }
+  button:hover { background: #0090bf; }
+  code { color: #d03050; word-break: break-all; }
+</style>
+<script src="https://static.geetest.com/static/js/gt.0.4.9.js"></script>
+</head>
+<body>
+<h1>极验验证（本地辅助页，仅测试用）</h1>
+<p class="hint">
+  这个页面只做一件事：让你在<b>真实浏览器</b>里过一次 B 站的极验。<br>
+  极验必须在浏览器里过 —— 提交时要带一个由本地 JS 生成的轨迹/指纹参数，库伪造不出来，
+  所以这一步的责任在调用方（本页就是"调用方"的一种实现）。<br>
+  过完验证后，点按钮复制 <b>7 行</b>内容，粘贴到 <code>__RESULT__</code>（覆盖整个文件），Java 侧会自动读取。<br>
+  （最后一行是 <code>ua=</code>，即<b>本页所在浏览器的真实 UA</b>；Java 侧会用它作为出站 UA，
+  让"过验的浏览器"与"提交登录的请求"是同一副面孔 —— 你可以不管它，照抄即可。）<br>
+  <b>⚠ 请通过 Java 侧打印的那个 <code>http://127.0.0.1:端口/…</code> 地址打开本页</b> ——
+  直接双击文件用 <code>file://</code> 打开的话，极验一定加载不出来（页面里会说明原因）。
+</p>
+
+<div id="captcha"></div>
+
+<div id="result">
+  <h2>✅ 验证通过</h2>
+  <p class="hint">点按钮复制，然后粘贴到 <code>__RESULT__</code>：</p>
+  <button id="copy">复制 7 行</button>
+  <span id="copied" class="hint"></span>
+  <pre id="payload"></pre>
+</div>
+
+<script>
+(function () {
+  var TOKEN = "__TOKEN__";
+  var GT = "__GT__";
+  var CHALLENGE = "__CHALLENGE__";
+
+  function buildPayload(validate, seccode, echoChallenge) {
+    return [
+      "token=" + TOKEN,
+      "gt=" + GT,
+      "challenge=" + CHALLENGE,
+      "echo_challenge=" + (echoChallenge || ""),
+      "validate=" + validate,
+      "seccode=" + (seccode || (validate + "|jordan")),
+      // 第 7 行：本页所在浏览器的真实 UA。Java 侧读走后会用它作为出站 UA，
+      // 从而让"过验的浏览器"与"提交登录的请求"是同一副面孔。
+      // 不这么做的话，库默认发的是 Edg/131（2024 年的版本），与你现在这个浏览器不一致 ——
+      // 同一个验证会话里出现两个 UA，本身就是风险特征。
+      "ua=" + navigator.userAgent
+    ].join("\n");
+  }
+
+  function legacyCopy(pre, done, fail) {
+    try {
+      var range = document.createRange();
+      range.selectNodeContents(pre);
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      var ok = document.execCommand("copy");
+      ok ? done() : fail();
+    } catch (e) {
+      fail();
+    }
+  }
+
+  function wireCopy() {
+    var pre = document.getElementById("payload");
+    var label = document.getElementById("copied");
+    document.getElementById("copy").addEventListener("click", function () {
+      var text = pre.textContent;
+      var done = function () { label.textContent = "已复制 ✓"; };
+      var fail = function () {
+        label.textContent = "自动复制失败：请手动全选上面的文本（Ctrl+A / Ctrl+C）";
+      };
+      // file:// 打开时不是安全上下文，clipboard API 会不可用 —— 因此必须留 execCommand 兜底
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done, function () { legacyCopy(pre, done, fail); });
+      } else {
+        legacyCopy(pre, done, fail);
+      }
+    });
+  }
+
+  // 🔴 file:// 下极验必然失败，先拦下来给个能照着做的提示，而不是让它报一句「网络错误」。
+  //    gt.js 内部用「协议相对 URL」（//static.geetest.com/...）加载 fullpage.js：
+  //    file:// 下它会继承 scheme 变成 file://static.geetest.com/...（浏览器去本地磁盘找 → 找不到），
+  //    而且 file:// 文档的 origin 是 null，跨源请求还会被 CORS 一律拦掉。
+  if (location.protocol === "file:") {
+    document.getElementById("captcha").innerHTML =
+      '<p class="hint">✗ 本页是直接用 <code>file://</code> 打开的，<b>极验一定加载不出来</b>。<br>'
+      + '原因：极验内部用「协议相对 URL」加载后续脚本，<code>file://</code> 下会被解析成 '
+      + '<code>file://static.geetest.com/...</code>（浏览器去本地磁盘找，必然失败）；'
+      + '而且 <code>file://</code> 的 origin 是 <code>null</code>，跨源请求会被 CORS 全部拦掉。<br>'
+      + '正确做法：<b>用 Java 侧打印的那个 <code>http://127.0.0.1:端口/…</code> 地址打开本页</b>'
+      + '（跑 <code>main()</code> 时会自动打开，本地 http 服务由它起好）。</p>';
+    return;
+  }
+
+  if (typeof initGeetest !== "function") {
+    document.getElementById("captcha").innerHTML =
+      '<p class="hint">⚠ 极验脚本没加载出来（网络问题？）。<br>'
+      + '兜底办法：直接打开 <a href="https://passport.bilibili.com/login" target="_blank">'
+      + 'B 站登录页</a> 触发验证码，用 F12 → Network 找到 validate 请求的载荷，'
+      + '把 validate / seccode 抄进 <code>__RESULT__</code> 即可（token/gt/challenge 保持文件里已有的值）。</p>';
+    return;
+  }
+
+  initGeetest({
+    gt: GT,
+    challenge: CHALLENGE,
+    offline: false,      // 必须 false：true 会走极验离线模式，返回的 validate 服务端不认
+    new_captcha: true,   // 决定回调里的字段名是 geetest_challenge / geetest_validate / geetest_seccode
+    product: "float",
+    width: "100%"
+  }, function (captchaObj) {
+    captchaObj.appendTo("#captcha");
+    captchaObj.onSuccess(function () {
+      const r = captchaObj.getValidate();
+      document.getElementById("payload").textContent = buildPayload(r.geetest_validate, r.geetest_seccode, r.geetest_challenge);
+      document.getElementById("result").style.display = "block";
+      wireCopy();
+    });
+  });
+})();
+</script>
+</body>
+</html>

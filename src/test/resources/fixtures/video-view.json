@@ -1,0 +1,73 @@
+{
+   "code": 0,
+   "message": "0",
+   "ttl": 1,
+   "msg": "",
+   "data": {
+     "bvid": "BV1tgPie2E3w",
+     "aid": 114065439463311,
+     "videos": 1,
+     "tid": 0,
+     "tid_v2": 0,
+     "tname": "test_partition",
+     "tname_v2": "测试分区",
+     "copyright": 1,
+     "pic": "http://i0.hdslb.com/bfs/archive/test_cover.jpg",
+     "title": "测试视频标题",
+     "pubdate": 1700000000,
+     "ctime": 1700000000,
+     "desc": "测试视频简介",
+     "state": 0,
+     "attribute": 0,
+     "duration": 300,
+     "rights": {
+       "bp": 0,
+       "elec": 0,
+       "download": 0,
+       "movie": 0,
+       "pay": 0,
+       "hd5": 0,
+       "no_reprint": 1,
+       "autoplay": 1,
+       "ugc_pay": 0,
+       "is_cooperation": 0,
+       "ugc_pay_preview": 0,
+       "no_background": 0,
+       "clean_mode": 0,
+       "is_stein_gate": 0,
+       "is_360": 0,
+       "no_share": 0,
+       "arc_pay": 0,
+       "free_watch": 0
+     },
+     "owner": {
+       "mid": 3546774476163227,
+       "name": "测试UP主",
+       "face": "http://i0.hdslb.com/bfs/face/test_up.jpg"
+     },
+     "stat": {
+       "aid": 114065439463311,
+       "view": 12345,
+       "danmaku": 678,
+       "reply": 90,
+       "favorite": 234,
+       "coin": 56,
+       "share": 78,
+       "now_rank": 0,
+       "his_rank": 12,
+       "like": 901,
+       "dislike": 0
+     },
+     "pages": [
+       {
+         "cid": 9990001,
+         "page": 1,
+         "from": "vupload",
+         "part": "测试分P标题",
+         "duration": 300,
+         "dimension": { "width": 1920, "height": 1080, "rotate": 0 }
+       }
+     ],
+     "staff": []
+   }
+}

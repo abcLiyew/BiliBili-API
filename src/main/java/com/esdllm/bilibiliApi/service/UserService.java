@@ -1,0 +1,275 @@
+package com.esdllm.bilibiliApi.service;
+
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
+import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
+import com.esdllm.bilibiliApi.exception.BilibiliException;
+import com.esdllm.bilibiliApi.http.BilibiliHttp;
+import com.esdllm.bilibiliApi.model.BilibiliCardResp;
+import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
+import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
+import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
+import com.esdllm.bilibiliApi.parse.ApiResponse;
+import com.esdllm.bilibiliApi.parse.ErrorMapper;
+import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
+import kong.unirest.HttpResponse;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * 用户名片数据服务（{@code CardInfo} 门面的后端）。
+ *
+ * <p>P1 起承担 {@code CardInfo} 门面的实际数据获取职责。
+ *
+ * <p><b>异常语义</b>：本服务<b>只抛 {@link BilibiliException}</b>（运行时异常）。
+ * 旧版 {@code CardInfo.getBilibiliLiveResp(Long)} 的 {@code throws IOException} 声明作为红线保留，
+ * 但实现已统一为"Service 抛 BilibiliException（runtime），门面边界透传不转换"——
+ * §4.8.1 修：受检异常只能来自真受检异常路径，本服务不存在 IOException 路径。
+ *
+ * <p><b>无状态</b>：本服务不在内部缓存任何数据。"单槽缓存"留在门面层（{@code CardInfo.resp} 字段），
+ * 由门面的 {@code isCached} 守卫跨 getter 复用——参 §6.4 "现状即如此，别改坏"。
+ *
+ * <p><b>2026-09-21 扩容（WBI 批）</b>：新增 {@link #getAccInfo(long)}（空间信息，<b>签名 + 登录</b>）、
+ * {@link #getArchives(long, int, int)}（投稿列表，签名 + 登录）、
+ * {@link #getSeasonArchives}（合集内容，<b>两者都不要</b>）与 {@link #findSeasonId(long)}
+ * （取合集的备用前置）。三条既有方法一行未改。
+ *
+ * @author 饿死的流浪猫
+ */
+@Slf4j
+public class UserService {
+
+    /** 单例入口，无状态。 */
+    public static final UserService INSTANCE = new UserService();
+
+    /**
+     * 取一次完整 {@link BilibiliCardResp}（含 {@code card} + {@code archive_count} + 粉丝/点赞/...）。
+     *
+     * @param uid bilibili 用户的 uid
+     * @return 不可为 null
+     * @throws BilibiliException {@code uid} 为空 / ≤ 0、网络异常、JSON 解析失败、业务码非 0、{@code data} 为空
+     */
+    public BilibiliCardResp getCard(Long uid) {
+        if (Objects.isNull(uid)) {
+            throw new BilibiliException("uid不能为空");
+        }
+        if (uid <= 0) {
+            throw new BilibiliException("uid不能小于0");
+        }
+        String url = BilibiliEndpoint.cardBaseUrl + uid;
+        HttpResponse<String> response = BilibiliHttp.get(url);
+        BilibiliCardResp resp;
+        try {
+            resp = JSON.parseObject(response.getBody(), BilibiliCardResp.class);
+        } catch (Exception e) {
+            throw new BilibiliException(e);
+        }
+        if (Objects.isNull(resp) || Objects.isNull(resp.getData()) || resp.getCode() != 0) {
+            throw new BilibiliException("获取卡片信息失败");
+        }
+        return resp;
+    }
+
+    // ------------------------------------------------------------------ WBI 域（2026-09-21 新增）
+
+    /**
+     * <b>取用户空间信息</b>（{@code x/space/wbi/acc/info}）。
+     *
+     * <p>🔴 <b>它需要"WBI 签名 + 登录凭据"两样</b>。⚠️ 本端点一度被记成"匿名签名即通"，
+     * 2026-09-21 复核（两次独立复现）实为：匿名<b>无论签不签名都是 {@code -352 风控校验失败}</b>，
+     * 带凭据才是 {@code -403}（缺签名）/ {@code code=0}（齐了）。
+     * 注意这里的顺序 —— 它<b>风控在签名校验之前</b>，所以"匿名那两格"看不出签名有没有用，
+     * <b>只有带凭据才能把"缺签名"与"缺登录"分开</b>（详见 {@code BilibiliEndpoint} 的实测表）。
+     *
+     * <p>与 {@link #getCard(Long)} 的关系：两者字段<b>部分重叠</b>（昵称/头像/等级/认证/大会员），
+     * 但本端点没有粉丝数/投稿数（那些在 {@code card} 的 {@code archive_count}/{@code follower}），
+     * 而有 {@code is_followed}（当前凭据是否关注）与更完整的 {@code vip}。按需选用，别为同一份数据打两次。
+     *
+     * @param mid 用户 mid
+     * @return 空间信息，不可为 null
+     * @throws BilibiliException {@code mid} ≤ 0、取不到 WBI 密钥、网络失败、或业务码非 0
+     *                           （未注入凭据时会拿到 {@code -352} 风控 / {@code -101} 未登录 ——
+     *                           这不是"端点坏了"，而是它需要凭据）
+     */
+    public AccInfo getAccInfo(long mid) {
+        if (mid <= 0) {
+            throw new BilibiliException("mid不能小于0");
+        }
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("mid", String.valueOf(mid));
+
+        HttpResponse<String> response = BilibiliHttp.getSigned(
+                BilibiliEndpoint.accInfoUrl, params,
+                BilibiliEndpoint.jsonAccept, spaceReferer(mid));
+        AccInfo data = requireData(response, new TypeReference<>() {
+        }, "获取用户空间信息");
+        log.info("空间信息 mid={}：{}（等级 {}）", data.getMid(), data.getName(), data.getLevel());
+        return data;
+    }
+
+    /**
+     * <b>取 UP 主投稿列表</b>（{@code x/space/wbi/arc/search}）。
+     *
+     * <p>🔴 <b>需要"签名 + 登录"两样</b>：匿名签名仍 {@code -352}（实测）。未注入凭据时会拿到
+     * {@code -352}/{@code -101} —— 与 {@link #getAccInfo(long)} 同样是"两样都要"，
+     * 只是本端点<b>签名校验在前</b>（匿名先是 {@code -403}），
+     * 调用方应先用 {@code Login#getCredentialStatus()} 判断凭据状态，而不是拿异常当判据。
+     *
+     * @param mid 用户 mid
+     * @param pn  页码（从 1 开始）
+     * @param ps  每页条数（B 站网页端用 30）
+     * @return 投稿列表，不可为 null
+     * @throws BilibiliException 参数非法、取不到 WBI 密钥、网络失败、业务码非 0、或 {@code data} 为空
+     */
+    public ArchiveSearchResult getArchives(long mid, int pn, int ps) {
+        return getArchives(mid, pn, ps, "pubdate");
+    }
+
+    /**
+     * <b>取 UP 主投稿列表</b>（可指定排序）。
+     *
+     * @param mid   用户 mid
+     * @param pn    页码（从 1 开始）
+     * @param ps    每页条数
+     * @param order 排序：{@code pubdate}（最新发布）/ {@code click}（最多播放）/ {@code stow}（最多收藏）
+     * @return 投稿列表，不可为 null
+     * @throws BilibiliException 参数非法、取不到 WBI 密钥、网络失败、业务码非 0、或 {@code data} 为空
+     */
+    public ArchiveSearchResult getArchives(long mid, int pn, int ps, String order) {
+        if (mid <= 0) {
+            throw new BilibiliException("mid不能小于0");
+        }
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("mid", String.valueOf(mid));
+        params.put("pn", String.valueOf(Math.max(1, pn)));
+        params.put("ps", String.valueOf(Math.max(1, ps)));
+        params.put("order", (order == null || order.isBlank()) ? "pubdate" : order);
+
+        HttpResponse<String> response = BilibiliHttp.getSigned(
+                BilibiliEndpoint.arcSearchUrl, params,
+                BilibiliEndpoint.jsonAccept, spaceReferer(mid));
+        ArchiveSearchResult data = requireData(response, new TypeReference<>() {
+        }, "获取用户投稿");
+        int count = data.getList() == null || data.getList().getVlist() == null
+                ? 0 : data.getList().getVlist().size();
+        log.info("投稿 mid={} 第 {} 页：本页 {} 条 / 共 {} 条",
+                mid, pn, count, data.getPage() == null ? null : data.getPage().getCount());
+        return data;
+    }
+
+    /**
+     * <b>取合集内容</b>（{@code x/polymer/web-space/seasons_archives_list}）。
+     *
+     * <p>✅ 与本批其它端点不同：<b>既不需要签名、也不需要登录</b>（2026-09-21 实测，
+     * 匿名无签名即 {@code code=0}）。所以这里走的是普通 GET，不引签名依赖。
+     *
+     * <p>🔴 <b>{@code seasonId} 必须是真实存在的 id</b>：传 {@code 1} 只会得到
+     * {@code -404 啥都木有}。不知道 id 时先用 {@link #findSeasonId(long)}。
+     *
+     * @param mid      合集所属 UP 主 mid
+     * @param seasonId 合集 id（真实值）
+     * @param pageNum  页码（从 1 开始）
+     * @param pageSize 每页条数
+     * @return 合集内容，不可为 null
+     * @throws BilibiliException {@code seasonId} ≤ 0、网络失败、业务码非 0、或 {@code data} 为空
+     */
+    public SeasonsArchives getSeasonArchives(long mid, long seasonId, int pageNum, int pageSize) {
+        if (seasonId <= 0) {
+            throw new BilibiliException("合集内容获取失败：season_id 必须是真实 id（传 1 会得到 -404 啥都木有）");
+        }
+        String url = BilibiliEndpoint.seasonsArchivesUrl
+                + "?mid=" + mid
+                + "&season_id=" + seasonId
+                + "&page_num=" + Math.max(1, pageNum)
+                + "&page_size=" + Math.max(1, pageSize);
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept, spaceReferer(mid));
+        SeasonsArchives data = requireData(response, new TypeReference<>() {
+        }, "获取合集内容");
+        log.info("合集 season_id={}：{}，本页 {} 条 / 共 {} 条",
+                seasonId, data.getMeta() == null ? "无元信息" : data.getMeta().getName(),
+                data.getArchives() == null ? 0 : data.getArchives().size(),
+                data.getPage() == null ? null : data.getPage().getTotal());
+        return data;
+    }
+
+    /**
+     * 取该 UP 主的<b>某个真实合集 id</b> —— 给 {@link #getSeasonArchives} 当入口用。
+     *
+     * <p><b>为什么需要它</b>：原定的"合集目录"端点 {@code polymer/web-space/seasons/list}
+     * 已 <b>HTTP 404 下线</b>（2026-09-21 复验），而 {@code seasons_archives_list} 又必须要一个真实
+     * {@code season_id}。本方法从该 UP 的最新投稿（{@code arc/search}）里挑第一个非 0 的
+     * {@code season_id} —— 实测可行（本机取到 {@code 5485575}）。
+     *
+     * <p>⚠️ <b>局限，别把它当"列出全部合集"</b>：它只翻一页投稿、只给<b>一个</b> id，
+     * 而且这个 id 一定是该 UP 有投稿进过的合集。要"列出全部合集"在本库当前能力下做不到
+     * （入口端点已下线），这一点在 {@code INTERFACE_PLAN.md} 里记着。
+     *
+     * <p>⚠️ 本方法依赖 {@code arc/search}，因此<b>同样需要登录</b>。
+     *
+     * @param mid 用户 mid
+     * @return 某个真实 {@code season_id}；该 UP 的首页投稿里没有合集稿件时返回 {@code null}
+     * @throws BilibiliException 参数非法、网络失败、或业务码非 0
+     */
+    public Long findSeasonId(long mid) {
+        ArchiveSearchResult archives = getArchives(mid, 1, 50);
+        if (archives.getList() == null || archives.getList().getVlist() == null) {
+            return null;
+        }
+        for (ArchiveSearchResult.ArchiveItem item : archives.getList().getVlist()) {
+            if (item.getSeason_id() != null && item.getSeason_id() > 0) {
+                log.info("从投稿里找到合集 season_id={}（稿件 {}）", item.getSeason_id(), item.getBvid());
+                return item.getSeason_id();
+            }
+        }
+        log.info("投稿首页里没有属于合集的稿件，取不到 season_id（mid={}）", mid);
+        return null;
+    }
+
+    /** 空间页 Referer（参数是 mid，形状见 {@code BilibiliEndpoint.spaceReferer}） */
+    private static String spaceReferer(long mid) {
+        return BilibiliEndpoint.spaceReferer.formatted(String.valueOf(mid));
+    }
+
+    /**
+     * HTTP 状态 → 反序列化 → 业务码 → 取 data。
+     *
+     * <p>与 {@code SearchService} 的同名私有方法是一份拷贝而不是共用：两个 Service 分属不同域，
+     * 抽到公共工具类会引入一个"谁都能改"的共享点；而这段逻辑很短、且将来各自的错误文案会分叉。
+     * （{@link #getCard} 的旧实现刻意<b>不</b>迁移过来 —— 它的行为是下游契约的一部分，动它没有收益。）
+     *
+     * @param response 原始响应
+     * @param type     目标类型
+     * @param action   正在做的事
+     * @param <T>      data 类型
+     * @return 非 null 的 data
+     * @throws BilibiliException HTTP 非 2xx、响应无法解析、业务码非 0、或 data 为空
+     */
+    private static <T> T requireData(HttpResponse<String> response, TypeReference<ApiResponse<T>> type,
+                                     String action) {
+        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), action);
+        if (httpError != null) {
+            throw httpError;
+        }
+        ApiResponse<T> parsed;
+        try {
+            parsed = JSON.parseObject(response.getBody(), type);
+        } catch (Exception e) {
+            throw new BilibiliException(0, action + "失败：HTTP " + response.getStatus()
+                    + " 的响应无法解析（前 120 字：" + brief(response.getBody()) + "）", "响应形状不符");
+        }
+        return ResponseParserSupport.unwrap(parsed, action);
+    }
+
+    private static String brief(String text) {
+        if (text == null) {
+            return "";
+        }
+        String oneLine = text.replace('\n', ' ');
+        return oneLine.length() <= 120 ? oneLine : oneLine.substring(0, 120) + "...";
+    }
+
+    private UserService() {}
+}
