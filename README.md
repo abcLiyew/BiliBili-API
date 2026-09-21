@@ -4,12 +4,80 @@
 
 Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java库。该项目提供了一系列API接口，可以获取用户信息、动态内容、直播信息等数据。
 
+## 接口来源与覆盖范围
+
+### 文档来源
+
+本库的端点、参数与返回字段，参照开源文档项目
+**[SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect)**
+（B 站 API 文档合集，在线阅读：<https://socialsisteryi.github.io/bilibili-API-collect/>）；
+本项目取用的是它的 fork **[realysy/bili-apis](https://github.com/realysy/bili-apis)**。
+WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出自该项目的逆向研究，
+见 issue [#631](https://github.com/SocialSisterYi/bilibili-API-collect/issues/631) 与
+[#885](https://github.com/SocialSisterYi/bilibili-API-collect/issues/885)，在此致谢。
+
+> 本库与上述文档项目**没有隶属关系** —— 它只是本库的参考资料之一，也不保证与本库同步。
+
+⚠️ **文档只是参考，本库以真机实测为准。** 两者不一致时一律以实测为准，以下为已核实的分歧
+（均已写进代码注释）：
+
+| 接口 | 文档标注 | 本库实测 |
+|---|---|---|
+| `x/web-interface/wbi/search/all/v2`、`…/wbi/search/type` | 需 WBI 签名 | **匿名、不带签名即返回 `code=0`**（库内仍走签名链路，只是多一个 `nav` 依赖） |
+| `x/space/upstat` | Cookie | 匿名返回 `code=0` 但 `data` 是**空对象**，**需要凭据**才有数据 |
+| `x/player/wbi/playurl` | WBI + Cookie | 匿名、未签名即返回 `code=0`（默认 720P）；"412 被封"是当时的环境现象 |
+| `api.vc.bilibili.com/**`（动态旧域） | 有完整文档 | **整站已下线**，本库对应常量已标 `@Deprecated` |
+| `x/polymer/web-space/seasons/list` | 取 `season_id` 的入口 | **已 HTTP 404 下线**；本库改从 `arc/search` 的 `vlist[].season_id` 取 |
+| WBI 文档中的 `w_rid` 示例值 | 共 5 个 | 独立复算后**只有 2 个可复现**（正文 walkthrough 与 PHP demo），其余 3 个对不上 |
+
+另外，B 站接口随时可能变更（本库就遇到过整站下线、字段增删、验证码换代），
+**升级本库前建议先用你自己的场景跑一遍**。
+
+### 已覆盖的接口
+
+下表按 `BilibiliEndpoint` 中实际使用的端点整理，**「匿名」= 不注入凭据即可用**。
+凡标「凭据」的，本库只提供注入点，**不内置任何账号**。
+
+| 门面 | 请求的端点 | 门槛 |
+|---|---|---|
+| `CardInfo` | `x/web-interface/card?mid=` | 匿名 |
+| `CardInfo` / `Live` | `room/v1/Room/get_info?room_id=` | 匿名 |
+| `BilibiliClient` | `x/web-interface/view?bvid=` / `?aid=` | 匿名 |
+| `Dynamic` | `x/polymer/web-dynamic/v1/detail?id=` | 匿名 |
+| `Dynamic` | `x/polymer/web-dynamic/v1/opus/detail?id=` | 匿名 |
+| `Dynamic` | `x/polymer/web-dynamic/v1/feed/space?host_mid=` | 🔒 凭据 |
+| `Dynamic` | `x/polymer/web-dynamic/v1/feed/all`（关注流） | 🔒 凭据 |
+| `ShortChain` | 短链跳转解析 + 上述视频 / 直播 / 动态端点 | 匿名 |
+| `Login` | `passport.bilibili.com/x/passport-login/web/qrcode/generate`、`…/qrcode/poll` | 匿名（凭据随响应头 `Set-Cookie` 下发） |
+| `Login` | `…/captcha?source=main_web` | 匿名（极验 v3 前置参数） |
+| `Login` | `…/web/key`、`…/web/login` | 匿名（密码登录） |
+| `Login` | `…/web/sms/send`、`…/web/login/sms` | 匿名（短信登录） |
+| `Login` | `x/web-interface/nav`、`…/web/cookie/info` | 🔒 凭据（状态校验） |
+| `Search` | `x/web-interface/wbi/search/all/v2`、`…/wbi/search/type` | 匿名（实测免签名） |
+| `UserSpace` | `x/space/wbi/acc/info` | 🔏 签名 + 🔒 凭据 |
+| `UserSpace` | `x/space/wbi/arc/search` | 🔏 签名 + 🔒 凭据 |
+| `UserSpace` | `x/polymer/web-space/seasons_archives_list` | 匿名（须先有真实 `season_id`） |
+| `VideoExtra` | `x/web-interface/view/conclusion/get`（AI 摘要） | 🔏 签名 + 🔒 凭据 |
+| `Wbi` | `x/web-interface/nav`（只取 `data.wbi_img`） | 匿名（`img_key` / `sub_key` 是公共值，不是凭据） |
+
+> 表中「凭据」指登录 Cookie（至少含 `SESSDATA`），注入方式见下文
+> **「动态列表返回 -352 / 412 怎么办」**；「签名」指 WBI 签名，走 `UserSpace` /
+> `VideoExtra` 时库内已自动完成，未覆盖的接口可用 `Wbi` 门面自己签。
+
 ## 功能特性
 
 - **用户信息获取**：获取用户名称、头像、等级、签名、粉丝数等基本信息
-- **动态内容获取**：获取用户动态列表、动态详情、动态图片等
-- **直播信息获取**：获取用户直播间状态、直播间信息等
 - **视频信息获取**：获取用户视频投稿数量、视频详情等
+- **动态内容获取**：获取用户动态列表、动态详情、动态图片等；动态长图由 Java2D 自绘，无需浏览器
+- **直播信息获取**：获取用户直播间状态、直播间信息等
+- **短链解析**：把 `b23.tv` 短链还原成视频 / 直播间 / 动态，并直接给出对应数据
+- **搜索**：综合搜索与分类型搜索（视频 / 用户），自动剥离结果里的 `<em>` 高亮标签
+- **用户空间**：UP 主账号信息、投稿列表、合集稿件
+- **AI 视频摘要**：按 `bvid` / `cid` 取 B 站的 AI 总结
+- **登录**：扫码 / 密码 / 短信三条链路，以及 `getCredentialStatus()` 凭据状态校验
+  —— 长驻进程可用它把"凭据失效"从静默失败变成一个可判的布尔值
+- **WBI 签名**：`Wbi` 门面可给**任意** B 站 WBI 接口算签名（`wts` + `w_rid`），
+  用于本库尚未覆盖的接口 —— **不需要凭据**，密钥由本库按天缓存
 
 ## 环境要求
 
@@ -33,7 +101,7 @@ mvn install
 <dependency>
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.27-beta</version>
+    <version>0.9.29-beta</version>
 </dependency>
 ```
 
@@ -122,6 +190,72 @@ long uid = 3546774476163227L;
 BilibiliCardResp resp = cardInfo.getBilibiliLiveResp(uid);
 System.out.println("直播信息: " + resp);
 ```
+
+### 登录（扫码）
+
+```java
+Login login = new Login();
+
+// ① 申请二维码（有效期 180 秒）。qr.getUrl() 就是二维码内容，自行渲染成图给用户扫
+QrCodeLogin qr = login.getLoginQrCode();
+
+// ② 等用户扫完并在手机上确认（阻塞；二维码失效或超时会抛 IOException）
+LoginCredential credential = login.waitForLogin(qr.getQrcode_key(), 180_000L);
+
+// ③ 注入凭据 —— 之后所有出站请求自动带上登录态
+HttpPolicy.setCookie(credential.getCookieHeader());
+```
+
+```java
+// ④ 之后随时校验这枚凭据是否还有效（未登录以返回值表达，不抛异常）
+CredentialStatus status = login.getCredentialStatus();
+if (!status.isLoggedIn()) {
+    // 凭据已失效 —— 该重新登录，而不是继续发注定失败的请求
+}
+```
+
+- **扫码**链路开箱即用；**密码登录**（`getRsaKey` + `loginByPassword`）与**短信登录**
+  （`sendSmsCode` + `loginBySms`）都要先过**极验 v3** 验证码，而极验必须由调用方在浏览器里
+  用官方 JS 过验 —— 本库**不含任何浏览器 / 打码逻辑**，只负责把参数交给你、把你的过验结果送出去。
+- **凭据由调用方保管**：本库不内置账号、不落盘，日志与 `toString()` 里的值一律打码。
+- 注入凭据后，动态列表（`feed/space`）与关注流（`feed/all`）才可用，详见下文
+  **「动态列表返回 -352 / 412 怎么办」**。
+- 相关类型位置：`Login` 在 `com.esdllm.bilibiliApi.bilibiliApi`，
+  `QrCodeLogin` / `LoginCredential` / `CredentialStatus` 在 `com.esdllm.bilibiliApi.model.data.pojo.login`。
+
+### 给本库未覆盖的 WBI 接口签名
+
+B 站有一批接口要求带 `wts` + `w_rid` 签名，缺失或算错一律返回 `-403 访问权限不足`
+——与"真的没有权限访问"从响应上**区分不出来**。签名器已对外暴露，你可以用它调**本库尚未覆盖**的接口：
+
+```java
+Wbi wbi = new Wbi();
+
+Map<String, String> params = new LinkedHashMap<>();
+params.put("mid", "946974");
+
+// ① 直接给出可以发出去的完整 URL（参数值已按 WBI 口径编好码）
+String url = wbi.signedUrl("https://api.bilibili.com/x/space/wbi/acc/info", params);
+
+// ② 或者只拿签名串，自己拼
+String query = wbi.signQuery(params);   // mid=946974&wts=1758xxxxxx&w_rid=<32 位 md5>
+```
+
+三点务必注意：
+
+- **不需要凭据**：`img_key` / `sub_key` 由 `nav` 匿名下发，是公共值；本库缓存当天那一份，
+  不会每次签名都多打一次请求。
+- **不要自己再编码一遍**：返回值里的参数值已经按 WBI 口径编好（空格是 `%20` 而**不是** `+`）。
+  这也是本门面只给"编好的 query / URL"、**不给"参数表"**的原因——用 `URLEncoder` 重编会让签名对不上。
+- **签名覆盖全部参数**：所以 `baseUrl` 里不能自带 query（带了就漏签），请把所有参数都放进 `params`。
+
+本门面**只算签名、不发请求**；自己发请求时，本库的限流 / 重试 / 指纹策略不覆盖它。
+若手上已有密钥（或 `nav` 一时取不到），用四参重载离线签名，一次出站都不发：
+
+```java
+String query = wbi.signQuery(params, imgKey, subKey, 1700384803L);
+```
+
 ## 数据模型
 项目中包含多种数据模型，用于表示不同类型的数据。
 - `Card`: 用户卡片信息
@@ -161,7 +295,15 @@ HttpPolicy.setCookie("SESSDATA=xxx; bili_jct=xxx; ...");
 - Cookie 取自浏览器开发者工具里请求头的 `Cookie` 整串（至少含 `SESSDATA`）。
 - 注入后会与匿名指纹 Cookie 合并，**用户 Cookie 的键优先**（同名键不会被指纹值覆盖）。
 - 会在日志/`HttpPolicy.describe()` 里只输出键名，值一律打码。
-- 其它端点（`Live` / `CardInfo` / `BilibiliClient`）匿名可用，**只有动态列表需要 Cookie**。
+- 其它多数端点匿名可用；**需要凭据的是这几处**：动态列表与关注流（`Dynamic`）、
+  用户空间的 `acc/info` 与 `arc/search`（`UserSpace`）、AI 视频摘要（`VideoExtra`），
+  完整清单见上文「已覆盖的接口」。
+
+⚠️ 另有一种**静默空**形态（2026-09-21 实测，比上表更隐蔽）：带上匿名指纹时返回
+`code=0` 而 `items` 是**空数组** —— 它与"这个 UP 真的没发过动态"在响应上**完全同形**
+（键名一字不差，只有数组长度不同）。注入凭据后同一条请求立刻返回 `items=13`。
+所以**看到空列表先别下"没动态"的结论**，先用 `Login#getCredentialStatus()`
+确认凭据确实生效了。
 
 > **排障**：注入后仍持续 412 时，先看日志里这一行（首次出站必然打印、之后仅在身份变化时打印）：
 > ```
@@ -259,6 +401,20 @@ B 站"带标题的动态 / opus 文章"的标题在 **opus 端点**的 `MODULE_T
   结果是渲染出一张只有头像昵称的近空白卡片（实测 756x162）。现在会画「封面 + 直播标题 + 分区/人气」。
   ③ 另外 `load()` 改为"正文/图片/标题全空就报错"，让调用方降级成纯文字，而不是安静地发一张空卡片。
   新增离线单测 `RenderModelLoaderOpusTest` 与直播推荐两个用例
+- 0.9.29-beta: **登录能力落地** —— 新增第 6 个门面 `Login`：扫码（`getLoginQrCode` /
+  `getLoginStatus` / `waitForLogin`）、密码（`getRsaKey` + `loginByPassword`）、短信
+  （`sendSmsCode` + `loginBySms`），以及**凭据状态校验** `getCredentialStatus()`
+  —— 未登录以返回值表达、不抛异常，长驻进程据此判断"该重新登录了"。
+- 0.9.29-beta: **WBI 签名能力落地，并把签名器对外暴露** —— 新增 `Wbi` 门面
+  （`signQuery` / `signedUrl` / `invalidateKeys`，含"自带密钥、零出站"的离线重载）。
+  签名算错只表现为 `-403`、与"真的没权限"同形，所以把一整套口径（空格编 `%20`、值里的 `!'()*` 要删、
+  `w_rid` 不能自指）连同"密钥按天缓存"一起交给调用方，用于本库尚未覆盖的 WBI 接口；
+  该门面**只算签名、不发请求，也不需要凭据**。同期新增 `Search` / `UserSpace` / `VideoExtra`
+  三个数据门面（搜索、用户空间、AI 视频摘要），并补上 README 的**接口来源说明**。
+  **门面共 10 个；前 6 个门面的签名与 `throws` 声明一字未改。**
+
+> 版本号说明：上面两条都落在 `0.9.29-beta`（`pom.xml` 当前即此版本号）。登录是该版本的主要增量，
+> 其后的 WBI / 搜索等能力在同一版本号下继续累积，**尚未单独递增**。
 
 ## 许可证
 

@@ -6,6 +6,14 @@ import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.LiveRoom;
 import com.esdllm.bilibiliApi.model.data.pojo.login.*;
+import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
+import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
+import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
+import com.esdllm.bilibiliApi.model.data.pojo.search.SearchVideo;
+import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
+import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
+import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
+import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -15,6 +23,7 @@ import java.io.IOException;
 import java.lang.reflect.*;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,7 +55,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("门面冻结契约（XatiiBot 零改动红线）")
 class FacadeContractTest {
 
-    /** 5 个门面所在的包，必须不变 */
+    /** 门面所在的包，必须不变 */
     private static final String FACADE_PACKAGE = "com.esdllm.bilibiliApi.bilibiliApi";
 
     // ================================================================
@@ -120,6 +129,27 @@ class FacadeContractTest {
                 () -> owner.getName() + "#" + name + " 的 List 元素类型变了，下游 for-each 取值会编译失败");
     }
 
+    /**
+     * 断言返回类型是 {@code 某泛型类<实参>}。
+     *
+     * <p>存在的理由：反射看到的返回类型是<b>擦除后</b>的原始类型，
+     * 泛型实参写错（例如 {@code SearchTypeResult<SearchUser>} 写成
+     * {@code SearchTypeResult<SearchVideo>}）在本测试里会"看起来通过"，
+     * 而调用方 for-each 取元素时才在编译期炸。所以泛型实参必须单独断言。
+     */
+    private static void assertGenericReturn(Class<?> owner, String name, Class<?> rawType,
+                                            Class<?> typeArgument, Class<?>... params) {
+        Method m = locate(owner, name, params);
+        Type generic = m.getGenericReturnType();
+        assertInstanceOf(ParameterizedType.class, generic,
+                () -> owner.getName() + "#" + name + " 应返回 " + rawType.getSimpleName() + "<...>");
+        ParameterizedType pt = (ParameterizedType) generic;
+        assertEquals(rawType, pt.getRawType(),
+                () -> owner.getName() + "#" + name + " 的原始返回类型变了");
+        assertEquals(typeArgument, pt.getActualTypeArguments()[0],
+                () -> owner.getName() + "#" + name + " 的泛型实参变了，下游 for-each 取值会编译失败");
+    }
+
     /** 断言字段存在、private、非 static，且类型一致（JSON 契约 + Lombok getter 的基础） */
     private static void assertField(Class<?> owner, String name, Class<?> type) {
         Field f;
@@ -135,7 +165,7 @@ class FacadeContractTest {
     }
 
     // ================================================================
-    // §2.1 五个门面
+    // §2.1 门面（前 6 个 = 冻结红线；第 7~9 个 = 2026-09-21 WBI 批新增，纯增量）
     // ================================================================
 
     @Nested
@@ -317,6 +347,152 @@ class FacadeContractTest {
     }
 
     // ================================================================
+    // §2.1.7 ~ §2.1.9 第 7~9 个门面：Search / UserSpace / VideoExtra（2026-09-21 WBI 批）
+    //
+    // 与 Login 同理：新增类 + 新增方法，**不触碰前 6 个门面的任何一行**。
+    // 这三块的作用不是"防止本次改动破坏了什么"（它们是新写的，没有历史契约），
+    // 而是**把本次的公开面固化下来** —— 从交付这一刻起，它们就进入同一套冻结纪律，
+    // 后续批次（B1 的 VideoExtra/Comment/UserSpace 扩容等）只能加、不能改。
+    // ================================================================
+
+    @Nested
+    @DisplayName("Search 门面（第 7 个）")
+    class SearchFacade {
+
+        @Test
+        @DisplayName("Search 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(Search.class);
+            assertPublicNoArgCtor(Search.class);
+
+            assertSignature(Search.class, "searchAll", SearchAllResult.class, String.class, int.class);
+            assertSignature(Search.class, "searchVideos",
+                    SearchTypeResult.class, String.class, int.class);
+            assertSignature(Search.class, "searchUsers",
+                    SearchTypeResult.class, String.class, int.class);
+        }
+
+        @Test
+        @DisplayName("三个搜索方法都必须声明 throws IOException（门面边界统一口径）")
+        void declares() {
+            assertDeclares(Search.class, "searchAll", IOException.class, String.class, int.class);
+            assertDeclares(Search.class, "searchVideos", IOException.class, String.class, int.class);
+            assertDeclares(Search.class, "searchUsers", IOException.class, String.class, int.class);
+        }
+
+        /**
+         * 分类搜索的返回类型是<b>泛型</b> {@code SearchTypeResult<T>}，
+         * 而反射只能看到擦除后的 {@code SearchTypeResult} —— 泛型实参错了编译期不报错、
+         * 调用方 for-each 时才炸。这里单独断言泛型实参。
+         */
+        @Test
+        @DisplayName("searchVideos/searchUsers 的泛型实参必须是 SearchVideo/SearchUser")
+        void genericArguments() {
+            assertGenericReturn(Search.class, "searchVideos", SearchTypeResult.class, SearchVideo.class,
+                    String.class, int.class);
+            assertGenericReturn(Search.class, "searchUsers", SearchTypeResult.class, SearchUser.class,
+                    String.class, int.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("UserSpace 门面（第 8 个）")
+    class UserSpaceFacade {
+
+        @Test
+        @DisplayName("UserSpace 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(UserSpace.class);
+            assertPublicNoArgCtor(UserSpace.class);
+
+            assertSignature(UserSpace.class, "getAccInfo", AccInfo.class, long.class);
+            assertSignature(UserSpace.class, "getArchives", ArchiveSearchResult.class,
+                    long.class, int.class, int.class);
+            assertSignature(UserSpace.class, "getArchives", ArchiveSearchResult.class,
+                    long.class, int.class, int.class, String.class);
+            assertSignature(UserSpace.class, "getSeasonArchives", SeasonsArchives.class,
+                    long.class, long.class, int.class, int.class);
+            // 可能返回 null（首页投稿里没有合集稿件），因此是包装类型 Long
+            assertSignature(UserSpace.class, "findSeasonId", Long.class, long.class);
+        }
+
+        @Test
+        @DisplayName("UserSpace 门面所有网络方法必须声明 throws IOException")
+        void declares() {
+            assertDeclares(UserSpace.class, "getAccInfo", IOException.class, long.class);
+            assertDeclares(UserSpace.class, "getArchives", IOException.class, long.class, int.class, int.class);
+            assertDeclares(UserSpace.class, "getArchives", IOException.class,
+                    long.class, int.class, int.class, String.class);
+            assertDeclares(UserSpace.class, "getSeasonArchives", IOException.class,
+                    long.class, long.class, int.class, int.class);
+            assertDeclares(UserSpace.class, "findSeasonId", IOException.class, long.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("VideoExtra 门面（第 9 个）")
+    class VideoExtraFacade {
+
+        @Test
+        @DisplayName("VideoExtra 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(VideoExtra.class);
+            assertPublicNoArgCtor(VideoExtra.class);
+
+            assertSignature(VideoExtra.class, "getAiSummary", AiSummary.class, String.class);
+            assertSignature(VideoExtra.class, "getAiSummary", AiSummary.class, String.class, Long.class);
+        }
+
+        @Test
+        @DisplayName("两个 getAiSummary 重载都必须声明 throws IOException")
+        void declares() {
+            assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class);
+            assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class, Long.class);
+        }
+    }
+
+    // ================================================================
+    // §2.1.10 第 10 个门面：Wbi（2026-09-21）
+    //
+    // 它是本库第一块**不是数据接口**的公开面：不发请求、只算签名，用来支持本库尚未覆盖的
+    // WBI 端点。纳入冻结集的理由与前面三块同理 —— 交付即承诺，后续只能加、不能改。
+    // ================================================================
+
+    @Nested
+    @DisplayName("Wbi 门面（第 10 个）")
+    class WbiFacade {
+
+        @Test
+        @DisplayName("Wbi 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(Wbi.class);
+            assertPublicNoArgCtor(Wbi.class);
+
+            assertSignature(Wbi.class, "signQuery", String.class, Map.class);
+            assertSignature(Wbi.class, "signQuery", String.class, Map.class, long.class);
+            assertSignature(Wbi.class, "signQuery", String.class, Map.class,
+                    String.class, String.class, long.class);
+            assertSignature(Wbi.class, "signedUrl", String.class, String.class, Map.class);
+            assertSignature(Wbi.class, "invalidateKeys", void.class);
+        }
+
+        @Test
+        @DisplayName("联网方法必须声明 throws IOException；离线重载刻意不声明")
+        void declares() {
+            assertDeclares(Wbi.class, "signQuery", IOException.class, Map.class);
+            assertDeclares(Wbi.class, "signQuery", IOException.class, Map.class, long.class);
+            assertDeclares(Wbi.class, "signedUrl", IOException.class, String.class, Map.class);
+
+            // 四参重载不联网。逼调用方 catch 一个永不抛出的受检异常纯属噪音 ——
+            // 所以这里反向断言：它**不该**声明 IOException，免得后人"为了统一"把它加上。
+            Method offline = locate(Wbi.class, "signQuery",
+                    Map.class, String.class, String.class, long.class);
+            assertFalse(Arrays.asList(offline.getExceptionTypes()).contains(IOException.class),
+                    "离线重载不产生 I/O，不应声明 IOException");
+        }
+    }
+
+    // ================================================================
     // §2.2 冻结模型
     // ================================================================
 
@@ -404,13 +580,14 @@ class FacadeContractTest {
     // ================================================================
 
     @Test
-    @DisplayName("6 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
+    @DisplayName("10 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
     void facadePackageNamesUnchanged() {
         List<Class<?>> facades = List.of(Dynamic.class, Live.class, CardInfo.class,
-                BilibiliClient.class, ShortChain.class, Login.class);
+                BilibiliClient.class, ShortChain.class, Login.class,
+                Search.class, UserSpace.class, VideoExtra.class, Wbi.class);
         for (Class<?> facade : facades) {
             assertClassInFacadePackage(facade);
         }
-        assertEquals(6, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
+        assertEquals(10, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
     }
 }

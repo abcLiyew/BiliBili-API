@@ -4,7 +4,10 @@ import com.esdllm.bilibiliApi.bilibiliApi.Login;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.pojo.login.CredentialStatus;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 
@@ -160,7 +163,7 @@ class CredentialStatusTest {
         mock.registerStatus(NAV_PATH, 500, "server boom");
 
         BilibiliException e = assertThrows(BilibiliException.class,
-                () -> LoginService.INSTANCE.credentialStatus());
+                LoginService.INSTANCE::credentialStatus);
 
         assertTrue(e.getMessage().contains("500"), "必须带 HTTP 状态码，实际：" + e.getMessage());
         assertTrue(e.getMessage().contains("server boom"), "必须带响应原文片段，实际：" + e.getMessage());
@@ -172,7 +175,7 @@ class CredentialStatusTest {
         mock.register(NAV_PATH, "<html>风控页</html>");
 
         BilibiliException e = assertThrows(BilibiliException.class,
-                () -> LoginService.INSTANCE.credentialStatus());
+                LoginService.INSTANCE::credentialStatus);
 
         assertTrue(e.getMessage().contains("不是合法 JSON"), "实际：" + e.getMessage());
     }

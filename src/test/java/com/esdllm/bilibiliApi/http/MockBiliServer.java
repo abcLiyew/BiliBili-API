@@ -47,6 +47,9 @@ import java.util.concurrent.Executors;
  *   <li>{@link #requestBody(String)} / {@link #formParams(String)} / {@link #formField(String, String)}
  *       读回<b>请求体</b> —— 登录类接口全是 POST form，"参数是否真的传对"必须能断言
  *       （例如密码密文能否用服务端私钥解回 {@code hash + 明文}）。</li>
+ *   <li>{@link #requestUri(String)} 读回<b>请求 URI（含 query 原文）</b> —— 签名请求专用。
+ *       WBI 的成败全在 query 里（{@code wts} / {@code w_rid}），拼错了服务端只回 {@code -403}，
+ *       从响应侧反推不出来；能读回 URI 才能断言"可否用同一份密钥复算出同一个签名"。</li>
  *   <li>{@link #requestHeader(String, String)} 读回<b>请求头</b> —— 锁"出站形状"用。
  *       UA / Accept / Referer 配错了不报错，只在服务端表现为可疑；而
  *       "显式指定的 UA 有没有真的发出去"尤其只能靠它断言（匿名身份是缓存的，
@@ -94,6 +97,16 @@ public final class MockBiliServer implements AutoCloseable {
          * 被缓存的匿名身份覆盖掉），就必须能读回请求头 —— 否则只能是"看着代码以为生效了"。
          */
         volatile Map<String, String> lastHeaders = Map.of();
+
+        /**
+         * 最后一次命中的<b>请求 URI</b>（含 query，形如 {@code /x/space/wbi/acc/info?mid=…&wts=…&w_rid=…}）。
+         *
+         * <p>为什么要记它：WBI 签名请求的全部信息都在 query 里，而"参数拼错了"只会让服务端回一个
+         * {@code -403}，从响应侧<b>完全反推不出来</b>。能读回 URI 才能断言
+         * "参数在不在、{@code wts} 是不是秒级、{@code w_rid} 能否用同样的 key 复算出来" ——
+         * 这是签名出口唯一可判定的验收方式。
+         */
+        volatile String lastUri = "";
 
         Route(String body) {
             this(body, null, null, null, 200);
@@ -320,6 +333,21 @@ public final class MockBiliServer implements AutoCloseable {
     // ------------------------------------------------------------------ 请求头断言
 
     /**
+     * 该路径<b>最后一次</b>命中的请求 URI（含 query 原文，<b>未解码</b>）。
+     *
+     * <p>用途是断言"参数真的拼对了吗"—— 尤其是 WBI 签名请求：它的成败全在 query 里
+     * （{@code wts} / {@code w_rid}），而错了只会得到一个 {@code -403}，响应侧没有任何线索。
+     * 有了它，测试才能把"这串 query 用同样的 key 能否复算出同一个 {@code w_rid}"真正断言下来。
+     *
+     * @param pathPrefix 注册时用的同一个 key
+     * @return 最近一次命中的 URI（形如 {@code /path?a=1&b=2}）；未命中过时返回空串
+     */
+    public String requestUri(String pathPrefix) {
+        Route route = routes.get(pathPrefix);
+        return route == null || route.lastUri == null ? "" : route.lastUri;
+    }
+
+    /**
      * 该路径最后一次命中的某个<b>请求头</b>（键名不区分大小写）。
      *
      * <p>用途是"锁住出站形状"：UA / Accept / Referer 这类东西配错了不报错，
@@ -376,6 +404,7 @@ public final class MockBiliServer implements AutoCloseable {
         if (matched != null) {
             matched.lastBody = requestBody;
             matched.lastHeaders = snapshotHeaders(exchange);
+            matched.lastUri = fullPath;
         }
         if (matched != null && matched.redirectTo != null) {
             matched.hits.incrementAndGet();

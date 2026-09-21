@@ -3,7 +3,10 @@ package com.esdllm.bilibiliApi.http;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
+import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.parse.ErrorMapper;
+import com.esdllm.bilibiliApi.sign.WbiKeyStore;
+import com.esdllm.bilibiliApi.sign.WbiSigner;
 import kong.unirest.GetRequest;
 import kong.unirest.HttpRequestWithBody;
 import kong.unirest.HttpResponse;
@@ -184,6 +187,108 @@ public final class BilibiliHttp {
     @FunctionalInterface
     private interface Sender {
         HttpResponse<String> send(AnonymousSession.Identity identity);
+    }
+
+    // ------------------------------------------------------------------ 带 WBI 签名的 GET
+
+    /**
+     * 发起<b>带 WBI 签名</b>的 GET（{@code Accept} 用 JSON 形状、Referer 用站根）。
+     *
+     * <p>等价于 {@code getSigned(url, params, BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer)}。
+     *
+     * @param url    不含 query 的端点地址（形如 {@code BilibiliEndpoint.accInfoUrl}）
+     * @param params 要被签名的参数表
+     * @return 最后一次拿到的响应
+     */
+    public static HttpResponse<String> getSigned(String url, Map<String, String> params) {
+        return getSigned(url, params, BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
+    }
+
+    /**
+     * 发起<b>带 WBI 签名</b>的 GET，并可覆盖 {@code Accept} / {@code Referer}。
+     *
+     * <p>签名本身是纯计算（见 {@link WbiSigner}），密钥来自 {@link WbiKeyStore}（当天缓存，
+     * 命中缓存时<b>不产生额外出站</b>）。拼好 query 之后走的仍是 {@link #get(String, String, String)}
+     * —— 也就是说签名请求与普通请求共享同一套<b>限流 / 重试退避 / 风控身份轮换 / 指纹 / 代理</b>。
+     * 这一点很重要：签名是"服务端要求的参数"，不是"可以绕过抗压层的特权通道"。
+     *
+     * <p><b>签名被拒时自动重签一次</b>：本地缓存的密钥可能已经过期（跨日边界，或 B 站临时轮换），
+     * 表现是 {@code -403 访问权限不足}，或文档提到的 {@code data.v_voucher}。这时丢缓存重取
+     * {@code nav} 再签一次 —— <b>最多一次</b>，因为再失败就说明不是密钥的问题（参数/权限/风控）。
+     *
+     * <p>⚠️ {@code -403} 在本库有<b>两种成因</b>（缺签名 <b>或</b> 资源权限不足，见
+     * {@code ErrorMapper} 的说明）。这里只把它当作"可能是密钥过期"的触发器，<b>不做语义判断</b>：
+     * 重签一次的成本是一次请求，而误判成"权限问题"会让一批接口在密钥换日那天集体失效。
+     * 也只有本方法（签名出口）会做这件事 —— {@link #get(String)} 的 {@code -403} 一律原样返回。
+     *
+     * @param url     不含 query 的端点地址
+     * @param params  要被签名的参数表（可为空表：那样只剩 {@code wts} 参与签名）
+     * @param accept  覆盖 {@code Accept}；{@code null}/空白表示用默认
+     * @param referer 覆盖 {@code Referer}；{@code null}/空白表示用默认
+     * @return 最后一次拿到的响应
+     * @throws BilibiliException {@code url} 为空、或取不到 WBI 密钥（{@code nav} 不可达/被风控/形状已变）
+     */
+    public static HttpResponse<String> getSigned(String url, Map<String, String> params,
+                                                 String accept, String referer) {
+        if (url == null || url.isBlank()) {
+            throw new BilibiliException("WBI 签名请求失败：url 不能为空");
+        }
+        WbiKeyStore.WbiKeys keys = WbiKeyStore.get();
+        if (keys == null) {
+            // 密钥取不到就无法签名，"发一个没签名的请求试试"只会拿到 -403 并让人以为端点坏了 ——
+            // 宁可在这里明确失败，把原因写在消息里
+            throw new BilibiliException("WBI 签名失败：取不到 img_key/sub_key"
+                    + "（nav 不可达、被风控，或响应形状已变）");
+        }
+        HttpResponse<String> response = get(signedUrl(url, params, keys), accept, referer);
+        if (!looksLikeSignRejected(response)) {
+            return response;
+        }
+
+        log.warn("签名被拒（HTTP {}，业务码 {}），疑似密钥已过期，重新取 nav 后重签一次：{}",
+                response.getStatus(), businessCode(response.getBody()), url);
+        WbiKeyStore.invalidate();
+        WbiKeyStore.WbiKeys refreshed = WbiKeyStore.get();
+        if (refreshed == null || sameKeys(keys, refreshed)) {
+            // 密钥根本没变 ⇒ 重发只会得到同一份失败。原样返回，让上层按业务码报错
+            log.warn("重新取到的 WBI 密钥与缓存一致，不再重发（问题不在签名）：{}", url);
+            return response;
+        }
+        log.info("WBI 密钥已更新（{} → {}），用新密钥重签：{}", keys.summary(), refreshed.summary(), url);
+        return get(signedUrl(url, params, refreshed), accept, referer);
+    }
+
+    /** 把签名后的 query 拼到端点地址上（已含 query 的地址用 {@code &} 衔接） */
+    static String signedUrl(String url, Map<String, String> params, WbiKeyStore.WbiKeys keys) {
+        String query = WbiSigner.sign(params, keys.imgKey(), keys.subKey());
+        return url + (url.indexOf('?') >= 0 ? "&" : "?") + query;
+    }
+
+    /** 两份密钥是否相同（都按 32 位 hex 比较，没必要更聪明） */
+    private static boolean sameKeys(WbiKeyStore.WbiKeys first, WbiKeyStore.WbiKeys second) {
+        return first.imgKey().equals(second.imgKey()) && first.subKey().equals(second.subKey());
+    }
+
+    /**
+     * 这次响应是否<b>可能是</b>签名被拒（触发一次重签用，不代表结论）。
+     *
+     * <p>两个判据：body 里出现文档所述的 {@code v_voucher}（服务端为"签名缺失/错误"留的内部 id），
+     * 或业务码为 {@code -403}。后者在别处也可能意味着"资源权限不足"，这里刻意宽松 ——
+     * 见 {@link #getSigned} 的说明。
+     *
+     * @param response 响应
+     * @return true 表示值得丢缓存重签一次
+     */
+    static boolean looksLikeSignRejected(HttpResponse<String> response) {
+        String body = response.getBody();
+        if (body == null || body.isEmpty()) {
+            return false;
+        }
+        if (body.contains("v_voucher")) {
+            return true;
+        }
+        Integer code = businessCode(body);
+        return code != null && code == -403;
     }
 
     /**

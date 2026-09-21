@@ -161,6 +161,98 @@ public class BilibiliEndpoint {
     /** 关注流页面地址，用作该端点的 Referer（与真实网页一致）。 */
     public static final String followFeedReferer = "https://t.bilibili.com/";
 
+    // ---------------------------------------------------------------- WBI 签名域（2026-09-21 新增）
+
+    /**
+     * 以下五个端点<b>不带 query</b>（参数由 {@code BilibiliHttp#getSigned} 拼上并签名），
+     * 所以它们与本文件里其它常量（"URL + 参数"一把梭）形状不同 —— 这是刻意的：
+     * 签名必须看到完整的参数表，把参数写在常量串里就没法签了。
+     *
+     * <p><b>🔴 本段的"哪个端点真的强制签名"，是 2026-09-21 现场 2×2 实测出来的，
+     * 与官方文档的标注<b>并不一致</b></b>（文档把 {@code wbi/search/*} 也标成需签名，
+     * 实际不需要）。别照文档改代码，照这张表：
+     *
+     * <table border="1">
+     *   <caption>签名强制性实测（2026-09-21，本机，<b>两次独立复核一致</b>；"凭据"= 真实登录 Cookie）</caption>
+     *   <tr><th>端点</th><th>匿名·无签名</th><th>匿名·签名</th><th>凭据·无签名</th><th>凭据·签名</th><th>结论</th></tr>
+     *   <tr><td>{@code web-interface/view}（<b>控制组</b>，老端点）</td>
+     *       <td>{@code 0}</td><td>{@code 0}</td><td>{@code 0}</td><td>{@code 0}</td>
+     *       <td>匿名即可 —— <b>它的存在证明"出口 IP 没被封"</b>，否则下表所有 {@code -352} 都不可信</td></tr>
+     *   <tr><td>{@code space/wbi/acc/info}</td><td>{@code -352}</td><td>{@code -352}</td>
+     *       <td>{@code -403}</td><td><b>{@code 0}</b></td><td><b>签名 + 凭据，两者都要</b>（见下方"第三处翻案"）</td></tr>
+     *   <tr><td>{@code space/wbi/arc/search}</td><td>{@code -403}</td><td>{@code -352}</td>
+     *       <td>{@code -403}</td><td><b>{@code 0}</b></td><td>签名 <b>+</b> 凭据，两者都要</td></tr>
+     *   <tr><td>{@code web-interface/wbi/search/all/v2}</td><td><b>{@code 0}</b></td><td>{@code 0}</td>
+     *       <td>{@code 0}</td><td>{@code 0}</td><td>⚠️ <b>不强制签名</b>（文档标注过时）</td></tr>
+     *   <tr><td>{@code web-interface/wbi/search/type}</td><td><b>{@code 0}</b></td><td>{@code 0}</td>
+     *       <td>{@code 0}</td><td>{@code 0}</td><td>⚠️ <b>不强制签名</b>（同上）</td></tr>
+     *   <tr><td>{@code view/conclusion/get}</td><td>{@code -403}</td><td>{@code -101}</td>
+     *       <td>{@code -403}</td><td><b>{@code 0}</b></td><td>签名 <b>+</b> 凭据，两者都要</td></tr>
+     *   <tr><td>{@code polymer/…/seasons_archives_list}</td><td><b>{@code 0}</b></td><td>{@code 0}</td>
+     *       <td>{@code 0}</td><td>{@code 0}</td><td>⚠️ <b>不强制签名</b>，也无需登录</td></tr>
+     * </table>
+     *
+     * <p><b>🔴 一处必须记住的顺序差异（它解释了为什么"只看匿名那一列"会误判）</b>：
+     * {@code acc/info} 的匿名格子<b>无论签不签名都是 {@code -352}</b> —— 说明它
+     * <b>风控在签名校验之前</b>，匿名请求根本走不到验签那一步；而 {@code arc/search} /
+     * {@code conclusion} 是<b>签名校验在前</b>（先 {@code -403}，签上名之后才暴露出真正的
+     * {@code -352} / {@code -101}）。所以"两步判据"在这里不是可选项：
+     * <b>只有带上凭据，才能把"只缺签名"与"缺登录/被封"分开</b>。
+     *
+     * <p><b>三处翻案（都写进了 {@code INTERFACE_PLAN.md}）</b>：
+     * ① {@code conclusion/get} 此前带凭据仍 {@code -403}，判为"需 WBI 签名" ——
+     * 现在证实<b>签名后即变 {@code -101}</b>，再补凭据就 {@code code=0}，判断成立；
+     * ② {@code arc/search} 匿名签名仍 {@code -352}，说明它<b>不是</b>"签名可替代登录"那一类；
+     * ③ ⚠️ <b>{@code acc/info} 曾被记成"匿名签名即通（{@code 0}）"，复核为 {@code -352}</b>。
+     * 该结论在复核中<b>两次都复现为 {@code -352}</b>，而同期控制组 {@code web-interface/view}
+     * 匿名是 {@code 0}（排除"出口被封"），故判定原记录有误，<b>以本表为准</b>。
+     * 教训与 {@code x/space/upstat} 那次一模一样：<b>"匿名测过了" ≠ "验过了"</b> ——
+     * 少跑一格，就会把"需登录"写成"免登录"，进而把排期排错。
+     */
+    public static final String accInfoUrl = "https://api.bilibili.com/x/space/wbi/acc/info";
+
+    /** {@code x/space/wbi/arc/search} —— UP 主投稿列表（签名 + 需登录）。 */
+    public static final String arcSearchUrl = "https://api.bilibili.com/x/space/wbi/arc/search";
+
+    /** {@code x/web-interface/wbi/search/all/v2} —— 综合搜索（文档标 Wbi，<b>实测免签名</b>）。 */
+    public static final String searchAllUrl = "https://api.bilibili.com/x/web-interface/wbi/search/all/v2";
+
+    /** {@code x/web-interface/wbi/search/type} —— 分类搜索（同上，免签名）。 */
+    public static final String searchTypeUrl = "https://api.bilibili.com/x/web-interface/wbi/search/type";
+
+    /** {@code x/web-interface/view/conclusion/get} —— AI 视频摘要（签名 + 需登录）。 */
+    public static final String viewConclusionUrl = "https://api.bilibili.com/x/web-interface/view/conclusion/get";
+
+    /**
+     * {@code x/polymer/web-space/seasons_archives_list} —— 合集内的稿件列表（免签名、免登录）。
+     *
+     * <p>⚠️ 它<b>必须先有真实 {@code season_id}</b>（传 {@code 1} 只会得到 {@code -404 啥都木有}）。
+     * 而原定的取 id 入口 {@code polymer/web-space/seasons/list} <b>已 HTTP 404 下线</b>
+     * （2026-09-21 复验，含 404 对照）。本库改用 {@code arc/search} 的 {@code vlist[].season_id}
+     * —— 实测能取到（{@code 5485575}），这条链路已跑通。
+     */
+    public static final String seasonsArchivesUrl =
+            "https://api.bilibili.com/x/polymer/web-space/seasons_archives_list";
+
+    /**
+     * 空间页 Referer 模板（{@code %s} = mid）。
+     *
+     * <p>{@code acc/info} / {@code arc/search} / {@code seasons_archives_list} 都是
+     * "在某个 UP 的主页里发起的请求"，带具体空间页地址比带站根更像真实前端。
+     */
+    public static final String spaceReferer = "https://space.bilibili.com/%s";
+
+    /** 搜索页 Referer（搜索接口用；真实前端是 {@code search.bilibili.com/all?keyword=…}）。 */
+    public static final String searchReferer = "https://search.bilibili.com/";
+
+    /**
+     * 视频页 Referer 模板（{@code %s} = bvid）—— AI 摘要是在视频页里请求的。
+     *
+     * <p>⚠️ 这里<b>用未编码的 bvid 原样拼</b>：它只会是 {@code BV…} 这种
+     * {@code [A-Za-z0-9]} 串，不含需要转义的字符。
+     */
+    public static final String videoReferer = "https://www.bilibili.com/video/%s";
+
     // ---------------------------------------------------------------- 登录（passport 域）
 
     /**
