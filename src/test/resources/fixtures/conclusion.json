@@ -1,0 +1,59 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "code": 0,
+  "model_result": {
+   "result_type": 2,
+   "summary": "iPhone 18 Pro与Duo深度对比，Pro系列优化屏幕一致性、灵动岛功能及续航性能，Pro影像创新可变光圈提升夜景画质，而Duo侧重大屏体验、双屏交互与双卡双待，但存在重量、屏下内摄画质及操作不便等问题，两款机型分别适合创作与消费场景，综合呈现差异化优势与用户需求匹配分析。",
+   "outline": [
+    {
+     "title": "折叠屏体验与直板机对比分析",
+     "part_outline": [
+      {
+       "timestamp": 16,
+       "content": "折叠屏耐久性不足，压展测试出现屏幕闪烁问题"
+      },
+      {
+       "timestamp": 28,
+       "content": "双顶配价格超2.6万，性价比争议显著"
+      }
+     ],
+     "timestamp": 1
+    },
+    {
+     "title": "iPhone 18 Pro/Duo多屏交互与影像升级",
+     "part_outline": [
+      {
+       "timestamp": 637,
+       "content": "外屏内屏绑定同步信息，避免误操作导致情绪波动"
+      },
+      {
+       "timestamp": 737,
+       "content": "A20芯片性能强劲，散热优化显著提升游戏体验"
+      }
+     ],
+     "timestamp": 600
+    }
+   ],
+   "subtitle": [
+    {
+     "title": "",
+     "part_subtitle": [
+      {
+       "start_timestamp": 0,
+       "end_timestamp": 1,
+       "content": "其实面对折叠手机"
+      }
+     ],
+     "timestamp": 1
+    }
+   ]
+  },
+  "stid": "796069221560950154",
+  "status": 0,
+  "like_num": 0,
+  "dislike_num": 0
+ }
+}

@@ -1,0 +1,93 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "aids": [
+   324324526,
+   1255271796,
+   1706313929
+  ],
+  "archives": [
+   {
+    "aid": 324324526,
+    "bvid": "BV1Vw411b7tA",
+    "ctime": 1701682741,
+    "duration": 1242,
+    "enable_vt": false,
+    "interactive_video": false,
+    "pic": "http://i2.hdslb.com/bfs/archive/bb49e31e4206d1bc3cc6c4868827a34877266e16.jpg",
+    "playback_position": 0,
+    "pubdate": 1701691200,
+    "stat": {
+     "view": 2997636,
+     "vt": 0,
+     "danmaku": 24407
+    },
+    "state": 0,
+    "title": "【Vlog】去了一趟韩国。",
+    "ugc_pay": 0,
+    "vt_display": "",
+    "is_lesson_video": 0
+   },
+   {
+    "aid": 1255271796,
+    "bvid": "BV1DJ4m137TV",
+    "ctime": 1717402151,
+    "duration": 1251,
+    "enable_vt": false,
+    "interactive_video": false,
+    "pic": "http://i0.hdslb.com/bfs/archive/96449f235cca9ede3a0f643623c0515153ceee20.jpg",
+    "playback_position": 0,
+    "pubdate": 1717416000,
+    "stat": {
+     "view": 3798019,
+     "vt": 0,
+     "danmaku": 13024
+    },
+    "state": 0,
+    "title": "去了一趟法国。",
+    "ugc_pay": 0,
+    "vt_display": "",
+    "is_lesson_video": 0
+   },
+   {
+    "aid": 1706313929,
+    "bvid": "BV1jT42167Xb",
+    "ctime": 1722768846,
+    "duration": 1532,
+    "enable_vt": false,
+    "interactive_video": false,
+    "pic": "http://i0.hdslb.com/bfs/archive/85c0ffcb04d224fde8adb2ac350ff216f36e926a.jpg",
+    "playback_position": 0,
+    "pubdate": 1722772839,
+    "stat": {
+     "view": 6791129,
+     "vt": 0,
+     "danmaku": 52135
+    },
+    "state": 0,
+    "title": "10年后，900万了",
+    "ugc_pay": 0,
+    "vt_display": "",
+    "is_lesson_video": 0
+   }
+  ],
+  "meta": {
+   "category": 0,
+   "cover": "https://archive.biliimg.com/bfs/archive/a33f6c68d4021497c42b9c359306a0257d0eb916.jpg",
+   "description": "",
+   "mid": 946974,
+   "name": "合集·去了一趟……",
+   "ptime": 1789182000,
+   "season_id": 5485575,
+   "total": 17,
+   "title": "去了一趟……"
+  },
+  "page": {
+   "page_num": 1,
+   "page_size": 5,
+   "total": 17
+  }
+ }
+}

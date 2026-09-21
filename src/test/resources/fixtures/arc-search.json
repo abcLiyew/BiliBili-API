@@ -1,0 +1,252 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "list": {
+   "slist": [],
+   "tlist": {
+    "1": {
+     "tid": 1,
+     "count": 3,
+     "name": "动画"
+    },
+    "129": {
+     "tid": 129,
+     "count": 1,
+     "name": "舞蹈"
+    },
+    "155": {
+     "tid": 155,
+     "count": 1,
+     "name": "时尚"
+    },
+    "160": {
+     "tid": 160,
+     "count": 132,
+     "name": "生活"
+    },
+    "177": {
+     "tid": 177,
+     "count": 4,
+     "name": "纪录片"
+    },
+    "181": {
+     "tid": 181,
+     "count": 57,
+     "name": "影视"
+    },
+    "188": {
+     "tid": 188,
+     "count": 529,
+     "name": "科技"
+    },
+    "196": {
+     "tid": 196,
+     "count": 3,
+     "name": "课堂"
+    },
+    "211": {
+     "tid": 211,
+     "count": 4,
+     "name": "美食"
+    },
+    "217": {
+     "tid": 217,
+     "count": 2,
+     "name": "动物圈"
+    },
+    "223": {
+     "tid": 223,
+     "count": 11,
+     "name": "汽车"
+    },
+    "234": {
+     "tid": 234,
+     "count": 4,
+     "name": "运动"
+    },
+    "3": {
+     "tid": 3,
+     "count": 2,
+     "name": "音乐"
+    },
+    "36": {
+     "tid": 36,
+     "count": 161,
+     "name": "知识"
+    },
+    "4": {
+     "tid": 4,
+     "count": 10,
+     "name": "游戏"
+    },
+    "5": {
+     "tid": 5,
+     "count": 7,
+     "name": "娱乐"
+    }
+   },
+   "vlist": [
+    {
+     "comment": 7188,
+     "typeid": 95,
+     "play": 4498681,
+     "pic": "http://i1.hdslb.com/bfs/archive/47a9f66daf3e109e620078ca445d29a71d7448d0.jpg",
+     "subtitle": "",
+     "description": "这一次，我们去了一趟系列来到了历史底蕴深厚、煤炭资源丰富的山西。想带你一起尝尝地道的山西美食，品鉴大名鼎鼎的老陈醋，感受独属于三晋大地的风土人情。如果你喜欢这期视频，请多多支持我们，并把视频分享给你的朋友们！",
+     "copyright": "3",
+     "title": "去了一趟山西。",
+     "review": 0,
+     "author": "影视飓风",
+     "mid": 946974,
+     "created": 1789182000,
+     "length": "22:13",
+     "video_review": 23108,
+     "aid": 117253177676089,
+     "bvid": "BV1xVY26dEbz",
+     "hide_click": false,
+     "is_pay": 0,
+     "is_union_video": 0,
+     "is_steins_gate": 0,
+     "is_live_playback": 0,
+     "is_lesson_video": 0,
+     "is_lesson_finished": 0,
+     "lesson_update_info": "",
+     "jump_url": "",
+     "meta": {
+      "id": 5485575,
+      "title": "去了一趟……",
+      "cover": "https://archive.biliimg.com/bfs/archive/a33f6c68d4021497c42b9c359306a0257d0eb916.jpg",
+      "mid": 946974,
+      "intro": "",
+      "sign_state": 0,
+      "attribute": 140,
+      "stat": {
+       "season_id": 5485575,
+       "view": 96089282,
+       "danmaku": 483229,
+       "reply": 92608,
+       "favorite": 970759,
+       "coin": 1764311,
+       "share": 250563,
+       "like": 4709322,
+       "mtime": 1789974351,
+       "vt": 0,
+       "vv": 0
+      },
+      "ep_count": 17,
+      "first_aid": 324324526,
+      "ptime": 1789182000,
+      "ep_num": 17,
+      "show": 1
+     },
+     "is_avoided": 0,
+     "season_id": 5485575,
+     "attribute": 16384,
+     "is_charging_arc": false,
+     "elec_arc_type": 0,
+     "elec_arc_badge": "",
+     "vt": 0,
+     "enable_vt": 0,
+     "vt_display": "",
+     "playback_position": 0,
+     "is_self_view": false,
+     "view_self_type": 0
+    },
+    {
+     "comment": 174560,
+     "typeid": 95,
+     "play": 10547734,
+     "pic": "http://i1.hdslb.com/bfs/archive/aec12235afcae7c12ed1eb3684c103ed407434bf.jpg",
+     "subtitle": "",
+     "description": "面对折叠屏手机，我们始终绕不开同一个问题“为什么不直接买一台好的直板机？”那 iPhone Duo，到底有没有它不可替代的地方？欢迎收看影视飓风 2026 年 iPhone 评测。哦对了，这次我们依旧准备了 100 台新 iPhone 送给大家，记得去动态参与抽奖！",
+     "copyright": "3",
+     "title": "选哪个？iPhone 18 Pro&Duo深度上手",
+     "review": 0,
+     "author": "影视飓风",
+     "mid": 946974,
+     "created": 1789560000,
+     "length": "27:12",
+     "video_review": 365311,
+     "aid": 117280105045764,
+     "bvid": "BV1cSec6tEux",
+     "hide_click": false,
+     "is_pay": 0,
+     "is_union_video": 0,
+     "is_steins_gate": 0,
+     "is_live_playback": 0,
+     "is_lesson_video": 0,
+     "is_lesson_finished": 0,
+     "lesson_update_info": "",
+     "jump_url": "",
+     "meta": null,
+     "is_avoided": 0,
+     "season_id": 0,
+     "attribute": 16384,
+     "is_charging_arc": false,
+     "elec_arc_type": 0,
+     "elec_arc_badge": "",
+     "vt": 0,
+     "enable_vt": 0,
+     "vt_display": "",
+     "playback_position": 3,
+     "is_self_view": false,
+     "view_self_type": 0
+    },
+    {
+     "comment": 3763,
+     "typeid": 95,
+     "play": 1649032,
+     "pic": "http://i1.hdslb.com/bfs/archive/c9036763439c028fd6e9a9bd2c01fca10f58059c.jpg",
+     "subtitle": "",
+     "description": "苹果发布会之后，我们和五月天阿信一起，去见了一个人，和他聊了聊……\n他到底是谁？为什么是阿信？又聊了什么？先不剧透，正片见。",
+     "copyright": "1",
+     "title": "和五月天阿信见了他",
+     "review": 0,
+     "author": "影视飓风",
+     "mid": 946974,
+     "created": 1789376738,
+     "length": "11:14",
+     "video_review": 5137,
+     "aid": 117268411455280,
+     "bvid": "BV17PYC6KEXu",
+     "hide_click": false,
+     "is_pay": 0,
+     "is_union_video": 0,
+     "is_steins_gate": 0,
+     "is_live_playback": 0,
+     "is_lesson_video": 0,
+     "is_lesson_finished": 0,
+     "lesson_update_info": "",
+     "jump_url": "",
+     "meta": null,
+     "is_avoided": 0,
+     "season_id": 0,
+     "attribute": 16512,
+     "is_charging_arc": false,
+     "elec_arc_type": 0,
+     "elec_arc_badge": "",
+     "vt": 0,
+     "enable_vt": 0,
+     "vt_display": "",
+     "playback_position": 0,
+     "is_self_view": false,
+     "view_self_type": 0
+    }
+   ]
+  },
+  "page": {
+   "pn": 1,
+   "ps": 5,
+   "count": 931
+  },
+  "episodic_button": {
+   "text": "播放全部",
+   "uri": "//www.bilibili.com/medialist/play/946974?from=space"
+  },
+  "is_risk": false,
+  "gaia_res_type": 0,
+  "gaia_data": null
+ }
+}

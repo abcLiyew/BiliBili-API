@@ -1,0 +1,309 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "seid": "9427330230458479520",
+  "page": 1,
+  "pagesize": 20,
+  "next": 2,
+  "numResults": 1000,
+  "numPages": 50,
+  "suggest_keyword": "",
+  "rqt_type": "search",
+  "exp_list": {
+   "100010": true,
+   "5515": true,
+   "6601": true,
+   "9902": true,
+   "9924": true,
+   "9931": true,
+   "9947": true,
+   "9961": true,
+   "9971": true
+  },
+  "is_hit_web_inf": false,
+  "egg_hit": 0,
+  "pageinfo": {
+   "tv": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "user": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "movie": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "operation_card": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "upuser": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "bangumi": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "activity": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "live_all": {
+    "numResults": 92,
+    "pages": 5,
+    "total": 92
+   },
+   "media_ft": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "article": {
+    "numResults": 1000,
+    "pages": 50,
+    "total": 1000
+   },
+   "topic": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "bili_user": {
+    "numResults": 1000,
+    "pages": 50,
+    "total": 1000
+   },
+   "media_bangumi": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "pgc": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "special": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "video": {
+    "numResults": 1000,
+    "pages": 50,
+    "total": 1000
+   },
+   "live_master": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "live_user": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "live_room": {
+    "numResults": 92,
+    "pages": 5,
+    "total": 92
+   },
+   "clustering_card": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "related_search": {
+    "numResults": 0,
+    "pages": 0,
+    "total": 0
+   },
+   "live": {
+    "numResults": 92,
+    "pages": 5,
+    "total": 92
+   }
+  },
+  "top_tlist": {
+   "card": 0,
+   "tv": 0,
+   "user": 0,
+   "movie": 0,
+   "operation_card": 0,
+   "upuser": 0,
+   "bangumi": 0,
+   "activity": 0,
+   "media_ft": 0,
+   "article": 1000,
+   "topic": 0,
+   "bili_user": 1000,
+   "media_bangumi": 0,
+   "pgc": 0,
+   "special": 0,
+   "video": 1000,
+   "live_master": 0,
+   "live_user": 0,
+   "live_room": 92,
+   "clustering_card": 0,
+   "related_search": 0,
+   "live": 92
+  },
+  "show_column": 0,
+  "show_module_list": [
+   "tips",
+   "brand_ad",
+   "esports",
+   "activity",
+   "web_game",
+   "card",
+   "media_bangumi",
+   "media_ft",
+   "bili_user",
+   "user",
+   "star",
+   "video"
+  ],
+  "app_display_option": {
+   "is_search_page_grayed": 0
+  },
+  "in_black_key": 0,
+  "in_white_key": 1,
+  "result": [
+   {
+    "result_type": "tips",
+    "data": []
+   },
+   {
+    "result_type": "brand_ad",
+    "data": []
+   },
+   {
+    "result_type": "esports",
+    "data": []
+   },
+   {
+    "result_type": "activity",
+    "data": []
+   },
+   {
+    "result_type": "web_game",
+    "data": []
+   },
+   {
+    "result_type": "card",
+    "data": []
+   },
+   {
+    "result_type": "media_bangumi",
+    "data": []
+   },
+   {
+    "result_type": "media_ft",
+    "data": []
+   },
+   {
+    "result_type": "bili_user",
+    "data": []
+   },
+   {
+    "result_type": "user",
+    "data": []
+   },
+   {
+    "result_type": "star",
+    "data": []
+   },
+   {
+    "result_type": "video",
+    "data": [
+     {
+      "type": "video",
+      "id": 113978801916732,
+      "author": "巨量性能测试平台",
+      "mid": 3493083958217642,
+      "typeid": "122",
+      "typename": "野生技能协会",
+      "arcurl": "http://www.bilibili.com/video/av113978801916732",
+      "aid": 113978801916732,
+      "bvid": "BV1AsNZe6EEL",
+      "title": "【2026最新】B站最全最细的软件<em class=\"keyword\">测试</em>教程，7天从零基础小白到精通软件<em class=\"keyword\">测试</em>，学完即上岗！",
+      "description": "全套软件测试笔记及视频源码 +微信：mashang-ee 备注（b站222）即可通过",
+      "pic": "//i0.hdslb.com/bfs/archive/365ee68db75c8c1cf4ac07d6909deeec04d3f3d9.png",
+      "play": 1967451,
+      "video_review": 5536,
+      "favorites": 160980,
+      "tag": "程序员,面试,接口测试,野生技术协会,软件测试全套教程,软件测试工程师,技术宅,软件测试,自动化测试,职场",
+      "review": 44578,
+      "pubdate": 1739179107,
+      "senddate": 1787994619,
+      "duration": "2909:39",
+      "badgepay": false,
+      "hit_columns": [
+       "title",
+       "description",
+       "author",
+       "tag"
+      ],
+      "view_type": "",
+      "is_pay": 0,
+      "is_union_video": 0,
+      "rec_tags": null,
+      "new_rec_tags": [],
+      "like": 105426,
+      "upic": "https://i2.hdslb.com/bfs/face/e9d0864f113e4e3ecabb715a40f260d03b0b46cd.jpg",
+      "corner": "",
+      "cover": "",
+      "desc": "",
+      "url": "",
+      "rec_reason": "",
+      "danmaku": 5536,
+      "biz_data": null,
+      "is_charge_video": 0,
+      "vt": 0,
+      "enable_vt": 0,
+      "vt_display": "",
+      "subtitle": "",
+      "episode_count_text": "",
+      "release_status": 0,
+      "is_intervene": 0,
+      "area": 0,
+      "style": 0,
+      "cate_name": "",
+      "is_live_room_inline": 0,
+      "live_status": 0,
+      "live_time": "",
+      "online": 0,
+      "rank_index": 1,
+      "rank_offset": 1,
+      "roomid": 0,
+      "short_id": 0,
+      "spread_id": 0,
+      "tags": "",
+      "uface": "",
+      "uid": 0,
+      "uname": "",
+      "user_cover": "",
+      "parent_area_id": 0,
+      "parent_area_name": "",
+      "watched_show": null,
+      "cny_flag": 0,
+      "card_status": 0
+     }
+    ]
+   }
+  ],
+  "is_search_page_grayed": 0
+ }
+}
