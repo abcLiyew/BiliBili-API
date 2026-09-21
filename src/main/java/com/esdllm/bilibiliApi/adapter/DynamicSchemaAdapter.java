@@ -250,12 +250,12 @@ public final class DynamicSchemaAdapter {
             return null;
         }
         return switch (dynamicType) {
-            case TYPE_FORWARD -> Integer.valueOf(1);
-            case TYPE_DRAW -> Integer.valueOf(2);
-            case TYPE_WORD -> Integer.valueOf(4);
-            case TYPE_AV -> Integer.valueOf(8);
-            case TYPE_ARTICLE -> Integer.valueOf(64);
-            case TYPE_MUSIC -> Integer.valueOf(256);
+            case TYPE_FORWARD -> 1;
+            case TYPE_DRAW -> 2;
+            case TYPE_WORD -> 4;
+            case TYPE_AV -> 8;
+            case TYPE_ARTICLE -> 64;
+            case TYPE_MUSIC -> 256;
             default -> null;
         };
     }

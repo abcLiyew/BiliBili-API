@@ -137,9 +137,7 @@ public class Dynamic {
     public List<DynamicInfo> getDynamicInfoList(String uid) throws InterruptedException {
         try {
             return DynamicService.INSTANCE.getInfoList(uid);
-        } catch (IOException e) {
-            throw new RuntimeException("获取动态列表失败：" + e.getMessage(), e);
-        } catch (BilibiliException e) {
+        } catch (IOException | BilibiliException e) {
             throw new RuntimeException("获取动态列表失败：" + e.getMessage(), e);
         }
     }
@@ -174,9 +172,7 @@ public class Dynamic {
     public List<DynamicInfo> getFollowFeed() throws InterruptedException {
         try {
             return DynamicService.INSTANCE.getFollowFeed();
-        } catch (IOException e) {
-            throw new RuntimeException("获取关注流失败：" + e.getMessage(), e);
-        } catch (BilibiliException e) {
+        } catch (IOException | BilibiliException e) {
             throw new RuntimeException("获取关注流失败：" + e.getMessage(), e);
         }
     }
