@@ -1,29 +1,32 @@
 # Bilibili API
 
+> [!WARNING]
+> **本项目仅供学习与测试使用，请勿滥用。**
+> 本项目为开源项目，不接受任何形式的催单与索取，也不容许存在付费内容。
+> 利用本项目提供的接口、文档等造成的不良影响及后果，与作者无关。
+> 由于本项目的特殊性，可能随时停止开发或删档。
+
 ## 项目简介
 
-Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java库。该项目提供了一系列API接口，可以获取用户信息、动态内容、直播信息等数据。
+Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java库。该项目提供了一系列API接口，可以获取用户信息、视频、动态内容、直播信息等数据，也支持搜索、用户空间、短链解析，以及登录（扫码 / 密码 / 短信）与 WBI 签名。
 
 ## 接口来源与覆盖范围
-::: warning ⚠️声明
 
-本项目遵守 CC-BY-NC 4.0 协议，禁止一切商业使用，如需转载请注明作者 ID
-请勿滥用，本项目仅用于学习和测试！请勿滥用，本项目仅用于学习和测试！请勿滥用，本项目仅用于学习和测试！
-利用本项目提供的接口、文档等造成不良影响及后果与本人无关
-由于本项目的特殊性，可能随时停止开发或删档
-本项目为开源项目，不接受任何形式的催单和索取行为，更不容许存在付费内容
-:::
 ### 文档来源
 
 本库的端点、参数与返回字段，参照开源文档项目
 **[SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect)**
-（B 站 API 文档合集，在线阅读：<https://socialsisteryi.github.io/bilibili-API-collect/>）；
-本项目取用的是它的 fork **[realysy/bili-apis](https://github.com/realysy/bili-apis)**。
+（B 站 API 文档合集；⚠️ 上游已于 2026-01-30 停止维护并关停，原文档站已下线，
+其内容仅存于各 fork 中）；
+本项目取用的是它留下的 fork **[realysy/bili-apis](https://github.com/realysy/bili-apis)**。
 WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出自该项目的逆向研究，
 见 issue [#631](https://github.com/SocialSisterYi/bilibili-API-collect/issues/631) 与
 [#885](https://github.com/SocialSisterYi/bilibili-API-collect/issues/885)，在此致谢。
 
 > 本库与上述文档项目**没有隶属关系** —— 它只是本库的参考资料之一，也不保证与本库同步。
+
+> ⚠️ **协议归属**：上游文档项目采用 **CC-BY-NC 4.0**（禁止商业使用）。本库**不是**该项目的衍生作品，
+> 仅参考其中记录的事实性接口信息 —— **该协议不适用于本库**，本库自身仍为 [MIT](#许可证)。
 
 ⚠️ **文档只是参考，本库以真机实测为准。** 两者不一致时一律以实测为准，以下为已核实的分歧
 （均已写进代码注释）：
@@ -270,10 +273,14 @@ String query = wbi.signQuery(params, imgKey, subKey, 1700384803L);
 - `BilibiliDynamicResp`: B站用户的动态响应
 - `DynamicInfo`: 动态信息
 - `BilibiliLiveResp`: B站用户的直播响应
+- `QrCodeLogin` / `LoginCredential` / `CredentialStatus`: 登录（二维码、凭据、凭据状态）
+- `AccInfo` / `ArchiveSearchResult` / `SeasonsArchives`: 用户空间（账号信息、投稿列表、合集）
+- `SearchAllResult` / `SearchTypeResult` / `SearchVideo` / `SearchUser`: 搜索结果
+- `AiSummary`: AI 视频摘要
   
 ## 注意事项
 1. 请注意，使用本库时，请遵守哔哩哔哩的API使用规则和限制。
-2. 本项目仅供学习参考，请勿用于商业用途。
+2. **本库采用 MIT 许可证（允许商业使用）**；但接入 B 站接口仍需遵守其用户协议，请自行评估合规风险。
 3. 使用本项目请遵守B站用户协议和相关法律法规。
 4. 请合理控制请求频率，避免对B站服务器造成过大压力。
 

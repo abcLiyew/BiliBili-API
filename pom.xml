@@ -8,7 +8,7 @@
     <artifactId>bilibili-api</artifactId>
     <version>0.9.29-beta</version>
     <name>bilibili-api</name>
-    <description>哔哩哔哩（Bilibili）常用数据接口的 Java 客户端：用户名片、视频、动态、直播间与短链解析。</description>
+    <description>哔哩哔哩（Bilibili）常用数据接口的 Java 客户端：用户名片、视频、动态、直播间、短链解析、搜索、用户空间与 AI 视频摘要，并支持登录（扫码 / 密码 / 短信）与 WBI 签名。</description>
 
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
