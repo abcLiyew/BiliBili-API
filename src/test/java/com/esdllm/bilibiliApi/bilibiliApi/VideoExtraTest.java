@@ -40,6 +40,8 @@ class VideoExtraTest {
     private static final String NAV_PATH = "/x/web-interface/nav";
     private static final String VIEW_PATH = "/x/web-interface/view?bvid=";
     private static final String CONC_PATH = "/x/web-interface/view/conclusion/get";
+    /** 注意是**不带 `/wbi/`** 的那条路径 —— 库内实测走的就是它，理由见 BilibiliEndpoint */
+    private static final String PLAY_PATH = "/x/player/playurl";
 
     private static final String NAV_BODY = "{\"code\":-101,\"data\":{\"wbi_img\":{"
             + "\"img_url\":\"https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png\","
@@ -179,6 +181,35 @@ class VideoExtraTest {
 
             BilibiliException cause = assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(-403, cause.getCode());
+        }
+
+        // ---- 以下是 getPlayUrl 的门面边界 ----
+        // 服务层的三条失败形态（无地址 / 412 / -101）在 PlayUrlServiceTest 里按
+        // BilibiliException 断言；这里补的是**门面这一层**：它们都必须变成 IOException，
+        // 且业务码要活到 cause 里 —— 这套 catch→wrap 是本库对外唯一的错误出口。
+
+        @Test
+        @DisplayName("getPlayUrl：HTTP 412 走 IOException 边界，cause 保住 412")
+        void playUrlRiskControl412() {
+            mock.registerStatus(PLAY_PATH, 412, "");
+
+            IOException e = assertThrows(IOException.class,
+                    () -> videoExtra.getPlayUrl(BVID, CID));
+
+            BilibiliException cause = assertInstanceOf(BilibiliException.class, e.getCause());
+            assertEquals(412, cause.getCode(), "调用方要靠它分辨'不是参数写错'");
+        }
+
+        @Test
+        @DisplayName("getPlayUrl：-101 未登录同样包成 IOException 并保住业务码")
+        void playUrlNotLoggedIn() {
+            mock.register(PLAY_PATH, "{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}");
+
+            IOException e = assertThrows(IOException.class,
+                    () -> videoExtra.getPlayUrl(BVID, CID));
+
+            BilibiliException cause = assertInstanceOf(BilibiliException.class, e.getCause());
+            assertEquals(-101, cause.getCode(), "调用方靠这个码决定'该去登录取凭据'");
         }
     }
 }

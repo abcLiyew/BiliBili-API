@@ -3,7 +3,9 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
+import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
 import com.esdllm.bilibiliApi.service.UserService;
 
 import java.io.IOException;
@@ -19,7 +21,8 @@ import java.io.IOException;
  *   <caption>两个门面各自独有的东西</caption>
  *   <tr><th>数据</th><th>去哪拿</th><th>说明</th></tr>
  *   <tr><td>粉丝数 / 投稿总数 / 获赞数</td><td>{@code CardInfo#getCard(uid)}</td>
- *       <td>本门面<b>没有</b>这些（{@code acc/info} 不含统计量）</td></tr>
+ *       <td>本门面<b>没有</b>这些（{@code acc/info} 不含统计量）；⚠️ {@link #getUpStat} 给的是
+ *           <b>累计播放/阅读/获赞</b>，与 {@code card} 的"粉丝数"不是一回事，别混</td></tr>
  *   <tr><td>昵称 / 头像 / 等级 / 认证 / 大会员 / 签名</td><td>两边都有</td>
  *       <td>重叠，按需选一边即可</td></tr>
  *   <tr><td>{@code is_followed}（当前凭据是否已关注）</td><td>本门面 {@link #getAccInfo}</td>
@@ -159,6 +162,80 @@ public class UserSpace {
     public Long findSeasonId(long mid) throws IOException {
         try {
             return UserService.INSTANCE.findSeasonId(mid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    // ------------------------------------------------------------------ 凭据域扩容（2026-09-22 B3.5）
+
+    /**
+     * <b>取 UP 主累计数据</b>（{@code x/space/upstat}）：视频播放 / 专栏阅读 / 累计获赞。
+     *
+     * <p>🔴 <b>需要凭据，但它的"没凭据"长得和别处都不一样 —— 这是本门面最该记住的一条</b>：
+     * <pre>
+     * 带凭据 → code=0，data={"archive":{"view":9065,…},"article":{"view":308},"likes":408}
+     * 匿  名 → code=0，data=<b>{}</b>     ← 注意：不是 -101，<b>没有任何错误信号</b>
+     * </pre>
+     * ⇒ 判据<b>不能是 {@code code}</b>（两次都是 0），只能看 data 有没有内容。
+     * 本方法因此把"整体为空"当失败抛出，<b>不返回三字段全 null 的对象</b> ——
+     * 否则"没带凭据"与"这个 UP 主播放量真的是 0"在调用方眼里一模一样。
+     *
+     * <p>⚠️ 想要粉丝数/投稿数请用 {@code CardInfo#getCard}，本端点没有那两项
+     * （本端点给的是<b>累计</b>播放/阅读/获赞）。
+     *
+     * @param mid 用户 mid
+     * @return 累计数据，不可为 null
+     * @throws IOException {@code mid} ≤ 0、网络失败、业务码非 0，
+     *                     或服务端回 {@code code=0} 但 {@code data} 为空（几乎总是"没注入凭据"）
+     */
+    public UpStat getUpStat(long mid) throws IOException {
+        try {
+            return UserService.INSTANCE.getUpStat(mid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取粉丝列表</b>（{@code x/relation/followers}）。
+     *
+     * <p>🔴 <b>需要凭据，且这里的缺凭据是"敞亮"的</b>：匿名直接 {@code -101 账号未登录}
+     * —— 与 {@link #getUpStat(long)} 那种"匿名也 {@code code=0} 但没数据"的静默形态<b>相反</b>。
+     * 两者都在同一个门面里，处置方式却不同：这里 {@code -101} 就该去重新登录。
+     *
+     * <p>⚠️ {@code vmid} 实际只对<b>自己的</b> mid 有效 —— 这不是"查任意 UP 的粉丝榜"的接口。
+     * ⚠️ 列表里的昵称字段是 <b>{@code uname}</b>，不是 {@code name}。
+     *
+     * @param vmid 用户 mid（实际只对本人有效）
+     * @param pn   页码（从 1 开始）
+     * @param ps   每页条数
+     * @return 粉丝列表，不可为 null
+     * @throws IOException 参数非法、网络失败、业务码非 0（未注入凭据时即 {@code -101}）、或 {@code data} 为空
+     */
+    public RelationList getFollowers(long vmid, int pn, int ps) throws IOException {
+        try {
+            return UserService.INSTANCE.getFollowers(vmid, pn, ps);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取关注列表</b>（{@code x/relation/followings}）。
+     *
+     * <p>门槛与形状与 {@link #getFollowers(long, int, int)} 完全一致（两个端点实测同形，
+     * 差别只在语义方向）。同样需要凭据，匿名 {@code -101}。
+     *
+     * @param vmid 用户 mid（实际只对本人有效）
+     * @param pn   页码（从 1 开始）
+     * @param ps   每页条数
+     * @return 关注列表，不可为 null
+     * @throws IOException 同 {@link #getFollowers(long, int, int)}
+     */
+    public RelationList getFollowings(long vmid, int pn, int ps) throws IOException {
+        try {
+            return UserService.INSTANCE.getFollowings(vmid, pn, ps);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

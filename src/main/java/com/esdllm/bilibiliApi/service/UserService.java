@@ -8,7 +8,9 @@ import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.model.BilibiliCardResp;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
+import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
 import com.esdllm.bilibiliApi.parse.ApiResponse;
 import com.esdllm.bilibiliApi.parse.ErrorMapper;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
@@ -226,6 +228,111 @@ public class UserService {
         }
         log.info("投稿首页里没有属于合集的稿件，取不到 season_id（mid={}）", mid);
         return null;
+    }
+
+    // ------------------------------------------------------------------ 凭据域（2026-09-22 B3.5 新增）
+
+    /**
+     * <b>取 UP 主累计数据</b>（{@code x/space/upstat}）：视频播放 / 专栏阅读 / 累计获赞。
+     *
+     * <p>🔴 <b>本方法是本库处理"静默空"的样板，读它比读任何文档都快</b>：
+     * 该端点匿名时返回 <b>{@code code=0} + 空 {@code data}</b>（不是 {@code -101}！）。
+     * 而空 {@code data} 会让"判 data 非 null"全部通过，于是安静地返回一个三字段全 null 的对象 ——
+     * 与"这个 UP 主的播放量真的是 0"无法区分。
+     * ⇒ 所以这里<b>把"整体为空"判成失败并显式抛异常</b>，理由写在异常消息里，而不是交给调用方去猜。
+     *
+     * <p>⚠️ 想要<b>粉丝数 / 投稿数</b>请用 {@link #getCard(Long)}，本端点没有那两项。
+     *
+     * <p>不需 WBI 签名。带凭据实测 {@code archive.view=9065} / {@code article.view=308} / {@code likes=408}。
+     *
+     * @param mid 用户 mid
+     * @return 累计数据，不可为 null（整体为空时会抛异常而不是返回全 null 对象）
+     * @throws BilibiliException {@code mid} ≤ 0、网络失败、业务码非 0，
+     *                           或<b>服务端回 {@code code=0} 但 {@code data} 为空</b>
+     *                           （几乎总是"没注入凭据"）
+     */
+    public UpStat getUpStat(long mid) {
+        if (mid <= 0) {
+            throw new BilibiliException("mid不能小于0");
+        }
+        HttpResponse<String> response = BilibiliHttp.get(BilibiliEndpoint.upstatUrl + mid,
+                BilibiliEndpoint.jsonAccept, spaceReferer(mid));
+        UpStat data = requireData(response, new TypeReference<>() {
+        }, "获取UP主累计数据");
+        if (data.getArchive() == null && data.getArticle() == null && data.getLikes() == null) {
+            throw new BilibiliException(0,
+                    "获取UP主累计数据失败：服务端返回 code=0，但 data 是空对象 —— "
+                            + "这不是'数据为 0'，而是'没有给出数据'",
+                    "该端点匿名时正是这种形态（code=0 + 空 data），"
+                            + "请先 Login#getCredentialStatus() 确认已注入有效凭据");
+        }
+        log.info("UP 累计数据 mid={}：播放 {} / 阅读 {} / 获赞 {}", mid,
+                data.getArchive() == null ? null : data.getArchive().getView(),
+                data.getArticle() == null ? null : data.getArticle().getView(),
+                data.getLikes());
+        return data;
+    }
+
+    /**
+     * <b>取粉丝列表</b>（{@code x/relation/followers}）。
+     *
+     * <p>🔴 <b>真需登录</b>：匿名直接 {@code -101 账号未登录}（实测），无降级。
+     * 与 {@link #getUpStat(long)} 那种"匿名也 {@code code=0} 但没数据"的形态不同。
+     *
+     * <p>⚠️ {@code vmid} 只对<b>自己的</b> mid 有意义，别当"查任意 UP 粉丝榜"用。
+     *
+     * <p>⚠️ 昵称字段是 {@code uname} 不是 {@code name}（见 {@code RelationList.RelationUser}）。
+     *
+     * @param vmid 用户 mid（实际只对本人有效）
+     * @param pn   页码（从 1 开始）
+     * @param ps   每页条数
+     * @return 粉丝列表，不可为 null
+     * @throws BilibiliException 参数非法、网络失败、业务码非 0（未注入凭据时即 {@code -101}）、或 {@code data} 为空
+     */
+    public RelationList getFollowers(long vmid, int pn, int ps) {
+        return getRelations(BilibiliEndpoint.relationFollowersUrl, vmid, pn, ps,
+                BilibiliEndpoint.spaceFansReferer, "获取粉丝列表");
+    }
+
+    /**
+     * <b>取关注列表</b>（{@code x/relation/followings}）。
+     *
+     * <p>门槛与形状与 {@link #getFollowers(long, int, int)} 完全一致（两个端点实测同形），
+     * 差别只在语义方向。同样<b>真需登录</b>（匿名 {@code -101}）。
+     *
+     * @param vmid 用户 mid（实际只对本人有效）
+     * @param pn   页码（从 1 开始）
+     * @param ps   每页条数
+     * @return 关注列表，不可为 null
+     * @throws BilibiliException 同 {@link #getFollowers(long, int, int)}
+     */
+    public RelationList getFollowings(long vmid, int pn, int ps) {
+        return getRelations(BilibiliEndpoint.relationFollowingsUrl, vmid, pn, ps,
+                BilibiliEndpoint.spaceFollowReferer, "获取关注列表");
+    }
+
+    /**
+     * 粉丝 / 关注两个端点的共用实现。
+     *
+     * <p>合并的理由很窄：它们<b>实测连响应形状都一样</b>（{@code list}/{@code re_version}/{@code total}），
+     * 参数也相同，只有 URL、Referer 与文案不同。这与"抽一个共享工具类给全库用"是两回事 ——
+     * 它仍然私有在本服务内，改动面不会外溢。
+     */
+    private RelationList getRelations(String endpoint, long vmid, int pn, int ps,
+                                     String refererTemplate, String action) {
+        if (vmid <= 0) {
+            throw new BilibiliException("mid不能小于0");
+        }
+        String url = endpoint + "?vmid=" + vmid
+                + "&pn=" + Math.max(1, pn)
+                + "&ps=" + Math.max(1, ps);
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                refererTemplate.formatted(String.valueOf(vmid)));
+        RelationList data = requireData(response, new TypeReference<>() {
+        }, action);
+        log.info("{} vmid={} 第 {} 页：本页 {} 人 / 共 {} 人", action, vmid, pn,
+                data.getList() == null ? 0 : data.getList().size(), data.getTotal());
+        return data;
     }
 
     /** 空间页 Referer（参数是 mid，形状见 {@code BilibiliEndpoint.spaceReferer}） */

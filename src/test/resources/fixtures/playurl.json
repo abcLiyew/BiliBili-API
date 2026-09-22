@@ -1,0 +1,42 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "from": "local",
+  "result": "suee",
+  "message": "",
+  "quality": 64,
+  "format": "mp4720",
+  "timelength": 55466,
+  "accept_format": "mp4720,mp4",
+  "accept_description": [
+   "高清 720P",
+   "流畅 360P"
+  ],
+  "accept_quality": [
+   64,
+   16
+  ],
+  "video_codecid": 7,
+  "seek_param": "start",
+  "seek_type": "offset",
+  "durl": [
+   {
+    "order": 1,
+    "length": 55466,
+    "size": 2423182,
+    "ahead": "",
+    "vhead": "",
+    "url": "https://upos-sz-mirrorcos.bilivideo.com/upgcxcode/70/60/42086696070/42086696070-1-192.mp4?deadline=1790046277&mid=497078180&platform=pc",
+    "backup_url": [
+     "https://upos-sz-estgcos.bilivideo.com/upgcxcode/70/60/42086696070/42086696070-1-192.mp4?deadline=1790046277&mid=497078180&platform=pc"
+    ]
+   }
+  ],
+  "dash": null,
+  "support_formats": null,
+  "last_play_time": null,
+  "last_play_cid": null
+ }
+}

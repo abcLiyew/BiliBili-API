@@ -34,8 +34,8 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 | 接口 | 文档标注 | 本库实测 |
 |---|---|---|
 | `x/web-interface/wbi/search/all/v2`、`…/wbi/search/type` | 需 WBI 签名 | **匿名、不带签名即返回 `code=0`**（库内仍走签名链路，只是多一个 `nav` 依赖） |
-| `x/space/upstat` | Cookie | 匿名返回 `code=0` 但 `data` 是**空对象**，**需要凭据**才有数据 |
-| `x/player/wbi/playurl` | WBI + Cookie | 匿名、未签名即返回 `code=0`（默认 720P）；"412 被封"是当时的环境现象 |
+| `x/space/upstat` | Cookie | 匿名返回 `code=0` 但 `data` 是**空对象**，**需要凭据**才有数据（2026-09-22 复验仍然如此） |
+| `x/player/wbi/playurl` | WBI + Cookie | 匿名、未签名即返回 `code=0`（默认 720P）；**带 `/wbi/` 的那条路径**会 HTTP 412（含签名 / 凭据 / 连换 6 代指纹都试过）⇒ 库内改走**不带 `/wbi/`** 的 `x/player/playurl`，同分钟同凭据立刻 `code=0` |
 | `api.vc.bilibili.com/**`（动态旧域） | 有完整文档 | **整站已下线**，本库对应常量已标 `@Deprecated` |
 | `x/polymer/web-space/seasons/list` | 取 `season_id` 的入口 | **已 HTTP 404 下线**；本库改从 `arc/search` 的 `vlist[].season_id` 取 |
 | WBI 文档中的 `w_rid` 示例值 | 共 5 个 | 独立复算后**只有 2 个可复现**（正文 walkthrough 与 PHP demo），其余 3 个对不上 |
@@ -67,7 +67,13 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 | `UserSpace` | `x/space/wbi/acc/info` | 🔏 签名 + 🔒 凭据 |
 | `UserSpace` | `x/space/wbi/arc/search` | 🔏 签名 + 🔒 凭据 |
 | `UserSpace` | `x/polymer/web-space/seasons_archives_list` | 匿名（须先有真实 `season_id`） |
+| `UserSpace` | `x/space/upstat`（累计播放 / 阅读 / 获赞） | 🔒 凭据 |
+| `UserSpace` | `x/relation/followers`、`x/relation/followings` | 🔒 凭据 |
 | `VideoExtra` | `x/web-interface/view/conclusion/get`（AI 摘要） | 🔏 签名 + 🔒 凭据 |
+| `VideoExtra` | `x/player/playurl`（视频流地址，MP4 / DASH） | **匿名**（凭据只提升清晰度，见下） |
+| `Content` | `x/web-interface/history/cursor`（观看历史） | 🔒 凭据 |
+| `Content` | `x/v2/history/toview`（稍后再看） | 🔒 凭据 |
+| `Content` | `x/v3/fav/folder/created/list-all`（收藏夹目录） | 🔒 凭据 |
 | `Wbi` | `x/web-interface/nav`（只取 `data.wbi_img`） | 匿名（`img_key` / `sub_key` 是公共值，不是凭据） |
 
 > 表中「凭据」指登录 Cookie（至少含 `SESSDATA`），注入方式见下文
@@ -82,8 +88,13 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 - **直播信息获取**：获取用户直播间状态、直播间信息等
 - **短链解析**：把 `b23.tv` 短链还原成视频 / 直播间 / 动态，并直接给出对应数据
 - **搜索**：综合搜索与分类型搜索（视频 / 用户），自动剥离结果里的 `<em>` 高亮标签
-- **用户空间**：UP 主账号信息、投稿列表、合集稿件
+- **用户空间**：UP 主账号信息、投稿列表、合集稿件、累计播放/阅读/获赞（`getUpStat`）、
+  粉丝与关注列表（`getFollowers` / `getFollowings`）
 - **AI 视频摘要**：按 `bvid` / `cid` 取 B 站的 AI 总结
+- **视频流地址**：`getPlayUrl` 给出一条可播放的地址；**MP4 通道**封顶 720P，
+  **DASH 通道**可达 1080P（⚠️ DASH 的音视频是两条独立流，本库**不合流**）
+- **我的内容**：观看历史（游标翻页）、稍后再看（一次给完）、收藏夹目录
+  —— 这三项都在 `Content` 门面，且**全是 GET 只读**
 - **登录**：扫码 / 密码 / 短信三条链路，以及 `getCredentialStatus()` 凭据状态校验
   —— 长驻进程可用它把"凭据失效"从静默失败变成一个可判的布尔值
 - **WBI 签名**：`Wbi` 门面可给**任意** B 站 WBI 接口算签名（`wts` + `w_rid`），
@@ -266,6 +277,46 @@ String query = wbi.signQuery(params);   // mid=946974&wts=1758xxxxxx&w_rid=<32 �
 String query = wbi.signQuery(params, imgKey, subKey, 1700384803L);
 ```
 
+### 视频流地址（唯一一项匿名可用）
+
+```java
+VideoExtra videoExtra = new VideoExtra();
+
+// MP4 通道：一条能直接播的整文件，实测封顶 720P
+PlayUrl mp4 = videoExtra.getPlayUrl("BV1tgPie2E3w", cid);
+String url = mp4.getDurl().get(0).getUrl();
+
+// DASH 通道：能到 1080P，但音视频是【两条独立流】，本库不合流
+PlayUrl dash = videoExtra.getPlayUrl("BV1tgPie2E3w", cid, 80, 16);
+String videoStream = dash.getDash().getVideo().get(0).getBaseUrl();
+String audioStream = dash.getDash().getAudio().get(0).getBaseUrl();
+```
+
+- **匿名即可用**，凭据买到的是**更高清晰度**，不是"能不能用"。
+- `qn` 是**期望**不是承诺：MP4 通道传 `80` 也只回 `quality=64`（实际值以 `mp4.getQuality()` 为准）。
+- 地址带时限（实测约 2 小时），**不要持久化缓存**。
+- 这条链路**可能因为出口信誉整条失败（HTTP 412）**，且历史上反复过 —— 拿到 `412` 不是参数写错。
+
+### 我的内容：观看历史 / 稍后再看 / 收藏夹目录
+
+三者都在 `Content` 门面，**都需要注入凭据**；未注入时会抛 `IOException`（`-101`），
+或返回 `code=0` 但**空列表**（收藏夹目录那种最隐蔽）。
+
+```java
+Content content = new Content();
+
+// 观看历史：翻页是【游标式】的 —— 把上一条的 cursor 原样传进去就是下一页
+HistoryCursor first = content.getWatchHistory(20);
+HistoryCursor.CursorPos c = first.getCursor();
+HistoryCursor next = content.getWatchHistory(20, c.getMax(), c.getView_at(), c.getBusiness());
+
+// 稍后再看：不分页，一次给完
+ToViewList toView = content.getToView();
+
+// 收藏夹目录：list[].id 才是查夹内内容要用的 media_id（fid 是另一套短 id）
+FavFolderList folders = content.getFavoriteFolders(497078180L);
+```
+
 ## 数据模型
 项目中包含多种数据模型，用于表示不同类型的数据。
 - `Card`: 用户卡片信息
@@ -275,8 +326,11 @@ String query = wbi.signQuery(params, imgKey, subKey, 1700384803L);
 - `BilibiliLiveResp`: B站用户的直播响应
 - `QrCodeLogin` / `LoginCredential` / `CredentialStatus`: 登录（二维码、凭据、凭据状态）
 - `AccInfo` / `ArchiveSearchResult` / `SeasonsArchives`: 用户空间（账号信息、投稿列表、合集）
+- `UpStat` / `RelationList`: 用户累计数据、粉丝/关注列表
 - `SearchAllResult` / `SearchTypeResult` / `SearchVideo` / `SearchUser`: 搜索结果
 - `AiSummary`: AI 视频摘要
+- `PlayUrl`: 视频流地址（MP4 的 `durl` / DASH 的 `dash` 两条通道）
+- `HistoryCursor` / `ToViewList` / `FavFolderList`: 观看历史、稍后再看、收藏夹目录
   
 ## 注意事项
 1. 请注意，使用本库时，请遵守哔哩哔哩的API使用规则和限制。
@@ -310,8 +364,10 @@ HttpPolicy.setCookie("SESSDATA=xxx; bili_jct=xxx; ...");
 - 注入后会与匿名指纹 Cookie 合并，**用户 Cookie 的键优先**（同名键不会被指纹值覆盖）。
 - 会在日志/`HttpPolicy.describe()` 里只输出键名，值一律打码。
 - 其它多数端点匿名可用；**需要凭据的是这几处**：动态列表与关注流（`Dynamic`）、
-  用户空间的 `acc/info` 与 `arc/search`（`UserSpace`）、AI 视频摘要（`VideoExtra`），
+  用户空间的 `acc/info` / `arc/search` / `upstat` / 粉丝与关注列表（`UserSpace`）、
+  AI 视频摘要（`VideoExtra`）、观看历史 / 稍后再看 / 收藏夹目录（`Content`），
   完整清单见上文「已覆盖的接口」。
+  （`VideoExtra#getPlayUrl` 是这批里唯一的例外 —— **匿名也能用**。）
 
 ⚠️ 另有一种**静默空**形态（2026-09-21 实测，比上表更隐蔽）：带上匿名指纹时返回
 `code=0` 而 `items` 是**空数组** —— 它与"这个 UP 真的没发过动态"在响应上**完全同形**
@@ -426,9 +482,17 @@ B 站"带标题的动态 / opus 文章"的标题在 **opus 端点**的 `MODULE_T
   该门面**只算签名、不发请求，也不需要凭据**。同期新增 `Search` / `UserSpace` / `VideoExtra`
   三个数据门面（搜索、用户空间、AI 视频摘要），并补上 README 的**接口来源说明**。
   **门面共 10 个；前 6 个门面的签名与 `throws` 声明一字未改。**
+- 0.9.29-beta: **凭据解锁一批（B3.5）** —— 新增第 11 个门面 `Content`（观看历史 / 稍后再看 /
+  收藏夹目录，**全 GET 只读**），`UserSpace` 扩 `getUpStat` / `getFollowers` / `getFollowings`，
+  `VideoExtra` 扩 `getPlayUrl`（MP4 / DASH 双通道）。
+  🔴 本批**全部是普通 GET，不需要 WBI 签名**，所以能插在签名批次之外单独交付；
+  前 10 个门面的现有签名**一行未动**，`Content` 交付即纳入冻结契约。
+  实测记下的两条坑：`x/player/playurl` 要**去掉 `/wbi/`** 才通（带则 412）；
+  `upstat` / 收藏夹目录在**缺凭据时返回 `code=0` 却给空数据**，本库一律按失败抛异常，
+  而不是安静地返回一个空结果。
 
-> 版本号说明：上面两条都落在 `0.9.29-beta`（`pom.xml` 当前即此版本号）。登录是该版本的主要增量，
-> 其后的 WBI / 搜索等能力在同一版本号下继续累积，**尚未单独递增**。
+> 版本号说明：上面**三条**都落在 `0.9.29-beta`（`pom.xml` 当前即此版本号）。登录是该版本的主要增量，
+> 其后的 WBI / 搜索 / 凭据解锁等能力在同一版本号下继续累积，**尚未单独递增**。
 
 ## 许可证
 

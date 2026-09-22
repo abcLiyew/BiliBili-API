@@ -1,0 +1,16 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "archive": {
+   "enable_vt": 0,
+   "view": 9065,
+   "vt": 0
+  },
+  "article": {
+   "view": 308
+  },
+  "likes": 408
+ }
+}

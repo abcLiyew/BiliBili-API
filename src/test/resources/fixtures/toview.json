@@ -1,0 +1,118 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "count": 37,
+  "list": [
+   {
+    "aid": 116933471112533,
+    "videos": 71,
+    "tid": 172,
+    "tname": "手机游戏",
+    "copyright": 1,
+    "pic": "http://i0.hdslb.com/bfs/archive/2b7c467a5066ddb9a4f1e8ae0559ba8847293ab1.jpg",
+    "title": "【无限暖暖】2.8磐城 宝箱+奇想星+灵感露珠 一条龙全收集",
+    "pubdate": 1784263392,
+    "ctime": 1784263392,
+    "desc": "",
+    "state": 0,
+    "duration": 46519,
+    "owner": {
+     "mid": 1773346,
+     "name": "莴苣某人",
+     "face": "https://i1.hdslb.com/bfs/face/2a973191e45f611699c85d404baee50163a6f2ec.jpg"
+    },
+    "stat": {
+     "aid": 116933471112533,
+     "view": 9124818,
+     "danmaku": 73149,
+     "reply": 4108,
+     "favorite": 31207,
+     "coin": 45073,
+     "share": 4468,
+     "like": 45575,
+     "dislike": 0
+    },
+    "dimension": {
+     "width": 1920,
+     "height": 1080,
+     "rotate": 0
+    },
+    "short_link_v2": "https://b23.tv/BV1jnKE6PEDn",
+    "pub_location": "上海",
+    "tidv2": 2076,
+    "tnamev2": "女性向游戏",
+    "count": 71,
+    "cid": 40099319499,
+    "progress": 84,
+    "add_at": 1785045767,
+    "bvid": "BV1jnKE6PEDn",
+    "uri": "bilibili://music/playlist/playpage/497078180?oid=116933471112533&page_type=2",
+    "season_title": "",
+    "long_title": "",
+    "page": {
+     "cid": 40099319499,
+     "page": 1,
+     "from": "vupload",
+     "part": "1.先导",
+     "duration": 306
+    }
+   },
+   {
+    "aid": 116458407330558,
+    "videos": 49,
+    "tid": 172,
+    "tname": "手机游戏",
+    "copyright": 1,
+    "pic": "http://i0.hdslb.com/bfs/archive/2a7bf17e9194272b9bb14d1f8fac665394bb979a.jpg",
+    "title": "【无限暖暖】2.5埋骨地 宝箱+奇想星+灵感露珠 一条龙全收集",
+    "pubdate": 1777014605,
+    "ctime": 1777014605,
+    "desc": "录制视频画面预设：平衡",
+    "state": 0,
+    "duration": 43675,
+    "owner": {
+     "mid": 1773346,
+     "name": "莴苣某人",
+     "face": "https://i1.hdslb.com/bfs/face/2a973191e45f611699c85d404baee50163a6f2ec.jpg"
+    },
+    "stat": {
+     "aid": 116458407330558,
+     "view": 8477850,
+     "danmaku": 78850,
+     "reply": 3915,
+     "favorite": 30976,
+     "coin": 40887,
+     "share": 5207,
+     "like": 45906,
+     "dislike": 0
+    },
+    "dimension": {
+     "width": 1920,
+     "height": 1080,
+     "rotate": 0
+    },
+    "short_link_v2": "https://b23.tv/BV1UQo5BAE9k",
+    "pub_location": "上海",
+    "tidv2": 2076,
+    "tnamev2": "女性向游戏",
+    "count": 49,
+    "cid": 37776392822,
+    "progress": 0,
+    "add_at": 1777023671,
+    "bvid": "BV1UQo5BAE9k",
+    "uri": "bilibili://music/playlist/playpage/497078180?oid=116458407330558&page_type=2",
+    "season_title": "",
+    "long_title": "",
+    "page": {
+     "cid": 37776392822,
+     "page": 1,
+     "from": "vupload",
+     "part": "1.设置+龙骨师介绍",
+     "duration": 124
+    }
+   }
+  ]
+ }
+}

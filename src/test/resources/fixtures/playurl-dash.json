@@ -1,0 +1,77 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "from": "local",
+  "result": "suee",
+  "message": "",
+  "quality": 80,
+  "format": "flv",
+  "timelength": 55466,
+  "accept_format": "flv,flv720,flv480,mp4",
+  "accept_description": [
+   "高清 1080P",
+   "高清 720P",
+   "清晰 480P",
+   "流畅 360P"
+  ],
+  "accept_quality": [
+   80,
+   64,
+   32,
+   16
+  ],
+  "video_codecid": 7,
+  "seek_param": "start",
+  "seek_type": "offset",
+  "durl": null,
+  "dash": {
+   "duration": 56,
+   "minBufferTime": 1.5,
+   "min_buffer_time": 1.5,
+   "video": [
+    {
+     "id": 80,
+     "baseUrl": "https://upos-sz-mirrorhw.bilivideo.com/upgcxcode/70/60/42086696070/42086696070-1-30080.m4s?deadline=1790046277&mid=497078180",
+     "base_url": "https://upos-sz-mirrorhw.bilivideo.com/upgcxcode/70/60/42086696070/42086696070-1-30080.m4s?deadline=1790046277&mid=497078180",
+     "bandwidth": 465199,
+     "mimeType": "video/mp4",
+     "mime_type": "video/mp4",
+     "codecs": "avc1.640028",
+     "width": 1920,
+     "height": 1080,
+     "frameRate": "30",
+     "frame_rate": "30",
+     "backupUrl": null,
+     "backup_url": null,
+     "segment_base": {
+      "initialization": "0-1004",
+      "index_range": "1005-1808"
+     }
+    }
+   ],
+   "audio": [
+    {
+     "id": 30280,
+     "baseUrl": "https://upos-sz-mirrorhw.bilivideo.com/upgcxcode/70/60/42086696070/42086696070-1-30280.m4s?deadline=1790046277&mid=497078180",
+     "base_url": "https://upos-sz-mirrorhw.bilivideo.com/upgcxcode/70/60/42086696070/42086696070-1-30280.m4s?deadline=1790046277&mid=497078180",
+     "bandwidth": 132311,
+     "mimeType": "audio/mp4",
+     "mime_type": "audio/mp4",
+     "codecs": "mp4a.40.2",
+     "width": 0,
+     "height": 0,
+     "frameRate": "",
+     "frame_rate": "",
+     "backupUrl": null,
+     "backup_url": null,
+     "segment_base": null
+    }
+   ]
+  },
+  "support_formats": null,
+  "last_play_time": null,
+  "last_play_cid": null
+ }
+}

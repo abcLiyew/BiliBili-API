@@ -1,0 +1,97 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "cursor": {
+   "max": 116904916159077,
+   "view_at": 1789988333,
+   "business": "archive",
+   "ps": 5
+  },
+  "tab": [
+   {
+    "type": "archive",
+    "name": "视频"
+   },
+   {
+    "type": "live",
+    "name": "直播"
+   },
+   {
+    "type": "article",
+    "name": "专栏"
+   }
+  ],
+  "list": [
+   {
+    "title": "圣枪哥专访：不清楚自己在BLG的定位是什么",
+    "long_title": "",
+    "cover": "http://i0.hdslb.com/bfs/archive/89f68c55e0aa3d9779abbc54b1fea5d9bf7175a8.jpg",
+    "covers": null,
+    "uri": "https://www.bilibili.com/video/BV1Lfhq6jEGp",
+    "history": {
+     "oid": 117309230287009,
+     "epid": 0,
+     "bvid": "BV1Lfhq6jEGp",
+     "page": 1,
+     "cid": 42086696070,
+     "part": "studio_video_1789996781959.mp4",
+     "business": "archive",
+     "dt": 3
+    },
+    "videos": 1,
+    "author_name": "阿喵峡谷分享",
+    "author_face": "https://i0.hdslb.com/bfs/face/fea4989b8924e39efd07477d328f856d78810eb0.jpg",
+    "author_mid": 505963068,
+    "view_at": 1790035242,
+    "progress": 27,
+    "badge": "",
+    "show_title": "",
+    "duration": 56,
+    "current": "",
+    "total": 0,
+    "new_desc": "",
+    "is_finish": 0,
+    "is_fav": 0,
+    "kid": 117309230287009,
+    "tag_name": "日常",
+    "live_status": 0
+   },
+   {
+    "title": "三年来最好的签！这次不可能四个16强了......",
+    "long_title": "",
+    "cover": "http://i0.hdslb.com/bfs/archive/cb3d0776b4a9e2766638016a6e439092c89edc0b.jpg",
+    "covers": null,
+    "uri": "https://www.bilibili.com/video/BV1vpb46VEKy",
+    "history": {
+     "oid": 117226636053676,
+     "epid": 0,
+     "bvid": "BV1vpb46VEKy",
+     "page": 1,
+     "cid": 41650030322,
+     "part": "三年来最好的签！这次不可能四个16强了......",
+     "business": "archive",
+     "dt": 3
+    },
+    "videos": 1,
+    "author_name": "预测之神姜饼",
+    "author_face": "https://i0.hdslb.com/bfs/face/161e6c057fa640b2dcf072e450790b5b632158c3.jpg",
+    "author_mid": 203305806,
+    "view_at": 1789993315,
+    "progress": 16,
+    "badge": "",
+    "show_title": "",
+    "duration": 81,
+    "current": "",
+    "total": 0,
+    "new_desc": "",
+    "is_finish": 0,
+    "is_fav": 0,
+    "kid": 117226636053676,
+    "tag_name": "网络游戏",
+    "live_status": 0
+   }
+  ]
+ }
+}
