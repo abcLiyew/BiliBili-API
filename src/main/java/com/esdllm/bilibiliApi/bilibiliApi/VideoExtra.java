@@ -2,6 +2,7 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
+import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
 import com.esdllm.bilibiliApi.service.VideoService;
 
 import java.io.IOException;
@@ -71,6 +72,63 @@ public class VideoExtra {
     public AiSummary getAiSummary(String bvid, Long cid) throws IOException {
         try {
             return VideoService.INSTANCE.getAiSummary(bvid, cid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取视频流地址</b>（默认 720P / MP4）。
+     *
+     * <p>🔴 <b>要不要凭据：本批唯一"可选"的一项</b>。实测（2026-09-22）
+     * <b>匿名</b>就能拿到 {@code code=0} + 可播放地址；凭据买到的是<b>更高清晰度</b>，
+     * 而不是"能不能用"。所以未注入凭据时本方法<b>不会</b>失败，只是 {@code PlayUrl#getQuality()}
+     * 会低一些。这与本批其余五项（<b>必须</b>有凭据）是一处关键差别，别一起记。
+     *
+     * <p>⚠️ <b>但这条链路会因出口信誉整条失败（HTTP {@code 412}）</b>，且历史上反复过
+     * （09-13 挂、09-21 通、09-22 又挂）。所以它是"可能失败"的接口：
+     * 抛出来的 {@code 412} 不是参数写错。库内已经处理了路径选择（走不带 {@code /wbi/} 的那条，
+     * 理由见 {@code BilibiliEndpoint#playUrlPlainUrl}）与身份轮换，但<b>不保证</b>一定成功。
+     *
+     * <p>⚠️ 地址带时限（实测约 2 小时），<b>不要持久化缓存</b>。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @param cid  分 P 的 cid（{@code VideoInfo#getCid()}）
+     * @return 播放地址，不可为 null
+     * @throws IOException {@code bvid}/{@code cid} 非法、网络失败、HTTP 非 2xx（含 {@code 412} 风控）、
+     *                     业务码非 0、{@code data} 为空，或服务端一条可用地址都没给
+     */
+    public PlayUrl getPlayUrl(String bvid, Long cid) throws IOException {
+        try {
+            return VideoService.INSTANCE.getPlayUrl(bvid, cid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取视频流地址</b>（可指定清晰度与封装）。
+     *
+     * <p>🔴 <b>想要 1080P 就必须走 DASH</b>，而这是本条链路唯一"两个通道结果长得完全不同"的地方：
+     * <ul>
+     *   <li>{@code getPlayUrl(bvid, cid)} / {@code fnval=1} → <b>MP4</b>：地址在 {@code PlayUrl#getDurl()}，
+     *       一条能直接播的整文件。实测<b>上限 720P</b>（{@code qn} 传 80 也只回 {@code quality=64}）。</li>
+     *   <li>{@code getPlayUrl(bvid, cid, 80, 16)} / {@code fnval=16} → <b>DASH</b>：地址在
+     *       {@code PlayUrl#getDash()}，实测能到 <b>1080P</b>（{@code quality=80}）。
+     *       ⚠️ 但 DASH 的音视频是<b>两条独立流</b>，本库<b>不合流</b> —— 交给你的是素材，不是成品。</li>
+     * </ul>
+     *
+     * @param bvid  BV 号（{@code BV1xxx...}）
+     * @param cid   分 P 的 cid
+     * @param qn    期望清晰度（{@code 64}=720P、{@code 80}=1080P…）；{@code null}/≤0 时按 64。
+     *              <b>期望 ≠ 承诺</b>，实际值看 {@code PlayUrl#getQuality()}
+     * @param fnval 封装（{@code 1}=MP4、{@code 16}=DASH）；{@code null}/≤0 时按 1（与 {@code qn} 同口径）
+     * @return 播放地址，不可为 null
+     * @throws IOException 同 {@link #getPlayUrl(String, Long)}
+     */
+    public PlayUrl getPlayUrl(String bvid, Long cid, Integer qn, Integer fnval) throws IOException {
+        try {
+            return VideoService.INSTANCE.getPlayUrl(bvid, cid, qn, fnval);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

@@ -1,0 +1,44 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "count": 12,
+  "list": [
+   {
+    "id": 1095405480,
+    "fid": 10954054,
+    "mid": 497078180,
+    "attr": 1,
+    "title": "默认收藏夹",
+    "fav_state": 0,
+    "media_count": 103,
+    "is_kid_playlist": false,
+    "kid_playlist_desc": ""
+   },
+   {
+    "id": 3526698880,
+    "fid": 35266988,
+    "mid": 497078180,
+    "attr": 2,
+    "title": "小雨绒Candy",
+    "fav_state": 0,
+    "media_count": 101,
+    "is_kid_playlist": false,
+    "kid_playlist_desc": ""
+   },
+   {
+    "id": 3526698890,
+    "fid": 35266989,
+    "mid": 497078180,
+    "attr": 1,
+    "title": "技术收藏",
+    "fav_state": 0,
+    "media_count": 23,
+    "is_kid_playlist": false,
+    "kid_playlist_desc": ""
+   }
+  ],
+  "season": null
+ }
+}

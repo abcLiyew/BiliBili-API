@@ -10,10 +10,16 @@ import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchVideo;
+import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
+import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
+import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
+import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
 import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
+import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -414,6 +420,15 @@ class FacadeContractTest {
                     long.class, long.class, int.class, int.class);
             // 可能返回 null（首页投稿里没有合集稿件），因此是包装类型 Long
             assertSignature(UserSpace.class, "findSeasonId", Long.class, long.class);
+
+            // 2026-09-22 B3.5 扩容（凭据解锁）：三项实测都是「真需登录」那一档。
+            // 注意缺凭据时它们**不是同一种错**：getUpStat 回 code=0 + 空 data（最阴），
+            // 而 followers/followings 回 -101 —— 门面契约只钉签名，门槛差异记在 UserSpace 的类注释里。
+            assertSignature(UserSpace.class, "getUpStat", UpStat.class, long.class);
+            assertSignature(UserSpace.class, "getFollowers", RelationList.class,
+                    long.class, int.class, int.class);
+            assertSignature(UserSpace.class, "getFollowings", RelationList.class,
+                    long.class, int.class, int.class);
         }
 
         @Test
@@ -426,6 +441,9 @@ class FacadeContractTest {
             assertDeclares(UserSpace.class, "getSeasonArchives", IOException.class,
                     long.class, long.class, int.class, int.class);
             assertDeclares(UserSpace.class, "findSeasonId", IOException.class, long.class);
+            assertDeclares(UserSpace.class, "getUpStat", IOException.class, long.class);
+            assertDeclares(UserSpace.class, "getFollowers", IOException.class, long.class, int.class, int.class);
+            assertDeclares(UserSpace.class, "getFollowings", IOException.class, long.class, int.class, int.class);
         }
     }
 
@@ -441,13 +459,22 @@ class FacadeContractTest {
 
             assertSignature(VideoExtra.class, "getAiSummary", AiSummary.class, String.class);
             assertSignature(VideoExtra.class, "getAiSummary", AiSummary.class, String.class, Long.class);
+
+            // 2026-09-22 B3.5：播放地址。本批唯一「匿名也能用」的一项 ——
+            // 凭据买到的是**更高清晰度**（MP4 封顶 720P，DASH 到 1080P），不是"能不能用"。
+            assertSignature(VideoExtra.class, "getPlayUrl", PlayUrl.class, String.class, Long.class);
+            assertSignature(VideoExtra.class, "getPlayUrl", PlayUrl.class,
+                    String.class, Long.class, Integer.class, Integer.class);
         }
 
         @Test
-        @DisplayName("两个 getAiSummary 重载都必须声明 throws IOException")
+        @DisplayName("四个方法（含 B3.5 新增的两个 getPlayUrl）都必须声明 throws IOException")
         void declares() {
             assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class);
             assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class, Long.class);
+            assertDeclares(VideoExtra.class, "getPlayUrl", IOException.class, String.class, Long.class);
+            assertDeclares(VideoExtra.class, "getPlayUrl", IOException.class,
+                    String.class, Long.class, Integer.class, Integer.class);
         }
     }
 
@@ -489,6 +516,63 @@ class FacadeContractTest {
                     Map.class, String.class, String.class, long.class);
             assertFalse(Arrays.asList(offline.getExceptionTypes()).contains(IOException.class),
                     "离线重载不产生 I/O，不应声明 IOException");
+        }
+    }
+
+    // ================================================================
+    // §2.1.11 第 11 个门面：Content（2026-09-22 B3.5 批）
+    //
+    // B3.5 一共 6 项能力，为什么只多出**一个**门面（而不是 6 个）：见 INTERFACE_PLAN.md §7-Q1
+    // 决策 (d)「混合：高频域独立 + 低频域合并」—— 观看历史 / 稍后再看 / 收藏夹目录彼此无关、
+    // 频率低、又都属于"我自己的内容"，硬拆成三个类只会抬高调用方的认知成本。
+    //
+    // ⚠️ 这个门面全是 **GET 只读**：往稍后再看里增删、清空历史、收藏/取消收藏都不在库里。
+    // 那条边界（写操作需 csrf 且会改动账号）必须靠评审守，反射断言只能钉住"现在没有写方法"。
+    // ================================================================
+
+    @Nested
+    @DisplayName("Content 门面（第 11 个）")
+    class ContentFacade {
+
+        @Test
+        @DisplayName("Content 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(Content.class);
+            assertPublicNoArgCtor(Content.class);
+
+            assertSignature(Content.class, "getWatchHistory", HistoryCursor.class, int.class);
+            assertSignature(Content.class, "getWatchHistory", HistoryCursor.class,
+                    Integer.class, Long.class, Long.class, String.class);
+            assertSignature(Content.class, "getToView", ToViewList.class);
+            assertSignature(Content.class, "getFavoriteFolders", FavFolderList.class, long.class);
+        }
+
+        @Test
+        @DisplayName("四个方法都必须声明 throws IOException（三项都依赖凭据，失败是常态）")
+        void declares() {
+            assertDeclares(Content.class, "getWatchHistory", IOException.class, int.class);
+            assertDeclares(Content.class, "getWatchHistory", IOException.class,
+                    Integer.class, Long.class, Long.class, String.class);
+            assertDeclares(Content.class, "getToView", IOException.class);
+            assertDeclares(Content.class, "getFavoriteFolders", IOException.class, long.class);
+        }
+
+        /**
+         * 反射只能证明"当前没有写方法"，不能阻止以后加 —— 但把这条断言写在契约里，
+         * 至少让"往后门面里塞写操作"变成一个需要显式删掉本用例的动作。
+         */
+        @Test
+        @DisplayName("★ 必须保持只读：不存在 set/add/delete/create/remove/clear 之类的方法")
+        void staysReadOnly() {
+            List<String> verbPrefixes = List.of("set", "add", "delete", "remove", "create", "clear", "update");
+            for (Method m : Content.class.getDeclaredMethods()) {
+                if (!Modifier.isPublic(m.getModifiers())) {
+                    continue;
+                }
+                assertFalse(verbPrefixes.stream().anyMatch(p -> m.getName().startsWith(p)),
+                        () -> "Content 是只读门面，不该出现像写操作的方法：" + m.getName()
+                                + "（写操作需 csrf 且会改动账号，若要做必须另立门面）");
+            }
         }
     }
 
@@ -580,14 +664,14 @@ class FacadeContractTest {
     // ================================================================
 
     @Test
-    @DisplayName("10 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
+    @DisplayName("11 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
     void facadePackageNamesUnchanged() {
         List<Class<?>> facades = List.of(Dynamic.class, Live.class, CardInfo.class,
                 BilibiliClient.class, ShortChain.class, Login.class,
-                Search.class, UserSpace.class, VideoExtra.class, Wbi.class);
+                Search.class, UserSpace.class, VideoExtra.class, Wbi.class, Content.class);
         for (Class<?> facade : facades) {
             assertClassInFacadePackage(facade);
         }
-        assertEquals(10, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
+        assertEquals(11, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
     }
 }

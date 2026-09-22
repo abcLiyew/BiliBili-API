@@ -407,6 +407,186 @@ public class BilibiliEndpoint {
     /** 中国大陆国际冠字码。短信登录默认用它，境外号码需另行指定 */
     public static final String passportCidChina = "86";
 
+    // ---------------------------------------------------------------- B3.5 凭据域（2026-09-22 新增）
+
+    /**
+     * {@code x/player/wbi/playurl} —— <b>视频流地址</b>（本库从"能查元数据"跨到"能放视频"的那一项）。
+     *
+     * <p>参数由调用方拼（{@code bvid} 或 {@code aid} + {@code cid} 是必需，另有
+     * {@code qn} / {@code fnval} / {@code fourk}）。路径里带 {@code /wbi/} 但本批<b>不签名</b>
+     * —— 是否真的强制签名见下方"🔴 稳定性"一节的实测记录。
+     *
+     * <p><b>两条通道，本批只做第一条</b>：
+     * <ul>
+     *   <li>{@code fnval=1} → MP4，结果在 {@code data.durl[]}（每个元素有 {@code url} 与
+     *       {@code backup_url[]}）。<b>本批实现</b>。</li>
+     *   <li>{@code fnval=16} → DASH，结果在 {@code data.dash}（音视频分离、需自行合流）。
+     *       规划里判它"必须签名"，<b>留二期</b>，本批不承诺。</li>
+     * </ul>
+     *
+     * <p>🔴 <b>稳定性不可承诺 —— 这是本库唯一一个"翻案过两次"的端点，别把任何一次结论当恒定</b>：
+     * <ol>
+     *   <li>2026-09-13：本机恒 {@code 412}，据此列入"环境挂起"；</li>
+     *   <li>2026-09-21：<b>翻案</b> —— 匿名 + 未签名即 {@code code=0}、{@code quality=64}、{@code durl} 有值，
+     *       {@code 412} 未复现，于是移出排除清单、成为 B3.5 的头号项；</li>
+     *   <li><b>2026-09-22：412 又回来了 —— 但这次问到根上了。</b> 先用一个不带设备指纹的 Python 探测，
+     *       把 720P/1080P × 凭据/匿名 <b>四格全部</b>打成 HTTP {@code 412 request was banned}。
+     *       ⚠️ 但该探测<b>没带 {@code buvid3}</b>（裸 urllib，不走 {@code AnonymousSession}），
+     *       而本库既有结论恰恰是"风控钥匙是 {@code buvid3}" ⇒ <b>当时不能据此下结论</b>。
+     *       于是改用<b>库自身 HTTP 栈</b>复测（{@code B35PreflightSmokeTest}）：
+     *       带凭据 / 匿名 × 不签名 / <b>带签名</b>（{@code wts+w_rid} 确认已发出）× MP4 / DASH ——
+     *       <b>七格全 412</b>，而同期阳性对照 {@code web-interface/view} 匿名 {@code code=0}。
+     *       日志确认出站 Cookie 键为 {@code [DedeUserID, DedeUserID__ckMd5, SESSDATA, bili_jct, buvid3, buvid4]}，
+     *       且库自动轮换了 <b>6 代</b>匿名身份全部被拒 ⇒ <b>"姿势不对"被彻底排除</b>。</li>
+     *   <li><b>2026-09-22 同日破局：被封的是"这条路径"，不是"这个能力"。</b>
+     *       把 <b>{@code /wbi/} 这段拿掉</b>（改用 {@link #playUrlPlainUrl}），
+     *       同一台机器、同一枚凭据立刻回到 {@code code=0}；再叠加 {@code platform=html5&high_quality=1}
+     *       连<b>匿名</b>都通。⇒ 本库因此<b>走非 {@code /wbi/} 那条门</b>，
+     *       而 {@link #playUrlUrl} 的 {@code 412} 记录仍然保留（它是"这条路径不可用"的证据，
+     *       也是判断"哪天它回来了"的基线）。</li>
+     * </ol>
+     * ⇒ <b>仍须把 {@code playurl} 当"可能失败"的接口用</b>：{@code 412}/{@code -412} 不是代码写错了，
+     * 而是这条链路受出口信誉与路径选择共同影响。库内该走 {@link
+     * com.esdllm.bilibiliApi.http.BilibiliHttp}（它会把 {@code 412} 归类为风控并尝试轮换身份，
+     * 但<b>不保证</b>一定能换到能用的那一代）。
+     *
+     * <p>⚠️ 顺带一条<b>容易被误解的门槛</b>：文档说"未登录默认 480P、登录默认 720P"，
+     * 但 09-21 实测<b>匿名显式传 {@code qn=64} 也拿到了 720P</b> ⇒ 至少在这条 MP4 通道上，
+     * 480P 不是硬限制，只是"不传 {@code qn} 就给你低的那档"。1080P+ / 会员内容仍需登录与大会员。
+     *
+     * @see #playUrlPlainUrl 本库实际使用的路径（{@code /wbi/} 那条今日恒 412）
+     */
+    public static final String playUrlUrl = "https://api.bilibili.com/x/player/wbi/playurl";
+
+    /**
+     * {@code x/player/playurl} —— 与 {@link #playUrlUrl} <b>同名但不带 {@code /wbi/}</b> 的路径，
+     * <b>本库播放地址走的就是这一条</b>。
+     *
+     * <p><b>为什么放着 {@code /wbi/} 那条不用</b>（2026-09-22 实测，同一分钟内对照）：
+     * <table border="1">
+     *   <caption>同一 bvid/cid、同一凭据、同一分钟</caption>
+     *   <tr><th>路径</th><th>额外参数</th><th>结果</th></tr>
+     *   <tr><td>{@code x/player/wbi/playurl}</td><td>—</td><td>{@code 412}（七格全挂）</td></tr>
+     *   <tr><td>{@code x/player/wbi/playurl}</td><td>{@code platform=html5}</td><td>{@code 412}</td></tr>
+     *   <tr><td><b>{@code x/player/playurl}</b>（本常量）</td><td>—</td><td><b>{@code code=0}</b></td></tr>
+     *   <tr><td><b>{@code x/player/playurl}</b>（本常量）</td><td>{@code platform=html5&high_quality=1}</td>
+     *       <td><b>{@code code=0}</b>（<b>匿名也通</b>）</td></tr>
+     * </table>
+     * ⇒ 差别只在路径里那一段 {@code /wbi/}。<b>不是"要签名所以要用 wbi 路径"</b>
+     * —— 实测带签名的 {@code /wbi/} 路径同样 412，而<b>不签名</b>的非 {@code /wbi/} 路径反而通。
+     *
+     * <p>📌 <b>这条要当成"会变的事实"来维护</b>：B 站对这两条路径的风控姿态并不稳定
+     * （{@code /wbi/} 那条 09-13 挂、09-21 通、09-22 又挂）。若哪天本路径开始 412 而
+     * {@link #playUrlUrl} 恢复，把 {@code VideoService} 里用的常量换回来即可，别改别的逻辑。
+     */
+    public static final String playUrlPlainUrl = "https://api.bilibili.com/x/player/playurl";
+
+    /**
+     * {@code x/space/upstat?mid=} —— <b>UP 主的累计数据</b>（播放量 / 阅读量 / 获赞数）。
+     *
+     * <p>🔴 <b>它是"静默空"的教科书样本，判据必须两步</b>（2026-09-22 复验，与 09-21 一致）：
+     * <table border="1">
+     *   <caption>同一端点、同一 mid 的两种形态</caption>
+     *   <tr><th>条件</th><th>外层 code</th><th>data</th></tr>
+     *   <tr><td>带凭据</td><td>{@code 0}</td>
+     *       <td>{@code {"archive":{"view":9065,…},"article":{"view":308},"likes":408}}</td></tr>
+     *   <tr><td>匿名</td><td><b>{@code 0}</b>（不是 -101！）</td><td><b>{@code {}}</b> 空对象</td></tr>
+     * </table>
+     * ⇒ <b>{@code code=0} 在这条端点上只代表"接口调通了"，不代表"拿到了数据"</b>。
+     * 而空 data 会让"取 {@code data} 判非 null"这类检查<b>全部通过</b>，然后安静地返回一个
+     * 三个字段全 null 的对象 —— 与"这个 UP 主的播放量真的是 0"无法区分。
+     * 这正是本库红线条目里 {@code items=[]} vs {@code items=13} 的同一类坑，只是它连数组都没有。
+     * 因此 {@code UserService#getUpStat} <b>对空 data 显式报错</b>，不把空对象当成功返回。
+     *
+     * <p>不需 WBI 签名；匿名能通但无数据，故实质上<b>要凭据</b>。
+     */
+    public static final String upstatUrl = "https://api.bilibili.com/x/space/upstat?mid=";
+
+    /**
+     * {@code x/v2/history/toview} —— <b>稍后再看</b>（无参数，取"我的"列表，凭据走 Cookie）。
+     *
+     * <p>📌 <b>分类纠错记录</b>：本端点一度被归进 {@code INTERFACE_PLAN.md} 的 B4"写操作"一栏，
+     * 是错的 —— 它是 <b>GET 只读</b>（"稍后再看"的增删才是写操作，另有端点）。
+     * 09-21 已把它移进 B3.5。写操作（{@code fav/action} / {@code archive/like} / {@code relation/modify} 等）
+     * <b>仍然不做</b>。
+     *
+     * <p>门槛（2026-09-22 实测）：带凭据 {@code code=0}；匿名 <b>{@code -101 账号未登录}</b>
+     * —— 与 {@link #upstatUrl} 的"静默空"不同，这条是<b>敞亮的"真需登录"</b>（无降级、拿不到任何数据）。
+     */
+    public static final String historyToViewUrl = "https://api.bilibili.com/x/v2/history/toview";
+
+    /**
+     * {@code x/web-interface/history/cursor?ps=&max=&view_at=&business=} —— <b>观看历史</b>（游标翻页）。
+     *
+     * <p>翻页靠 {@code data.cursor} 的三个值往回走（{@code max} / {@code view_at} / {@code business}），
+     * 把它们原样回传即是下一页 —— 所以 {@code data.cursor} <b>必须映射成 POJO</b>，
+     * 只映射 {@code list} 会让调用方翻不了页。
+     *
+     * <p>门槛（2026-09-22 实测）：带凭据 {@code code=0}；匿名 {@code -101}。与
+     * {@link #historyToViewUrl} 同为"真需登录"。
+     *
+     * <p>⚠️ {@code ps} 只吃一个<b>很小的</b>合法区间，传超大值会被服务端直接拒掉而不是"给你尽量多"
+     * —— 库内不夹上限，由调用方按需给。
+     */
+    public static final String historyCursorUrl = "https://api.bilibili.com/x/web-interface/history/cursor";
+
+    /**
+     * {@code x/relation/followers?vmid=&pn=&ps=} —— <b>粉丝列表</b>（谁关注了我/TA）。
+     *
+     * <p>门槛（2026-09-22 实测）：带凭据 {@code code=0}（含 {@code total} / {@code list}）；
+     * 匿名 {@code -101}。<b>真需登录</b>，无降级。
+     *
+     * <p>⚠️ {@code vmid} 只对<b>自己的</b> mid 有效 —— 拿别人的 mid 来查粉丝列表通常仍是你的列表
+     * 或直接失败，别指望用它做"查任意 UP 的粉丝榜"。
+     */
+    public static final String relationFollowersUrl = "https://api.bilibili.com/x/relation/followers";
+
+    /**
+     * {@code x/relation/followings?vmid=&pn=&ps=} —— <b>关注列表</b>（我/TA 关注了谁）。
+     *
+     * <p>与 {@link #relationFollowersUrl} 同一形状（{@code total} / {@code re_version} / {@code list}），
+     * 同一门槛（凭据，匿名 {@code -101}）。
+     *
+     * <p>⚠️ {@code re_version} 是"这个列表被改过几次"的版本号，<b>不能当分页令牌用</b>；
+     * 翻页仍是 {@code pn}。
+     */
+    public static final String relationFollowingsUrl = "https://api.bilibili.com/x/relation/followings";
+
+    /**
+     * {@code x/v3/fav/folder/created/list-all?up_mid=} —— <b>收藏夹目录</b>（只列"自己创建的"）。
+     *
+     * <p>门槛（2026-09-22 实测）：带凭据 {@code code=0}（本人 12 个收藏夹）；
+     * ⚠️ <b>匿名也是 {@code code=0}</b> —— 与 {@link #upstatUrl} 同样属于"外层码骗人"那一类，
+     * 实测匿名拿不到列表。所以别用 {@code code} 判，<b>要判 {@code list} 有没有内容</b>。
+     *
+     * <p>返回里 {@code list[].id} 才是收藏夹的 {@code media_id}（{@code fid} 是另一套短 id），
+     * 要拿夹内内容时用 {@code id}。{@code season} 字段实测为 {@code null}。
+     *
+     * <p>⚠️ 同域的 {@code x/v3/fav/resource/list}（夹内内容）<b>本批不做</b> —— 它在 B4，
+     * 且对<b>私密</b>夹匿名会返回 {@code -403}（那是"资源权限不足"，不是"缺签名"，见 {@code ErrorMapper}）。
+     */
+    public static final String favFolderListAllUrl = "https://api.bilibili.com/x/v3/fav/folder/created/list-all";
+
+    /**
+     * 稍后再看页面（{@code toview} 的 Referer）。
+     *
+     * <p>真实前端是在"稍后再看"页里发的这个请求，带页面地址比带站根更像真人；
+     * 这类<b>个人化</b>端点的 Referer 与站点页面不一致时，只会表现为风控加分，不会报错。
+     */
+    public static final String watchLaterReferer = "https://www.bilibili.com/watchlater/";
+
+    /** 观看历史页面（{@code history/cursor} 的 Referer）。理由同 {@link #watchLaterReferer}。 */
+    public static final String historyReferer = "https://www.bilibili.com/account/history";
+
+    /** 粉丝页 Referer 模板（{@code %s} = mid）—— 粉丝列表是在空间页的"粉丝"标签里发的。 */
+    public static final String spaceFansReferer = "https://space.bilibili.com/%s/fans";
+
+    /** 关注页 Referer 模板（{@code %s} = mid）—— 对应空间页的"关注"标签。 */
+    public static final String spaceFollowReferer = "https://space.bilibili.com/%s/follow";
+
+    /** 收藏夹页 Referer 模板（{@code %s} = mid）—— 对应空间页的"收藏夹"标签。 */
+    public static final String spaceFavlistReferer = "https://space.bilibili.com/%s/favlist";
+
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**
      * @deprecated 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线
