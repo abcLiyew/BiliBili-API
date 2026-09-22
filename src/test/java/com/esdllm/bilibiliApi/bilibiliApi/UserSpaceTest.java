@@ -4,6 +4,7 @@ import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
 import com.esdllm.bilibiliApi.sign.WbiKeyStore;
 import org.junit.jupiter.api.*;
@@ -187,6 +188,67 @@ class UserSpaceTest {
 
             BilibiliException cause = assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(-404, cause.getCode());
+        }
+    }
+
+    // ================================================================
+    // B1 新增：用户关系数（2026-09-22）
+    //
+    // 上面那张"门槛表"到这里要再补一行，而且这一行是**反向**的：
+    // acc/info 与 arc/search 要"签名 + 凭据"，seasons 两者都不要，
+    // 而 relation/stat **不需要凭据、且查任意用户都行** —— 它是本门面唯一的匿名方法。
+    // 与它就是"数量 vs 名单"的关系：同域、同参数名（vmid）、名字也像，
+    // 但名单端点（getFollowers/getFollowings）是 -101 且只限本人。
+    // 这一对最容易被后人"顺手合并"，所以两处都写了。
+    // ================================================================
+
+    private static final String RELSTAT_PATH = "/x/relation/stat";
+
+    @Nested
+    @DisplayName("B1 新增：用户关系数（本门面唯一的匿名方法）")
+    class RelationStatTest {
+
+        @Test
+        @DisplayName("getRelationStat：三个数取到，且【一次 nav 都不打】")
+        void relationStat() throws Exception {
+            mock.register(RELSTAT_PATH, fixture("relation-stat.json"));
+
+            RelationStat data = space.getRelationStat(2L);
+
+            assertEquals(2L, data.getMid());
+            assertEquals(429L, data.getFollowing());
+            assertEquals(1429244L, data.getFollower());
+
+            assertTrue(mock.requestUri(RELSTAT_PATH).contains("vmid=2"),
+                    "实际：" + mock.requestUri(RELSTAT_PATH));
+            assertEquals("https://space.bilibili.com/2",
+                    mock.requestHeader(RELSTAT_PATH, "Referer"));
+            assertEquals(0, mock.hitCount(NAV_PATH),
+                    "★ 本门面其余方法全要签名或凭据，只有它两样都不要 —— 别一起改");
+        }
+
+        @Test
+        @DisplayName("★ 与名单端点门槛正相反：同一份设置下数量通、名单 -101")
+        void countsVersusLists() throws Exception {
+            mock.register(RELSTAT_PATH, fixture("relation-stat.json"));
+            mock.register("/x/relation/followers", "{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}");
+
+            assertEquals(1429244L, space.getRelationStat(2L).getFollower(), "数量：匿名通");
+
+            IOException e = assertThrows(IOException.class, () -> space.getFollowers(2L, 1, 5));
+            assertEquals(-101, assertInstanceOf(BilibiliException.class, e.getCause()).getCode(),
+                    "名单：必须登录，且只拿得到本人的");
+        }
+
+        @Test
+        @DisplayName("vmid ≤ 0：包成 IOException，零出站")
+        void badVmid() {
+            IOException e = assertThrows(IOException.class, () -> space.getRelationStat(0L));
+
+            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertInstanceOf(BilibiliException.class, e.getCause());
+            assertEquals(0, mock.hitCount(RELSTAT_PATH));
+            assertEquals(0, mock.hitCount(NAV_PATH), "本地校验失败时连密钥都不该去取");
         }
     }
 }

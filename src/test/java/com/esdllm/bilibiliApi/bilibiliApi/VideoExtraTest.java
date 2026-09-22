@@ -3,12 +3,15 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
+import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
+import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
 import com.esdllm.bilibiliApi.sign.WbiKeyStore;
 import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -96,7 +99,7 @@ class VideoExtraTest {
             String uri = mock.requestUri(CONC_PATH);
             assertTrue(uri.contains("bvid=" + BVID) && uri.contains("cid=" + CID), "实际：" + uri);
             assertTrue(uri.contains("wts=") && uri.contains("w_rid="), "实际：" + uri);
-            assertTrue(mock.requestHeader(CONC_PATH, "Referer").contains(BVID),
+            assertTrue(Objects.requireNonNull(mock.requestHeader(CONC_PATH, "Referer")).contains(BVID),
                     "实际 Referer：" + mock.requestHeader(CONC_PATH, "Referer"));
         }
 
@@ -210,6 +213,91 @@ class VideoExtraTest {
 
             BilibiliException cause = assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(-101, cause.getCode(), "调用方靠这个码决定'该去登录取凭据'");
+        }
+    }
+
+    // ================================================================
+    // B1 匿名高频域（2026-09-22 新增）：一站式详情 / 在线观看数
+    //
+    // 这一段存在的意义是**把本门面的门槛表补齐**：加进来之前，本门面四项里的
+    // aiSummary（签名+凭据都要）与 playUrl（凭据可选、依赖出口信誉）都属于"可能失败"，
+    // 而新增这两项是**真·零门槛**。放在同一个类注释的表里，正是为了不让调用方
+    // 把"VideoExtra 的方法都很难伺候"当成前提。
+    // ================================================================
+
+    private static final String DETAIL_PATH = "/x/web-interface/view/detail";
+    private static final String ONLINE_PATH = "/x/player/online/total";
+
+    @Nested
+    @DisplayName("B1 新增：一站式详情 / 在线观看数（两项都是零门槛）")
+    class AnonymousHighFrequencyTest {
+
+        @Test
+        @DisplayName("getViewDetail：四项能力在一次响应里（详情 + 状态数 + 标签 + 相关推荐）")
+        void viewDetail() throws Exception {
+            mock.register(DETAIL_PATH, fixture("view-detail.json"));
+
+            ViewDetail data = videoExtra.getViewDetail(BVID);
+
+            assertEquals("至此，已成神品！！！", data.getView().getTitle());
+            assertEquals(1200335L, data.getView().getStat().getView(), "状态数内嵌在 View 里");
+            assertEquals(2, data.getTags().size());
+            assertEquals(2, data.getRelated().size());
+
+            assertEquals(0, mock.hitCount(NAV_PATH),
+                    "★ 与 getAiSummary 正相反：本方法一次 nav 都不打（不需要签名）");
+            assertEquals(0, mock.hitCount(CONC_PATH));
+        }
+
+        @Test
+        @DisplayName("★ 一站式详情【不】包含评论列表：Reply 只有 1 条热评、page 为 null")
+        void viewDetailHasNoCommentList() throws Exception {
+            mock.register(DETAIL_PATH, fixture("view-detail.json"));
+
+            ViewDetail data = videoExtra.getViewDetail(BVID);
+
+            assertNotNull(data.getReply());
+            assertNull(data.getReply().getPage());
+            assertEquals(1, data.getReply().getReplies().size(),
+                    "★ '一站式'这个名字最容易让人以为评论也包了。要完整评论请用 Comment#getRepliesByBvid");
+        }
+
+        @Test
+        @DisplayName("getOnlineTotal：字符串数字被转成数字；bvid 与 cid 都要上 query")
+        void onlineTotal() throws Exception {
+            mock.register(ONLINE_PATH, fixture("online-total.json"));
+
+            OnlineTotal data = videoExtra.getOnlineTotal(BVID, CID);
+
+            assertEquals(690L, data.getTotal());
+            assertEquals(215L, data.getCount());
+            String uri = mock.requestUri(ONLINE_PATH);
+            assertTrue(uri.contains("bvid=" + BVID) && uri.contains("cid=" + CID), "实际：" + uri);
+            assertEquals(0, mock.hitCount(NAV_PATH), "文档说它'APP 端、需签名'，实测两者都不需要");
+        }
+
+        @Test
+        @DisplayName("两项的本地校验都包成 IOException，且零出站")
+        void localValidation() {
+            IOException e1 = assertThrows(IOException.class, () -> videoExtra.getViewDetail(null));
+            assertTrue(e1.getMessage().contains("BV号不能为空"), "实际：" + e1.getMessage());
+            assertInstanceOf(BilibiliException.class, e1.getCause());
+            assertEquals(0, mock.hitCount(DETAIL_PATH));
+
+            IOException e2 = assertThrows(IOException.class, () -> videoExtra.getOnlineTotal(BVID, null));
+            assertTrue(e2.getMessage().contains("cid不能为空"), "实际：" + e2.getMessage());
+            assertEquals(0, mock.hitCount(ONLINE_PATH));
+            assertEquals(0, mock.hitCount(NAV_PATH), "本地校验失败时连密钥都不该去取");
+        }
+
+        @Test
+        @DisplayName("-404 稿件不存在：走 IOException 边界并保住码值")
+        void notFound() {
+            mock.register(DETAIL_PATH, "{\"code\":-404,\"message\":\"啥都木有\",\"ttl\":1}");
+
+            IOException e = assertThrows(IOException.class, () -> videoExtra.getViewDetail(BVID));
+
+            assertEquals(-404, assertInstanceOf(BilibiliException.class, e.getCause()).getCode());
         }
     }
 }

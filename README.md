@@ -33,6 +33,8 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 
 | 接口 | 文档标注 | 本库实测 |
 |---|---|---|
+| `x/v2/reply`（评论列表） | Wbi | **匿名、不带签名即返回 `code=0`**（2026-09-22 实测 `replies=3`） |
+| `x/player/online/total`（在线观看数） | APP 端、需签名 | **匿名、不带签名即返回 `code=0`**；且 `total` / `count` 是**字符串数字**（`"690"`） |
 | `x/web-interface/wbi/search/all/v2`、`…/wbi/search/type` | 需 WBI 签名 | **匿名、不带签名即返回 `code=0`**（库内仍走签名链路，只是多一个 `nav` 依赖） |
 | `x/space/upstat` | Cookie | 匿名返回 `code=0` 但 `data` 是**空对象**，**需要凭据**才有数据（2026-09-22 复验仍然如此） |
 | `x/player/wbi/playurl` | WBI + Cookie | 匿名、未签名即返回 `code=0`（默认 720P）；**带 `/wbi/` 的那条路径**会 HTTP 412（含签名 / 凭据 / 连换 6 代指纹都试过）⇒ 库内改走**不带 `/wbi/`** 的 `x/player/playurl`，同分钟同凭据立刻 `code=0` |
@@ -42,6 +44,13 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 
 另外，B 站接口随时可能变更（本库就遇到过整站下线、字段增删、验证码换代），
 **升级本库前建议先用你自己的场景跑一遍**。
+
+⚠️ **还有一种"不是文档分歧、而是文档根本没提"的坑：`Referer` 会决定成败。**
+最典型的是 `x/web-interface/ranking/v2`（排行榜）—— 同一端点、同一分钟、只改 `Referer`：
+**站根 `https://www.bilibili.com/` 换来 `-352 风控校验失败`，而排行榜页
+`https://www.bilibili.com/v/popular/rank/all` 或干脆不带 `Referer` 都是 `code=0`**（本库已实测 4 次复现）。
+而"站根"恰好是全库其它端点的默认值 ⇒ **本库对该端点单独使用排行榜页 `Referer`**。
+（同一分钟用 `x/web-interface/popular` 对照过：热门**不**敏感。所以"B 站要 Referer"这种话不能一概而论。）
 
 ### 已覆盖的接口
 
@@ -68,17 +77,38 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 | `UserSpace` | `x/space/wbi/arc/search` | 🔏 签名 + 🔒 凭据 |
 | `UserSpace` | `x/polymer/web-space/seasons_archives_list` | 匿名（须先有真实 `season_id`） |
 | `UserSpace` | `x/space/upstat`（累计播放 / 阅读 / 获赞） | 🔒 凭据 |
-| `UserSpace` | `x/relation/followers`、`x/relation/followings` | 🔒 凭据 |
+| `UserSpace` | `x/relation/followers`、`x/relation/followings`（粉丝 / 关注**列表**） | 🔒 凭据 |
+| `UserSpace` | `x/relation/stat`（关注数 / 粉丝数，**只给数量**） | 匿名（⚠️ 与上一行正相反：数量匿名可读，名单必须登录） |
 | `VideoExtra` | `x/web-interface/view/conclusion/get`（AI 摘要） | 🔏 签名 + 🔒 凭据 |
 | `VideoExtra` | `x/player/playurl`（视频流地址，MP4 / DASH） | **匿名**（凭据只提升清晰度，见下） |
+| `VideoExtra` | `x/web-interface/view/detail`（**一站式详情**：`View` 内含 `stat` 13 项 + `Tags` + `Related`） | 匿名（标签 / 相关推荐 / 状态数**都由它顺带给出**，本库不为它们单独发请求） |
+| `VideoExtra` | `x/player/online/total`（在线观看数） | 匿名（文档标 APP 端需签名，实测免签） |
+| `Comment` | `x/v2/reply`（评论列表；⚠️ `oid` 要的是 **aid**） | 匿名（文档标 Wbi，实测免签；门面收 `bvid` 时内部先经 `view` 换算出 `aid`） |
+| `LiveExtra` | `room/v1/Room/playUrl`（直播拉流地址） | 匿名（`cid` 是**直播间号**，与视频的 `cid` 同名不同物） |
+| `LiveExtra` | `live_user/v1/Master/info`（主播信息） | 匿名（入参 `uid` 是**主播 uid**，不是房间号） |
+| `Ranking` | `x/web-interface/ranking/v2`（排行榜） | 匿名，🔴 **要带排行榜页 `Referer`**（站根会…**间歇**换来 `-352`） |
+| `Ranking` | `x/web-interface/popular`（热门视频） | 匿名（站根 `Referer` 即可 —— 与排行榜正好相反） |
 | `Content` | `x/web-interface/history/cursor`（观看历史） | 🔒 凭据 |
 | `Content` | `x/v2/history/toview`（稍后再看） | 🔒 凭据 |
 | `Content` | `x/v3/fav/folder/created/list-all`（收藏夹目录） | 🔒 凭据 |
+| `Content` | `x/v3/fav/folder/info`（收藏夹详情） | 取决于夹本身：公开夹匿名可读，含 `attr=1` 的夹匿名 **`-403`**（⚠️ **不能拿 `attr` 反推公开性**） |
+| `Content` | `x/v3/fav/resource/list`（收藏夹内容，`pn` 翻页） | 同上（空列表要看 `info.media_count` 有没有内容 —— 见下） |
+| `Danmaku` | `x/v1/dm/list.so`（某个分 P 的**全部弹幕**，返回 **XML**） | 匿名（⚠️ 入参是 **`cid`**，不是 `aid` / `bvid`；`Referer` 实测**无影响**） |
+| `Search` | `x/web-interface/search/square`（热搜榜） | 匿名（**不走签名出口**；榜单在 `data.trending` 里） |
+| `Comment` | `x/v2/reply/reply`（楼中楼，**只有一层**） | 匿名（`root` 是**一级评论的 `rpid`**，不是 aid） |
+| `Comment` | `x/emote/user/panel/web`（表情包面板） | 🔒 **凭据**（匿名 `code=0` 但 `packages` 为空；⚠️ **需要 Cookie，不需要签名**） |
+| `LiveExtra` | `room/v1/Area/getList`（直播分区树，一级 + 二级） | 匿名（⚠️ `parent_area_id` 实测**无效**，本库**不暴露**该参数） |
 | `Wbi` | `x/web-interface/nav`（只取 `data.wbi_img`） | 匿名（`img_key` / `sub_key` 是公共值，不是凭据） |
 
 > 表中「凭据」指登录 Cookie（至少含 `SESSDATA`），注入方式见下文
 > **「动态列表返回 -352 / 412 怎么办」**；「签名」指 WBI 签名，走 `UserSpace` /
 > `VideoExtra` 时库内已自动完成，未覆盖的接口可用 `Wbi` 门面自己签。
+>
+> ⚠️ **两种"看起来像空，其实是不同的事"**（本库一律**抛异常**，不乱返回空结果）：
+> ① `emote/user/panel/web` 在**缺凭据**时返回 `code=0` 但 `packages` 为空 —— 那是"没给我数据"，
+> 不是"这个账号没有表情包"；
+> ② `fav/resource/list` 的空 `medias` 分两种：`info.media_count > 0` 却一条不给 ⇒ **抛**（多半是 `pn` 越界），
+> `media_count = 0` 的空夹 ⇒ **正常返回空列表**。⇒ 判据是**先看码、再看长度**。
 
 ## 功能特性
 
@@ -95,6 +125,23 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
   **DASH 通道**可达 1080P（⚠️ DASH 的音视频是两条独立流，本库**不合流**）
 - **我的内容**：观看历史（游标翻页）、稍后再看（一次给完）、收藏夹目录
   —— 这三项都在 `Content` 门面，且**全是 GET 只读**
+- **视频一站式详情**：`getViewDetail` 一次拿到 `View`（内含 `stat` 13 项）/ `Tags` / `Related` / `Card`
+  —— **标签、相关推荐、状态数都不必再单独发请求**
+- **评论列表**：`Comment.getReplies`，支持**按热度 / 按点赞 / 按时间**三种排序（收 `bvid` 时自动换算 `aid`）
+- **直播拉流**：`LiveExtra.getLiveStream` 给 CDN 播放地址、`getMasterInfo` 给主播信息 —— **都不需要凭据**
+- **榜单**：`Ranking.getRanking`（分区排行榜）/ `getPopular`（热门视频）—— 同为匿名可读
+- **弹幕**：`Danmaku.getDanmaku(cid)` 取某个分 P 的**全部弹幕**（含 `maxlimit`，可判断有没有被截断）。
+  ⚠️ 入参是 **分 P 的 `cid`**（不是 aid / bvid —— 拿它的正路是 `getViewDetail` 的 `pages[].cid`）；
+  ⚠️ **没有翻页**，`maxlimit` 就是硬上限；零弹幕与"没人评论"一样是**合法结果**
+- **热搜榜**：`Search.getHotSearch(limit)` —— 零门槛，条数在 `trending.list`，`trackid` 是超出 `long` 的超长字符串
+- **楼中楼**：`Comment.getSubReplies(aid, root, pn, ps)` —— ⚠️ **只有一层**（别写递归），
+  `root` 是**一级评论的 `rpid`**（从 `getReplies` 的 `replies[i].rpid` 拿）
+- **表情包**：`Comment.getEmotePanel()` —— ⚠️ 本库**唯一需要凭据**的一项"评论域"能力
+  （要 Cookie、**不要签名**；响应很大，实测 68 个包 / 约 1555 个表情）
+- **收藏夹详情与内容**：`Content.getFolderInfo(mediaId)` / `getResources(mediaId, pn, ps)`
+  —— ⚠️ 门槛**取决于夹本身**（公开夹匿名可读，含 `attr=1` 的夹匿名 `-403`），且 `-403` 是两义码
+- **直播分区**：`LiveExtra.getAreaList()` 一次拿回一级 + 二级分区树 —— ⚠️ **刻意没有入参**：
+  文档里的 `parent_area_id` 实测**完全不起作用**（只在返回结果上自己筛）
 - **登录**：扫码 / 密码 / 短信三条链路，以及 `getCredentialStatus()` 凭据状态校验
   —— 长驻进程可用它把"凭据失效"从静默失败变成一个可判的布尔值
 - **WBI 签名**：`Wbi` 门面可给**任意** B 站 WBI 接口算签名（`wts` + `w_rid`），
@@ -116,13 +163,13 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 ```bash
 mvn install
 ```
-- 2 在[Release](https://github.com/abcLiyew/BiliBili-API/releases/tag/0.9.29-beta)中下载最新版本的jar包，并将其复制到本地Maven仓库中。
+- 2 在[Release](https://github.com/abcLiyew/BiliBili-API/releases/tag/0.9.30-beta)中下载最新版本的jar包，并将其复制到本地Maven仓库中。
 在你的Maven项目中，将以上代码添加到`pom.xml`文件的`<dependencies>`标签内，即可引入本库。
 ```xml
 <dependency>
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.29-beta</version>
+    <version>0.9.30-beta</version>
 </dependency>
 ```
 
@@ -317,6 +364,58 @@ ToViewList toView = content.getToView();
 FavFolderList folders = content.getFavoriteFolders(497078180L);
 ```
 
+### 弹幕（唯一返回 XML 的接口）
+
+入口是 `Danmaku` 门面。🔴 **入参是分 P 的 `cid`，既不是 `aid` 也不是 `bvid`** ——
+传错不会报"参数错"，只会得到 HTTP 400 或一份没有弹幕的空 XML。
+拿 `cid` 的正路是 `VideoExtra#getViewDetail(bvid)` 的 `pages[].cid`。
+
+```java
+Danmaku danmaku = new Danmaku();
+
+// 建议用这个重载：maxlimit 是判断【有没有被截断】的唯一依据
+DanmakuXml xml = danmaku.getDanmaku(cid);
+for (DanmakuItem d : xml.getDanmaku()) {
+    System.out.printf("[%.2fs] %s%n", d.getTime(), d.getText());
+}
+boolean truncated = xml.getDanmaku().size() >= xml.getMaxlimit();   // 达到了上限 = 被截断
+
+// 只要文本列表：
+List<DanmakuItem> list = danmaku.getDanmakuList(cid);
+```
+
+- **匿名可用**，不需要凭据、不需要签名。
+- 🔴 **没有翻页**：`maxlimit` 就是硬上限（实测见过 `300` / `1000` 两种，随视频设置变化），
+  达到上限时本库会打一条 `WARN` —— 那是"被截断了"，不是"这个视频只有这么多弹幕"。
+- **零弹幕是合法结果**（返回空列表，不抛异常），与"没人评论"同理。
+- `p` 属性实测是 **9 段**（老文档只写 7 段），解析是**容错**的：段数不足只会让个别字段为 `null`。
+- 发弹幕 / 删弹幕是**写操作**（需 `csrf` 且会改动账号），本库不做；实时弹幕流（WebSocket）也不在范围内。
+
+### 收藏夹详情与内容 / 热搜 / 楼中楼 / 表情包 / 直播分区（B2）
+
+```java
+Content content = new Content();
+FavFolderInfo info = content.getFolderInfo(3526698880L);          // 夹详情
+FavResourceList page = content.getResources(3526698880L, 1, 20);  // 夹内视频（pn 翻页）
+
+Search search = new Search();
+HotSearch hot = search.getHotSearch(10);                          // 热搜榜：榜单在 trending.list 里
+
+Comment comment = new Comment();
+SubReplyPage subs = comment.getSubReplies(aid, rootRpid, 1, 20);  // 楼中楼：root 是一级评论的 rpid
+EmotePanel emotes = comment.getEmotePanel();                      // 🔒 需要凭据（不要签名）
+
+LiveExtra liveExtra = new LiveExtra();
+List<LiveArea> areas = liveExtra.getAreaList();                    // 一级 + 二级分区树，无入参
+```
+
+- ⚠️ **收藏夹的门槛取决于夹本身**：公开夹匿名可读，含 `attr=1` 的夹匿名 `-403`（**不能拿 `attr` 反推**）。
+- ⚠️ **楼中楼只有一层** —— 每条 `replies[].replies` 都是 `null`，**不要写递归**。
+- ⚠️ **表情包需要凭据**：匿名返回 `code=0` 但 `packages` 为空，本库**抛异常**而不是给空列表
+  （否则"我没带凭据"会被读成"这个账号没有表情包"）。
+- ⚠️ **`getAreaList()` 刻意没有入参**：文档里的 `parent_area_id` 实测**完全不起作用**，
+  要按父分区筛请在返回结果上自己挑。
+
 ## 数据模型
 项目中包含多种数据模型，用于表示不同类型的数据。
 - `Card`: 用户卡片信息
@@ -490,9 +589,30 @@ B 站"带标题的动态 / opus 文章"的标题在 **opus 端点**的 `MODULE_T
   实测记下的两条坑：`x/player/playurl` 要**去掉 `/wbi/`** 才通（带则 412）；
   `upstat` / 收藏夹目录在**缺凭据时返回 `code=0` 却给空数据**，本库一律按失败抛异常，
   而不是安静地返回一个空结果。
+- 0.9.29-beta: **匿名高频补齐（B1）** —— 新增第 12 / 13 / 14 个门面 `Comment`（评论列表）、
+  `LiveExtra`（直播拉流 + 主播信息）、`Ranking`（排行榜 + 热门视频）；`VideoExtra` 扩
+  `getViewDetail` / `getOnlineTotal`，`UserSpace` 扩 `getRelationStat`。
+  **11 项能力实际只发 8 次请求** —— 视频标签、相关推荐、状态数都由 `view/detail` 一次性顺带给出。
+  🔴 本批最重要的一条：**排行榜 `ranking/v2` 对 `Referer` 敏感** —— 站根换 `-352`、
+  排行榜页或空 `Referer` 才 `code=0`（实测 4 次复现），而"站根"正是全库其它端点的默认值，
+  因此该端点单独使用排行榜页 `Referer`；同一分钟对照的 `popular` **不**敏感。
+  另有两条"文档说要签名、实测不用"：`x/v2/reply`（评论，文档标 Wbi）与
+  `x/player/online/total`（在线观看数，文档标 APP 端）。**门面共 14 个；前 11 个门面一行未改。**
+- 0.9.30-beta: **匿名中频补齐（B2）** —— 新增第 15 个门面 `Danmaku`（弹幕）；
+  `Comment` 扩 `getSubReplies`（楼中楼）/ `getEmotePanel`（表情包）、`Search` 扩 `getHotSearch`（热搜榜）、
+  `Content` 扩 `getFolderInfo` / `getResources`（收藏夹详情与内容）、`LiveExtra` 扩 `getAreaList`（直播分区树）。
+  **门面共 15 个；前 14 个门面一行未改。**
+  🔴 本批三条值得记的实测：
+  ① **弹幕对 `Referer` 完全免疫**（不带 / 站根 / 视频页三格响应字节数完全相同）—— 与排行榜正好相反，
+  所以它用全库默认的站根即可，调用方**不必**为它准备 bvid；
+  ② **直播分区的 `parent_area_id` 是装饰品** —— 不传 / `=1` / `=2` / `=999`（不存在）返回**逐字相同**的全树
+  ⇒ 本库**不暴露**这个参数；
+  ③ **表情包需要凭据**（匿名 `code=0` 但 `packages=null`，带凭据才有 68 个包）—— 但**需凭据 ≠ 需签名**。
+  另修正两条早先的注解方向：弹幕"需自行 deflate 解压"其实**不必**（HTTP 层已解开），
+  收藏夹 `attr` 的公开 / 私密方向原先写反了（`attr=2` 可读、`attr=1` 匿名 `-403`）。
 
-> 版本号说明：上面**三条**都落在 `0.9.29-beta`（`pom.xml` 当前即此版本号）。登录是该版本的主要增量，
-> 其后的 WBI / 搜索 / 凭据解锁等能力在同一版本号下继续累积，**尚未单独递增**。
+> 版本号说明：`0.9.29-beta` 下累积了**四条**（登录 / WBI+搜索 / 凭据解锁 B3.5 / 匿名高频 B1）；
+> **`0.9.30-beta` 起单独递增**，其中包含本批（匿名中频 B2）。
 
 ## 许可证
 

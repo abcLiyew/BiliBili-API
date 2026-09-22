@@ -8,9 +8,11 @@ import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.model.BilibiliVideoResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
+import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
 import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
-import com.esdllm.bilibiliApi.parse.ApiResponse;
-import com.esdllm.bilibiliApi.parse.ErrorMapper;
+import com.esdllm.bilibiliApi.model.data.pojo.video.PopularList;
+import com.esdllm.bilibiliApi.model.data.pojo.video.RankingList;
+import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -127,7 +129,7 @@ public class VideoService {
         HttpResponse<String> response = BilibiliHttp.getSigned(
                 BilibiliEndpoint.viewConclusionUrl, params,
                 BilibiliEndpoint.jsonAccept, BilibiliEndpoint.videoReferer.formatted(bvid));
-        AiSummary data = requireData(response, new TypeReference<>() {
+        AiSummary data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取AI摘要");
         log.info("AI 摘要 bvid={} cid={}：{}（大纲 {} 段）", bvid, cid,
                 data.hasSummary() ? "有" : "无",
@@ -229,7 +231,7 @@ public class VideoService {
         String url = BilibiliEndpoint.playUrlPlainUrl + "?" + queryOf(params);
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
                 BilibiliEndpoint.videoReferer.formatted(bvid));
-        PlayUrl data = requireData(response, new TypeReference<>() {
+        PlayUrl data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取视频流地址");
 
         boolean hasMp4 = data.getDurl() != null && !data.getDurl().isEmpty();
@@ -249,6 +251,140 @@ public class VideoService {
         return data;
     }
 
+    // ------------------------------------------------------------------ B1 匿名高频域（2026-09-22 新增）
+
+    /**
+     * <b>取视频一站式详情</b>（{@code x/web-interface/view/detail}）。
+     *
+     * <p>🔴 <b>它一个端点顶四个需求，是本批"最省出站"的一项</b>（2026-09-22 实测，16 个顶层键）：
+     * <ul>
+     *   <li>{@code View}（49 键，<b>内含完整 {@code stat} 13 项</b>）⇒ 视频详情 <b>+ 状态数</b>；</li>
+     *   <li>{@code Tags}（11 条）⇒ 视频标签；{@code Related}（40 条）⇒ 相关推荐；</li>
+     *   <li>{@code Card}（UP 主概览）。</li>
+     * </ul>
+     * ⇒ 想要标签/相关/状态数时<b>直接读这一个响应</b>，不要再去打 {@code tag/archive/tags}
+     * 或 {@code archive/related} —— 同一份数据打两次请求没有任何收益。
+     *
+     * <p>🔴 <b>但评论不在此列</b>：响应里的 {@code Reply} 只有 {@code page}（{@code null}）与
+     * {@code replies}（<b>一条热评</b>）。完整评论要走 {@link CommentService#getReplies}。
+     * 这条边界很反直觉，所以两个地方都写了。
+     *
+     * <p>匿名可用（实测 {@code code=0}），不需要 WBI 签名。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @return 一站式详情，不可为 null
+     * @throws BilibiliException {@code bvid} 为空、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public ViewDetail getViewDetail(String bvid) {
+        if (bvid == null || bvid.isBlank()) {
+            throw new BilibiliException("BV号不能为空");
+        }
+        String url = BilibiliEndpoint.viewDetailUrl + "?bvid=" + bvid;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.videoReferer.formatted(bvid));
+        ViewDetail data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取视频详情");
+        // 这里把"顺手拿到了几项"打出来：它是判断本端点形状有没有变的第一个信号
+        log.info("视频详情 bvid={}：标题={}，标签 {} 个，相关 {} 条，热评 {} 条{}",
+                bvid,
+                data.getView() == null ? null : data.getView().getTitle(),
+                data.getTags() == null ? 0 : data.getTags().size(),
+                data.getRelated() == null ? 0 : data.getRelated().size(),
+                data.getReply() == null || data.getReply().getReplies() == null
+                        ? 0 : data.getReply().getReplies().size(),
+                data.getView() == null || data.getView().getStat() == null ? ""
+                        : "，播放 " + data.getView().getStat().getView());
+        return data;
+    }
+
+    /**
+     * <b>取在线观看数</b>（{@code x/player/online/total}）。
+     *
+     * <p>匿名可用（实测 {@code code=0}）—— 文档标"APP 端、需签名"，实测都不需要。
+     *
+     * <p>⚠️ {@code total} / {@code count} 在 JSON 里是<b>字符串数字</b>（{@code "690"}），
+     * 模型用 {@code Long} 接（fastjson 自动转）。
+     *
+     * <p>⚠️ {@code cid} 是<b>必需</b>的：只给 bvid 拿不到结果。已有 {@link VideoInfo} 的调用方
+     * 直接用 {@code getCid()}。
+     *
+     * @param bvid BV 号
+     * @param cid  分 P 的 cid
+     * @return 在线观看数，不可为 null
+     * @throws BilibiliException {@code bvid}/{@code cid} 非法、网络失败、业务码非 0、或 {@code data} 为空
+     */
+    public OnlineTotal getOnlineTotal(String bvid, Long cid) {
+        if (bvid == null || bvid.isBlank()) {
+            throw new BilibiliException("BV号不能为空");
+        }
+        if (cid == null || cid <= 0) {
+            throw new BilibiliException("cid不能为空");
+        }
+        String url = BilibiliEndpoint.onlineTotalUrl + "?bvid=" + bvid + "&cid=" + cid;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.videoReferer.formatted(bvid));
+        OnlineTotal data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取在线观看数");
+        log.info("在线观看 bvid={} cid={}：总数 {} / 人数 {}", bvid, cid, data.getTotal(), data.getCount());
+        return data;
+    }
+
+    /**
+     * <b>取视频排行榜</b>（{@code x/web-interface/ranking/v2}）。
+     *
+     * <p>🔴 <b>本方法唯一需要读懂的地方是 Referer</b>：这个端点对<b>站根</b> Referer
+     * （本库其它端点的默认值）会返回 {@code -352 风控校验失败}，换成排行榜页就 {@code code=0}
+     * （2026-09-22 实测，两轮 4 次复现；见 {@code BilibiliEndpoint#rankingUrl} 的对照表）。
+     * 所以这里固定用 {@code rankingReferer} —— <b>改了这一行会让整条链路挂掉，而且报的是风控码，
+     * 看起来像"出口被封"而不是"Referer 写错了"。</b>
+     *
+     * <p>匿名可用，不需要签名。
+     *
+     * @param rid  分区 id（{@code 0}=全站、{@code 1}=动画…）；{@code <0} 时按 {@code 0}
+     * @param type 榜单类型（实测用 {@code all}）；空值时按 {@code all}
+     * @return 榜单，不可为 null
+     * @throws BilibiliException 网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public RankingList getRanking(int rid, String type) {
+        String typeValue = (type == null || type.isBlank()) ? "all" : type;
+        String url = BilibiliEndpoint.rankingUrl
+                + "?rid=" + Math.max(0, rid) + "&type=" + typeValue;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.rankingReferer);
+        RankingList data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取排行榜");
+        log.info("排行榜 rid={} type={}：{} 条（{}）", rid, typeValue,
+                data.getList() == null ? 0 : data.getList().size(), data.getNote());
+        return data;
+    }
+
+    /**
+     * <b>取热门视频</b>（{@code x/web-interface/popular}）。
+     *
+     * <p>匿名可用，<b>用站根 Referer 即可</b>（与 {@link #getRanking} 不同 ——
+     * 两者是同一分钟实测对照过的，只有排行榜对站根敏感）。
+     *
+     * <p>⚠️ 响应只有 {@code list} 与 {@code no_more}，<b>没有页码</b>：
+     * 想翻页要自己记住传进来的 {@code pn}；{@code no_more=true} 就该停了。
+     *
+     * @param ps 每页条数；{@code ≤0} 时按 20
+     * @param pn 页码；{@code ≤0} 时按 1
+     * @return 热门列表，不可为 null
+     * @throws BilibiliException 网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public PopularList getPopular(int ps, int pn) {
+        int psValue = ps <= 0 ? 20 : ps;
+        int pnValue = Math.max(1, pn);
+        String url = BilibiliEndpoint.popularUrl + "?ps=" + psValue + "&pn=" + pnValue;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.referer);
+        PopularList data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取热门视频");
+        log.info("热门视频 第 {} 页：{} 条，还有更多={}", pnValue,
+                data.getList() == null ? 0 : data.getList().size(), !Boolean.TRUE.equals(data.getNo_more()));
+        return data;
+    }
+
     /** 按插入顺序拼 query（值不做 URL 编码：本批参数全是数字与 {@code BV…} 这类安全串） */
     private static String queryOf(Map<String, String> params) {
         StringBuilder sb = new StringBuilder();
@@ -259,47 +395,6 @@ public class VideoService {
             sb.append(entry.getKey()).append('=').append(entry.getValue());
         }
         return sb.toString();
-    }
-
-    /**
-     * HTTP 状态 → 反序列化 → 业务码 → 取 data。
-     *
-     * <p>与 {@code UserService} / {@code SearchService} 的同名私有方法是一份<b>刻意的拷贝</b>：
-     * 三个 Service 分属不同域，抽公共工具类会引入"谁都能改"的共享点，而这段逻辑很短、
-     * 将来各自的错误文案也会分叉。
-     *
-     * <p>⚠️ {@link #doGet} 的旧实现<b>刻意不走这里</b> —— 它是 {@code BilibiliClient} 下游契约的一部分
-     * （异常文案、{@code getCode()!=0} 的判定顺序都已被依赖），动它没有收益。
-     *
-     * @param response 原始响应
-     * @param type     目标类型
-     * @param action   正在做的事
-     * @param <T>      data 类型
-     * @return 非 null 的 data
-     * @throws BilibiliException HTTP 非 2xx、响应无法解析、业务码非 0、或 data 为空
-     */
-    private static <T> T requireData(HttpResponse<String> response, TypeReference<ApiResponse<T>> type,
-                                     String action) {
-        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), action);
-        if (httpError != null) {
-            throw httpError;
-        }
-        ApiResponse<T> parsed;
-        try {
-            parsed = JSON.parseObject(response.getBody(), type);
-        } catch (Exception e) {
-            throw new BilibiliException(0, action + "失败：HTTP " + response.getStatus()
-                    + " 的响应无法解析（前 120 字：" + brief(response.getBody()) + "）", "响应形状不符");
-        }
-        return ResponseParserSupport.unwrap(parsed, action);
-    }
-
-    private static String brief(String text) {
-        if (text == null) {
-            return "";
-        }
-        String oneLine = text.replace('\n', ' ');
-        return oneLine.length() <= 120 ? oneLine : oneLine.substring(0, 120) + "...";
     }
 
     private VideoService() {}

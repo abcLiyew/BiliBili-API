@@ -1,14 +1,11 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
-import com.esdllm.bilibiliApi.parse.ApiResponse;
-import com.esdllm.bilibiliApi.parse.ErrorMapper;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -85,7 +82,7 @@ public class HistoryService {
                 + (params.isEmpty() ? "" : "?" + queryOf(params));
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
                 BilibiliEndpoint.historyReferer);
-        HistoryCursor data = requireData(response, new TypeReference<>() {
+        HistoryCursor data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取观看历史");
         log.info("观看历史：本页 {} 条，下一游标 max={} view_at={} business={}",
                 data.getList() == null ? 0 : data.getList().size(),
@@ -109,7 +106,7 @@ public class HistoryService {
     public ToViewList getToView() {
         HttpResponse<String> response = BilibiliHttp.get(BilibiliEndpoint.historyToViewUrl,
                 BilibiliEndpoint.jsonAccept, BilibiliEndpoint.watchLaterReferer);
-        ToViewList data = requireData(response, new TypeReference<>() {
+        ToViewList data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取稍后再看");
         log.info("稍后再看：{} 条", data.getCount());
         return data;
@@ -125,44 +122,6 @@ public class HistoryService {
             sb.append(entry.getKey()).append('=').append(entry.getValue());
         }
         return sb.toString();
-    }
-
-    /**
-     * HTTP 状态 → 反序列化 → 业务码 → 取 data。
-     *
-     * <p>与其它 Service 的同名私有方法一样，是<b>刻意的拷贝</b>而不是共用工具：
-     * 各 Service 分属不同域，抽公共类会引入"谁都能改"的共享点，而这段逻辑很短、
-     * 各域的错误文案将来也会分叉。
-     *
-     * @param response 原始响应
-     * @param type     目标类型
-     * @param action   正在做的事
-     * @param <T>      data 类型
-     * @return 非 null 的 data
-     * @throws BilibiliException HTTP 非 2xx、响应无法解析、业务码非 0、或 data 为空
-     */
-    private static <T> T requireData(HttpResponse<String> response, TypeReference<ApiResponse<T>> type,
-                                     String action) {
-        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), action);
-        if (httpError != null) {
-            throw httpError;
-        }
-        ApiResponse<T> parsed;
-        try {
-            parsed = JSON.parseObject(response.getBody(), type);
-        } catch (Exception e) {
-            throw new BilibiliException(0, action + "失败：HTTP " + response.getStatus()
-                    + " 的响应无法解析（前 120 字：" + brief(response.getBody()) + "）", "响应形状不符");
-        }
-        return ResponseParserSupport.unwrap(parsed, action);
-    }
-
-    private static String brief(String text) {
-        if (text == null) {
-            return "";
-        }
-        String oneLine = text.replace('\n', ' ');
-        return oneLine.length() <= 120 ? oneLine : oneLine.substring(0, 120) + "...";
     }
 
     private HistoryService() {}

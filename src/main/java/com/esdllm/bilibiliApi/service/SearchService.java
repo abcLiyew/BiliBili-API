@@ -1,16 +1,15 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
+import com.esdllm.bilibiliApi.model.data.pojo.search.HotSearch;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchVideo;
 import com.esdllm.bilibiliApi.parse.ApiResponse;
-import com.esdllm.bilibiliApi.parse.ErrorMapper;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -71,7 +70,61 @@ public class SearchService {
     /** 默认每页条数（B 站网页端就是 20）。 */
     public static final int DEFAULT_PAGE_SIZE = 20;
 
+    /** 热搜榜默认条数（实测该值即为服务端实际返回条数）。 */
+    public static final int DEFAULT_HOT_LIMIT = 10;
+
+    /** 热搜榜单次条数上限（请求侧夹紧用；⚠️ 见 {@link #getHotSearch(int)} 的说明）。 */
+    public static final int MAX_HOT_LIMIT = 50;
+
     private SearchService() {
+    }
+
+    /**
+     * <b>取热搜榜</b>（{@code x/web-interface/search/square}，B2 批 #3）。
+     *
+     * <p>✅ <b>完全不需要凭据、也不需要 WBI 签名</b>（2026-09-22 实测匿名 {@code code=0}，
+     * 两次一致）。所以它<b>不走</b> {@code getSigned} —— 上面三个搜索方法走签名是"防将来"，
+     * 而这个端点连响应里都没有签名相关字段，给它签名只是白算一次。
+     *
+     * <p>🔴 <b>榜单在 {@code data.trending}，不是 {@code data} 本身</b>：
+     * {@code data} 顶层只有 {@code trending} 一个键，里面才是 {@code title} / {@code list}。
+     * 调用方拿条目要走 {@code getHotSearch(10).getTrending().getList()}。
+     *
+     * <p>⚠️ <b>返回的 {@code trackid} 是字符串且已超出 {@code long} 范围</b>
+     * （实测 {@code 12414231099029457647}）—— 别对它做数值运算，见 {@code HotSearch.Trending}。
+     *
+     * <p>⚠️ {@code limit} <b>只验过 10</b>：实测传 {@code limit=10} 就返回 10 条。
+     * 更大的值是否被服务端接受<b>未验证</b>（它可能把越界值夹回自己的默认值），
+     * 所以这里夹到 1–{@link #MAX_HOT_LIMIT}，但<b>不承诺</b>一定能拿到那么多条 ——
+     * 实际条数以返回的 {@code list} 长度为准。
+     *
+     * @param limit 期望条数；{@code ≤0} 时按 {@link #DEFAULT_HOT_LIMIT}，超过上限则夹紧
+     * @return 热搜榜，不可为 null
+     * @throws BilibiliException 网络失败、HTTP 非 2xx、业务码非 0，
+     *                           或 <b>{@code code=0} 但榜单为空</b>
+     *                           （该端点匿名可用，所以空榜单几乎只可能是形状变了或被风控）
+     */
+    public HotSearch getHotSearch(int limit) {
+        int size = limit <= 0 ? DEFAULT_HOT_LIMIT : Math.min(limit, MAX_HOT_LIMIT);
+        String url = BilibiliEndpoint.searchSquareUrl + "?limit=" + size;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.referer);
+        HotSearch data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取热搜榜");
+        if (data.getTrending() == null
+                || data.getTrending().getList() == null
+                || data.getTrending().getList().isEmpty()) {
+            // 与 FavoriteService 的空列表守卫同理：这是"没给出数据"，不是"今天没有热搜"。
+            // 该端点匿名即可用，所以空榜单不能再用"缺凭据"解释 —— 只能是形状变了或被风控。
+            throw new BilibiliException(0,
+                    "获取热搜榜失败：服务端返回 code=0，但 trending.list 为空",
+                    "该端点匿名可用，空榜单通常是响应形状变了或命中风控；"
+                            + "请先确认响应里还有 data.trending.list 这个路径");
+        }
+        log.info("热搜榜「{}」：{} 条（trackid={}）",
+                data.getTrending().getTitle(), data.getTrending().getList().size(),
+                data.getTrending().getTrackid());
+        return data;
     }
 
     /**
@@ -91,7 +144,7 @@ public class SearchService {
         HttpResponse<String> response = BilibiliHttp.getSigned(
                 BilibiliEndpoint.searchAllUrl, params,
                 BilibiliEndpoint.jsonAccept, BilibiliEndpoint.searchReferer);
-        SearchAllResult data = requireData(response,
+        SearchAllResult data = ResponseParserSupport.requireData(response,
                 new TypeReference<>() {
                 }, "综合搜索");
         log.info("综合搜索「{}」第 {} 页：{} 个分组，视频 {} 条、用户 {} 条",
@@ -131,7 +184,14 @@ public class SearchService {
                 });
     }
 
-    /** 分类搜索的共用实现：泛型只在这里出现一次，两个公开方法各自给出具体的 {@code TypeReference} */
+    /**
+     * 分类搜索的共用实现：泛型只在这里出现一次，两个公开方法各自给出具体的 {@code TypeReference}。
+     *
+     * <p>⚠️ 关键词的 URL 编码由<b>签名出口</b>一并完成，本类<b>不自己编码</b> ——
+     * 若要换实现，请注意 WBI 口径会<b>删掉</b>参数值里的 {@code !'()*} 四个字符
+     * （{@code WbiSigner#percentEncode} 的规则，B 站前端同样如此），
+     * 而通用查询编码器（{@code URLEncoder}）不会删 —— 两者的差别在搜 {@code It's} 这类词时才会暴露。
+     */
     private <T> SearchTypeResult<T> searchType(String keyword, String searchType, int page, String action,
                                                TypeReference<ApiResponse<SearchTypeResult<T>>> type) {
         requireKeyword(keyword);
@@ -143,7 +203,7 @@ public class SearchService {
         HttpResponse<String> response = BilibiliHttp.getSigned(
                 BilibiliEndpoint.searchTypeUrl, params,
                 BilibiliEndpoint.jsonAccept, BilibiliEndpoint.searchReferer);
-        SearchTypeResult<T> data = requireData(response, type, action);
+        SearchTypeResult<T> data = ResponseParserSupport.requireData(response, type, action);
         log.info("{}「{}」第 {} 页：本页 {} 条 / 共 {} 条（{} 页）",
                 action, keyword, data.getPage(), data.size(),
                 data.getNumResults(), data.getNumPages());
@@ -167,45 +227,4 @@ public class SearchService {
         return Math.max(1, page);
     }
 
-    /**
-     * HTTP 状态 → 反序列化 → 业务码 → 取 data，四步一次做完。
-     *
-     * <p>失败时一定带上<b>能定位的证据</b>（HTTP 状态或响应原文片段）——
-     * 搜索这一块的失败在调用方看来全是"没搜到东西"，不给证据就只能靠猜。
-     *
-     * <p>⚠️ 关键词的 URL 编码由签名出口一并完成，本类<b>不自己编码</b> ——
-     * 若要换实现，请注意 WBI 口径会<b>删掉</b>参数值里的 {@code !'()*} 四个字符
-     * （{@code WbiSigner#percentEncode} 的规则，B 站前端同样如此），
-     * 而通用查询编码器（{@code URLEncoder}）不会删 —— 两者的差别在搜 {@code It's} 这类词时才会暴露。
-     *
-     * @param response 原始响应
-     * @param type     目标类型（fastjson 的 {@code TypeReference}，用于保留泛型）
-     * @param action   正在做的事（拼失败文案）
-     * @param <T>      data 类型
-     * @return 非 null 的 data
-     * @throws BilibiliException HTTP 非 2xx、响应无法解析、业务码非 0、或 data 为空
-     */
-    private static <T> T requireData(HttpResponse<String> response, TypeReference<ApiResponse<T>> type,
-                                     String action) {
-        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), action);
-        if (httpError != null) {
-            throw httpError;
-        }
-        ApiResponse<T> parsed;
-        try {
-            parsed = JSON.parseObject(response.getBody(), type);
-        } catch (Exception e) {
-            throw new BilibiliException(0, action + "失败：HTTP " + response.getStatus()
-                    + " 的响应无法解析（前 120 字：" + brief(response.getBody()) + "）", "响应形状不符");
-        }
-        return ResponseParserSupport.unwrap(parsed, action);
-    }
-
-    private static String brief(String text) {
-        if (text == null) {
-            return "";
-        }
-        String oneLine = text.replace('\n', ' ');
-        return oneLine.length() <= 120 ? oneLine : oneLine.substring(0, 120) + "...";
-    }
 }

@@ -9,10 +9,9 @@ import com.esdllm.bilibiliApi.model.BilibiliCardResp;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
 import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
 import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
-import com.esdllm.bilibiliApi.parse.ApiResponse;
-import com.esdllm.bilibiliApi.parse.ErrorMapper;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -106,7 +105,7 @@ public class UserService {
         HttpResponse<String> response = BilibiliHttp.getSigned(
                 BilibiliEndpoint.accInfoUrl, params,
                 BilibiliEndpoint.jsonAccept, spaceReferer(mid));
-        AccInfo data = requireData(response, new TypeReference<>() {
+        AccInfo data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取用户空间信息");
         log.info("空间信息 mid={}：{}（等级 {}）", data.getMid(), data.getName(), data.getLevel());
         return data;
@@ -153,7 +152,7 @@ public class UserService {
         HttpResponse<String> response = BilibiliHttp.getSigned(
                 BilibiliEndpoint.arcSearchUrl, params,
                 BilibiliEndpoint.jsonAccept, spaceReferer(mid));
-        ArchiveSearchResult data = requireData(response, new TypeReference<>() {
+        ArchiveSearchResult data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取用户投稿");
         int count = data.getList() == null || data.getList().getVlist() == null
                 ? 0 : data.getList().getVlist().size();
@@ -188,7 +187,7 @@ public class UserService {
                 + "&page_num=" + Math.max(1, pageNum)
                 + "&page_size=" + Math.max(1, pageSize);
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept, spaceReferer(mid));
-        SeasonsArchives data = requireData(response, new TypeReference<>() {
+        SeasonsArchives data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取合集内容");
         log.info("合集 season_id={}：{}，本页 {} 条 / 共 {} 条",
                 seasonId, data.getMeta() == null ? "无元信息" : data.getMeta().getName(),
@@ -257,7 +256,7 @@ public class UserService {
         }
         HttpResponse<String> response = BilibiliHttp.get(BilibiliEndpoint.upstatUrl + mid,
                 BilibiliEndpoint.jsonAccept, spaceReferer(mid));
-        UpStat data = requireData(response, new TypeReference<>() {
+        UpStat data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取UP主累计数据");
         if (data.getArchive() == null && data.getArticle() == null && data.getLikes() == null) {
             throw new BilibiliException(0,
@@ -311,6 +310,42 @@ public class UserService {
                 BilibiliEndpoint.spaceFollowReferer, "获取关注列表");
     }
 
+    // ------------------------------------------------------------------ 匿名域（2026-09-22 B1 新增）
+
+    /**
+     * <b>取用户关系数</b>（{@code x/relation/stat}）：关注数 / 粉丝数。
+     *
+     * <p>🔴 <b>本端点是"匿名可读"的，别与同域的名单端点混为一谈</b>（2026-09-22 实测）：
+     * <table border="1">
+     *   <caption>数量 vs 名单，门槛完全不同</caption>
+     *   <tr><th>要什么</th><th>方法</th><th>匿名（无凭据）</th></tr>
+     *   <tr><td><b>数量</b></td><td>本方法</td><td><b>{@code code=0}</b>，查任意用户都行</td></tr>
+     *   <tr><td>名单</td><td>{@link #getFollowers} / {@link #getFollowings}</td>
+     *       <td>{@code -101 账号未登录}，且只对本人 mid 有效</td></tr>
+     * </table>
+     * ⇒ 这条差别是本批最容易被"顺手合并"掉的地方：两者同域、同参数形状，
+     * 但一个不需要凭据、一个必须有 —— <b>别为了少写一个方法把名单当成数量的重载</b>。
+     *
+     * <p>⚠️ 与 {@link #getCard(Long)} 的 {@code follower} 是同源数据的两个入口，
+     * 已经打过名片的调用方不必再打这一条。
+     *
+     * @param vmid 用户 mid（<b>任意用户都有效</b>，不像名单端点只限本人）
+     * @return 关系数，不可为 null
+     * @throws BilibiliException {@code vmid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public RelationStat getRelationStat(long vmid) {
+        if (vmid <= 0) {
+            throw new BilibiliException("mid不能小于0");
+        }
+        HttpResponse<String> response = BilibiliHttp.get(
+                BilibiliEndpoint.relationStatUrl + "?vmid=" + vmid,
+                BilibiliEndpoint.jsonAccept, spaceReferer(vmid));
+        RelationStat data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取用户关系数");
+        log.info("关系数 vmid={}：关注 {} / 粉丝 {}", vmid, data.getFollowing(), data.getFollower());
+        return data;
+    }
+
     /**
      * 粉丝 / 关注两个端点的共用实现。
      *
@@ -328,7 +363,7 @@ public class UserService {
                 + "&ps=" + Math.max(1, ps);
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
                 refererTemplate.formatted(String.valueOf(vmid)));
-        RelationList data = requireData(response, new TypeReference<>() {
+        RelationList data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, action);
         log.info("{} vmid={} 第 {} 页：本页 {} 人 / 共 {} 人", action, vmid, pn,
                 data.getList() == null ? 0 : data.getList().size(), data.getTotal());
@@ -338,44 +373,6 @@ public class UserService {
     /** 空间页 Referer（参数是 mid，形状见 {@code BilibiliEndpoint.spaceReferer}） */
     private static String spaceReferer(long mid) {
         return BilibiliEndpoint.spaceReferer.formatted(String.valueOf(mid));
-    }
-
-    /**
-     * HTTP 状态 → 反序列化 → 业务码 → 取 data。
-     *
-     * <p>与 {@code SearchService} 的同名私有方法是一份拷贝而不是共用：两个 Service 分属不同域，
-     * 抽到公共工具类会引入一个"谁都能改"的共享点；而这段逻辑很短、且将来各自的错误文案会分叉。
-     * （{@link #getCard} 的旧实现刻意<b>不</b>迁移过来 —— 它的行为是下游契约的一部分，动它没有收益。）
-     *
-     * @param response 原始响应
-     * @param type     目标类型
-     * @param action   正在做的事
-     * @param <T>      data 类型
-     * @return 非 null 的 data
-     * @throws BilibiliException HTTP 非 2xx、响应无法解析、业务码非 0、或 data 为空
-     */
-    private static <T> T requireData(HttpResponse<String> response, TypeReference<ApiResponse<T>> type,
-                                     String action) {
-        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), action);
-        if (httpError != null) {
-            throw httpError;
-        }
-        ApiResponse<T> parsed;
-        try {
-            parsed = JSON.parseObject(response.getBody(), type);
-        } catch (Exception e) {
-            throw new BilibiliException(0, action + "失败：HTTP " + response.getStatus()
-                    + " 的响应无法解析（前 120 字：" + brief(response.getBody()) + "）", "响应形状不符");
-        }
-        return ResponseParserSupport.unwrap(parsed, action);
-    }
-
-    private static String brief(String text) {
-        if (text == null) {
-            return "";
-        }
-        String oneLine = text.replace('\n', ' ');
-        return oneLine.length() <= 120 ? oneLine : oneLine.substring(0, 120) + "...";
     }
 
     private UserService() {}

@@ -28,8 +28,9 @@ import java.util.List;
  *
  * <p>⚠️ 本类只覆盖"<b>我创建的</b>"收藏夹。别人创建的、以及我收藏的别人的夹，
  * 不在这条链路里（{@code /created/list-all} 的语义就是 creator 维度）。
- * 夹内内容（{@code x/v3/fav/resource/list}）<b>本批不做</b>，且它对<b>私密</b>夹匿名会返回
- * {@code -403} —— 那是"资源权限不足"而不是"缺 WBI 签名"，两回事（见 {@code ErrorMapper}）。
+ * 夹内内容（{@code x/v3/fav/resource/list}）已在 <b>B2 批</b>补上，见 {@code FavResourceList}；
+ * 它对私密夹匿名会返回 {@code -403} —— 那是"资源权限不足"而不是"缺 WBI 签名"，
+ * 两者在 {@code ErrorMapper} 里是同一个码值的两种成因。
  *
  * @author 饿死的流浪猫
  */
@@ -63,9 +64,19 @@ public class FavFolderList {
         private Long mid;
 
         /**
-         * 可见性属性（实测：{@code 1}=公开、{@code 2}=私密）。
+         * 可见性属性位。
          *
-         * <p>⚠️ <b>它决定后续查询会不会 {@code -403}</b>：私密夹要先有本人的凭据才读得到内容。
+         * <p>🔴 <b>本批（B2，2026-09-22）订正了原先写反的注解</b>。原注写"1=公开、2=私密"，
+         * 与实测<b>正好相反</b>：同一分钟、同一端点、只换 {@code media_id} 的对照如下
+         * <table border="1">
+         *   <caption>匿名访问 {@code fav/folder/info} 与 {@code fav/resource/list}</caption>
+         *   <tr><th>{@code id}</th><th>标题</th><th>{@code attr}</th><th>匿名结果</th></tr>
+         *   <tr><td>1095405480</td><td>默认收藏夹</td><td>1</td><td><b>{@code -403 访问权限不足}</b></td></tr>
+         *   <tr><td>3526698880</td><td>小雨绒Candy</td><td>2</td><td>{@code code=0}</td></tr>
+         * </table>
+         * ⇒ 低位 {@code 1} 疑似"私密"位（含该位的匿名读不到），
+         * 而<b>不含该位并不能推出"公开"</b>。**判据是响应码本身，不是这个字段。**
+         * 详见 {@link FavFolderInfo#getAttr()}。
          */
         private Integer attr;
 

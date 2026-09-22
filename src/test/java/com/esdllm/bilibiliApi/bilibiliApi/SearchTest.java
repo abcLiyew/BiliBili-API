@@ -2,6 +2,7 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
+import com.esdllm.bilibiliApi.model.data.pojo.search.HotSearch;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,6 +38,10 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>⚠️ 两个搜索端点实测<b>免签名</b>，但 {@code SearchService} 仍走 {@code getSigned}
  * （理由见该类注释），所以每个用例都先把 {@code nav} 注册好，否则会先卡在"取不到 WBI 密钥"。
+ *
+ * <p>🆕 <b>B2 批（2026-09-22）补了热搜榜</b>（{@code x/web-interface/search/square}）。
+ * 它与上面三个方法<b>不是同一档</b>：零门槛、不走签名、数据多包一层 {@code trending}
+ * —— 所以单独开一组（{@code HotSearchTest}），并且反向断言"它一次 nav 都不打"。
  */
 @DisplayName("门面：Search（搜索）")
 class SearchTest {
@@ -43,6 +49,8 @@ class SearchTest {
     private static final String NAV_PATH = "/x/web-interface/nav";
     private static final String ALL_PATH = "/x/web-interface/wbi/search/all/v2";
     private static final String TYPE_PATH = "/x/web-interface/wbi/search/type";
+    /** B2 批 #3：热搜榜。注意它<b>没有</b> {@code /wbi/} 这一段，也不走签名出口 */
+    private static final String SQUARE_PATH = "/x/web-interface/search/square";
 
     private static final String NAV_BODY = "{\"code\":-101,\"data\":{\"wbi_img\":{"
             + "\"img_url\":\"https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png\","
@@ -128,6 +136,100 @@ class SearchTest {
     }
 
     // ================================================================
+    // 热搜榜（B2 批 #3）
+    // ================================================================
+
+    /**
+     * 热搜与上面三个搜索方法<b>不是同一档</b>，所以另开一组：
+     * <ul>
+     *   <li>它<b>不走签名出口</b>（上面三个走签名是"防服务端哪天恢复强制签名"，而这个端点
+     *       连响应里都没有签名相关字段）；</li>
+     *   <li>它的数据<b>多包了一层</b> {@code trending} —— 这层是本次最容易踩的坑；</li>
+     *   <li>它的 {@code trackid} 是<b>超出 {@code long} 范围的字符串</b>。</li>
+     * </ul>
+     */
+    @Nested
+    @DisplayName("热搜榜（零门槛：普通 GET，不走签名）")
+    class HotSearchTest {
+
+        @Test
+        @DisplayName("★ 榜单在 data.trending 里，不在 data 本身 —— 取错一层就什么都拿不到")
+        void trendingNesting() throws Exception {
+            mock.register(SQUARE_PATH, fixture("hot-search.json"));
+
+            HotSearch hot = search.getHotSearch(10);
+
+            assertNotNull(hot.getTrending(),
+                    "★ data 顶层只有 trending 一个键；把 data 当榜单用会一路 null");
+            assertEquals("bilibili热搜", hot.getTrending().getTitle());
+
+            List<HotSearch.Item> items = hot.getTrending().getList();
+            assertEquals(3, items.size(), "夹具裁到 3 条");
+            assertEquals("深度复盘IG战胜JDG晋级世界赛", items.get(0).getKeyword());
+            assertEquals(2976633L, items.get(0).getHeat_score());
+            assertEquals("小米发布并开源MiMo V2.6", items.get(2).getKeyword());
+        }
+
+        @Test
+        @DisplayName("★ trackid 是字符串且已超出 long 范围 —— 谁把它当数字接就会在这里炸")
+        void trackidIsOpaqueString() throws Exception {
+            mock.register(SQUARE_PATH, fixture("hot-search.json"));
+
+            String trackid = search.getHotSearch(10).getTrending().getTrackid();
+
+            assertEquals("12414231099029457647", trackid);
+            assertThrows(NumberFormatException.class, () -> Long.parseLong(trackid),
+                    "★ 它比 Long.MAX_VALUE（9223372036854775807）还大一位 —— "
+                            + "字段类型故意留成 String，就是为了让'想算它'的人在这行看见失败");
+        }
+
+        @Test
+        @DisplayName("★ goto → goTo：Java 保留字只能改名，JSON 键没变")
+        void gotoMapping() throws Exception {
+            mock.register(SQUARE_PATH, fixture("hot-search.json"));
+
+            HotSearch.Item first = search.getHotSearch(10).getTrending().getList().get(0);
+
+            assertEquals("", first.getGoTo(),
+                    "★ 实测常为空串（这个夹具就是）—— 别当必填。"
+                            + "若映射写错，这里会变成 null，与'空串'只差一个字符但业务含义不同");
+            assertEquals("", first.getUri(), "同上，实测常为空串");
+            assertNotNull(first.getIcon(), "icon 可能为空串，但键存在时不会是 null");
+        }
+
+        @Test
+        @DisplayName("limit：≤0 走默认 10，越界夹到 50，无参重载也是 10")
+        void limitClamped() throws Exception {
+            mock.register(SQUARE_PATH, fixture("hot-search.json"));
+
+            search.getHotSearch(0);
+            assertTrue(mock.requestUri(SQUARE_PATH).contains("limit=10"),
+                    "★ ≤0 走默认值而不是把 0 原样发出去。实际：" + mock.requestUri(SQUARE_PATH));
+
+            search.getHotSearch(9999);
+            assertTrue(mock.requestUri(SQUARE_PATH).contains("limit=50"),
+                    "★ 越界夹到上限（实测只验过 10，更大的值未验证）。实际："
+                            + mock.requestUri(SQUARE_PATH));
+
+            search.getHotSearch();
+            assertTrue(mock.requestUri(SQUARE_PATH).contains("limit=10"),
+                    "无参重载 = 默认 10。实际：" + mock.requestUri(SQUARE_PATH));
+        }
+
+        @Test
+        @DisplayName("★ 普通 GET：一次 nav 都不打（与上面三个走签名的搜索方法不同）")
+        void noSigning() throws Exception {
+            mock.register(SQUARE_PATH, fixture("hot-search.json"));
+
+            search.getHotSearch(10);
+
+            assertEquals(0, mock.hitCount(NAV_PATH),
+                    "★ 给它签名只是白算一次，还平白多一个 'nav 不可达' 的失败面。"
+                            + "路径上也看得见区别：本端点没有 /wbi/ 那一段");
+        }
+    }
+
+    // ================================================================
     // 异常边界：BilibiliException → IOException
     // ================================================================
 
@@ -170,6 +272,22 @@ class SearchTest {
 
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertTrue(e.getMessage().contains("无法解析"), "实际：" + e.getMessage());
+        }
+
+        @Test
+        @DisplayName("★ 热搜榜 code=0 但 trending.list 为空：必须抛（该端点匿名可用，空榜单只能是形状变了或被风控）")
+        void hotSearchEmptyBoardIsNotSilent() {
+            mock.register(SQUARE_PATH, "{\"code\":0,\"message\":\"OK\",\"data\":{\"trending\":"
+                    + "{\"title\":\"bilibili热搜\",\"trackid\":\"1\",\"list\":[],\"top_list\":[]}}}");
+
+            IOException e = assertThrows(IOException.class, () -> search.getHotSearch(10));
+
+            assertTrue(e.getMessage().contains("trending.list 为空"),
+                    "这条没有非 0 的码可用，文案就是唯一判据。实际：" + e.getMessage());
+            BilibiliException cause = assertInstanceOf(BilibiliException.class, e.getCause());
+            assertEquals(0, cause.getCode(), "外层码确实是 0 —— 正因如此才不能靠它判成败");
+            assertTrue(cause.getDescription().contains("形状"),
+                    "要给出下一步动作（先确认路径还在不在）。实际：" + cause.getDescription());
         }
     }
 }

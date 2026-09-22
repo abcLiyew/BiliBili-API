@@ -2,13 +2,28 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
+import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
 import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
+import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
 import com.esdllm.bilibiliApi.service.VideoService;
 
 import java.io.IOException;
 
 /**
- * 视频附加信息门面：<b>AI 摘要</b>（以及后续 B1 批次的播放地址等）。
+ * 视频附加信息门面：<b>AI 摘要 / 播放地址 / 一站式详情 / 在线观看数</b>。
+ *
+ * <p>四件事的门槛<b>各不相同，且分布很散</b> —— 这是本门面最需要注意的地方：
+ * <table border="1">
+ *   <caption>方法 × 门槛（全部为 2026-09 实测）</caption>
+ *   <tr><th>方法</th><th>WBI 签名</th><th>登录凭据</th><th>备注</th></tr>
+ *   <tr><td>{@link #getAiSummary(String)}</td><td><b>要</b></td><td><b>要</b></td>
+ *       <td>缺签名是 {@code -403}，签上名才露出 {@code -101}</td></tr>
+ *   <tr><td>{@link #getPlayUrl(String, Long)}</td><td>不要</td><td><b>可选</b></td>
+ *       <td>唯一"可选"的一项：匿名也能拿地址，凭据买到的是更高清晰度；⚠️ 依赖出口信誉</td></tr>
+ *   <tr><td>{@link #getViewDetail(String)}</td><td>不要</td><td>不要</td><td>匿名即通</td></tr>
+ *   <tr><td>{@link #getOnlineTotal(String, Long)}</td><td>不要</td><td>不要</td><td>匿名即通</td></tr>
+ * </table>
+ * ⇒ 别把"这个门面"当成一个门槛整体看：<b>同一个类里有"两样都要"的，也有一项都不要的</b>。
  *
  * <p>库内第 9 个门面（见 {@code Search} 的说明）。新增类，<b>不触碰任何既有签名</b>，
  * 对 XatiiBot 是纯增量。
@@ -129,6 +144,67 @@ public class VideoExtra {
     public PlayUrl getPlayUrl(String bvid, Long cid, Integer qn, Integer fnval) throws IOException {
         try {
             return VideoService.INSTANCE.getPlayUrl(bvid, cid, qn, fnval);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    // ------------------------------------------------------------------ B1 匿名高频域（2026-09-22 新增）
+
+    /**
+     * <b>取视频一站式详情</b>（{@code x/web-interface/view/detail}）—— 本批性价比最高的一项。
+     *
+     * <p>✅ <b>既不需要签名、也不需要凭据</b>（实测匿名 {@code code=0}）。
+     *
+     * <p>🔴 <b>一次出站顶四项需求</b>，拿到它就不要再分开打了：
+     * <table border="1">
+     *   <caption>一个响应里能取出什么（2026-09-22 实测）</caption>
+     *   <tr><th>取法</th><th>得到</th></tr>
+     *   <tr><td>{@code getView()}</td><td>视频主体（标题/简介/时长/UP 主…）</td></tr>
+     *   <tr><td>{@code getView().getStat()}</td><td><b>状态数</b>（播放/点赞/投币/收藏/弹幕/评论/分享…13 项）</td></tr>
+     *   <tr><td>{@code getTags()}</td><td><b>视频标签</b>（实测 11 个）</td></tr>
+     *   <tr><td>{@code getRelated()}</td><td><b>相关推荐</b>（实测 40 条）</td></tr>
+     *   <tr><td>{@code getCard()}</td><td>UP 主概览（粉丝数/投稿数/获赞数）</td></tr>
+     * </table>
+     *
+     * <p>🔴 <b>唯一的例外是评论</b>：{@code getReply()} 只有 {@code page}（{@code null}）与
+     * {@code replies}（<b>一条热评</b>）。要完整评论请用 {@code Comment#getRepliesByBvid} ——
+     * <b>这一点必须记住</b>，因为"一站式"这个名字很容易让人以为评论也包了。
+     *
+     * <p>⚠️ {@code getCard()} 与 {@code CardInfo#getUserName} / {@code UserSpace} 在字段上重叠，
+     * 已经打过名片的调用方<b>按需取用、不必两次请求同一份数据</b>。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @return 一站式详情，不可为 null
+     * @throws IOException {@code bvid} 为空、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public ViewDetail getViewDetail(String bvid) throws IOException {
+        try {
+            return VideoService.INSTANCE.getViewDetail(bvid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取在线观看数</b>（{@code x/player/online/total}）。
+     *
+     * <p>✅ 匿名可用（实测 {@code code=0}）—— 尽管文档把它标成"APP 端、需签名"。
+     *
+     * <p>⚠️ {@code cid} <b>必需</b>：只给 bvid 拿不到数据。手里的 {@code VideoInfo}
+     * 直接用它 {@code getCid()} 即可（或从 {@link #getViewDetail} 的 {@code getView()} 里取）。
+     *
+     * <p>⚠️ 返回的 {@code total} / {@code count} 在 JSON 里是<b>字符串数字</b>（{@code "690"}），
+     * 模型已经转成数字类型；但要知道原始形状是字符串。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @param cid  分 P 的 cid
+     * @return 在线观看数，不可为 null
+     * @throws IOException {@code bvid}/{@code cid} 非法、网络失败、业务码非 0、或 {@code data} 为空
+     */
+    public OnlineTotal getOnlineTotal(String bvid, Long cid) throws IOException {
+        try {
+            return VideoService.INSTANCE.getOnlineTotal(bvid, cid);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

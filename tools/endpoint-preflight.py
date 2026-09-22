@@ -133,11 +133,20 @@ def count_collections(data):
     存在的理由：`x/polymer/web-dynamic/v1/feed/space` 在**匿名**下会返回
     `code=0` + `items=[]`（静默风控），而在**带凭据**下返回 `code=0` + `items=13`。
     两种响应只差一个长度 —— 不打长度就没法区分，会直接排错期。
+
+    并且要往里挖一层：有些端点的集合**不是** `data.list` 而是 `data.trending.list`
+    （`search/square`）或 `data.packages`（`emote/user/panel/web`）。只看第一层会
+    打印出 `keys=2 ['trending','setting']` 却**一个长度都没有** —— 那等于没打长度。
     """
     for key in COLLECTION_KEYS:
         val = data.get(key)
         if isinstance(val, list):
             return " %s=%d" % (key, len(val))
+        if isinstance(val, dict):
+            for inner in ("list", "items"):
+                if isinstance(val.get(inner), list):
+                    return " %s.%s=%d" % (key, inner, len(val[inner]))
+            return " %s=OBJ(keys=%d)" % (key, len(val))
     return ""
 
 
@@ -225,20 +234,51 @@ if __name__ == "__main__":
     print()
 
     print("=== bootstrap: real ids ===")
-    boot = probe("ranking/v2", api("x/web-interface/ranking/v2", rid=1, type="all"))
+    # 这一段的成败**决定整张表能不能读**：拿不到 id，后面每个需要 bvid/aid/cid 的探测
+    # 都会变成 `-400`（参数是 None），看起来像"端点全线阵亡"。2026-09-22 真发生过两次：
+    #   ① ranking/v2 用了站根 Referer -> -352（已修：改用排行榜页 Referer）
+    #   ② 第一个请求 DNS 抖动 -> 抛异常 -> id 全空（本次修：**重试 + 换来源回落**）
+    # 所以这里做三件事：重试、从第二个端点回落、以及**拿不到 id 就明确报警，而不是照常往下打**。
+    RANK_REFERER = "https://www.bilibili.com/v/popular/rank/all"
+
+    def boot_from(url, referer, label):
+        """从一个「列表型」端点取第一条的 bvid/aid/cid；失败重试一次。"""
+        for attempt in (1, 2):
+            tag = label if attempt == 1 else label + " [retry]"
+            obj = probe("bootstrap " + tag, url, referer=referer)
+            data = (obj or {}).get("data")
+            if isinstance(data, dict):
+                items = data.get("list") or []
+                if items:
+                    it = items[0]
+                    return it.get("bvid"), it.get("aid"), it.get("cid")
+        return None, None, None
+
     bvid = aid = cid = None
-    if boot and isinstance(boot.get("data"), dict):
-        items = boot["data"].get("list") or []
-        if items:
-            bvid = items[0].get("bvid")
-            aid = items[0].get("aid")
-            cid = items[0].get("cid")
+    for _label, _url, _ref in (
+            ("ranking/v2 [rank-page ref]",
+             api("x/web-interface/ranking/v2", rid=1, type="all"), RANK_REFERER),
+            ("popular [fallback]",
+             api("x/web-interface/popular", ps=5, pn=1), "https://www.bilibili.com/")):
+        bvid, aid, cid = boot_from(_url, _ref, _label)
+        if bvid:
+            print("           ids sourced from: %s" % _label)
+            break
     print("           bvid=%s aid=%s cid=%s" % (bvid, aid, cid))
+    if not bvid:
+        print()
+        print("!!! BOOTSTRAP FAILED: no bvid/aid/cid.")
+        print("!!! Every probe below that needs an id WILL print -400.")
+        print("!!! That is a bootstrap failure, NOT an endpoint failure -- re-run before reading.")
+        print()
 
     room = None
     room_boot = probe("live getList", live("xlive/web-interface/v1/second/getList", platform="web",
                                            parent_area_id=1, area_id=0, sort_type="online", page=1),
-                      referer="https://live.bilibili.com/")
+                      referer="https://live.bilibili.com/",
+                      note="2026-09-22: returned -352 on a healthy exit -- this room LIST endpoint is "
+                           "risk-controlled; it does NOT mean the live domain is down (Room/playUrl "
+                           "and Master/info are both code=0 in the same run)")
     if room_boot and isinstance(room_boot.get("data"), dict):
         rooms = room_boot["data"].get("list") or []
         if rooms:
@@ -247,14 +287,17 @@ if __name__ == "__main__":
     print()
 
     # ---- 阳性对照（positive control）----------------------------------------
-    # bootstrap 用的 ranking/v2 正好可以兼任它：匿名、无需 id、稳定可用。
+    # 用一个**匿名、无需 id、且对 Referer 不敏感**的老端点当对照：popular。
     # 它 `code=0` 才说明「出口 IP 没被封」；否则下面每一行 -352/-403 读出来的
     # 都是"你的出口"而不是"端点的属性" —— 这两件事分不清时，整张表都不能用。
     # （2026-09-21：这条纪律是花了一次翻案换来的，见 API_FACTS.md §2.12）
-    if boot and boot.get("code") == 0:
-        print("[positive control] ranking/v2 code=0 -> exit IP looks healthy")
+    # ⚠️ 别图省事拿 ranking/v2 兼任对照：它对 Referer 敏感（见上面 bootstrap 的注释），
+    # 一旦 Referer 用错，**对照本身会失败**，把一次正常运行读成"出口被封"。
+    control = probe("positive control: popular", api("x/web-interface/popular", ps=1, pn=1))
+    if control and control.get("code") == 0:
+        print("[positive control] popular code=0 -> exit IP looks healthy")
     else:
-        print("!!! POSITIVE CONTROL FAILED: ranking/v2 is not code=0")
+        print("!!! POSITIVE CONTROL FAILED: popular is not code=0")
         print("!!! Every -352 / -403 below may be YOUR EXIT, not the endpoint.")
         print("!!! Fix connectivity/exit first -- otherwise this whole run is unreadable.")
     print()
@@ -279,24 +322,46 @@ if __name__ == "__main__":
     probe("9  relation/stat", api("x/relation/stat", vmid=2))
     probe("10 space/upstat", api("x/space/upstat", mid=654552),
           note="ANON -> code=0 + data={} ; but WITH credential it returns real data => LOGIN-GATED, NOT risk-control")
-    probe("11 ranking/v2", api("x/web-interface/ranking/v2", rid=1, type="all"))
-    probe("12 popular", api("x/web-interface/popular", ps=20, pn=1))
+    probe("11 ranking/v2 [SITE ROOT]", api("x/web-interface/ranking/v2", rid=1, type="all"),
+          note="* expect -352: this endpoint dislikes the site-root Referer (see the next row)")
+    probe("11 ranking/v2 [rank page]", api("x/web-interface/ranking/v2", rid=1, type="all"),
+          referer=RANK_REFERER,
+          note="* what the library uses (BilibiliEndpoint#rankingReferer). Site root = -352, this = code=0")
+    probe("12 popular", api("x/web-interface/popular", ps=20, pn=1),
+          note="site-root Referer is FINE here -- 'bilibili needs a Referer' does NOT generalize")
     print()
 
-    print("=== B2: mid-frequency ===")
-    probe("B2-1 dm/list.so", api("x/v1/dm/list.so", oid=cid),
-          note="expect deflate-compressed XML, NOT json")
+    print("=== B2: mid-frequency (7 items) ===")
+    # 弹幕：oid 是 **cid**（既不是 aid 也不是 bvid），且响应是 deflate 压缩的 XML，不是 JSON。
+    # 这里预期打出 NON-JSON 或 HTML/EOF —— 那不代表端点坏了，只代表它不是 JSON。
+    # ⚠️ 但必须**有 cid 才打**：cid=None 会让服务端回 HTTP 400，看着像端点坏了，其实是没参数。
+    if cid:
+        probe("B2-1 dm/list.so", api("x/v1/dm/list.so", oid=cid),
+              note="expect deflate-compressed XML (NON-JSON is SUCCESS here); oid must be the cid")
+    else:
+        print("B2-1 dm/list.so            [skip] no cid from bootstrap -- oid=None would give HTTP 400")
     probe("B2-2 search/suggest", api("x/web-interface/search/suggest", term="bilibili"),
-          note="2026-09-21: HTTP 404, seems retired")
-    probe("B2-3 search/square", api("x/web-interface/search/square", limit=10))
+          note="2026-09-21: HTTP 404 -> retired, moved to B4")
+    probe("B2-3 search/square", api("x/web-interface/search/square", limit=10),
+          note="hot-search board; look for the 'trending' collection length")
     probe("B2-4 fav/folder/info", api("x/v3/fav/folder/info", media_id=1),
-          note="needs a real public media_id to be conclusive")
+          note="placeholder media_id -> inconclusive; the real one is re-probed in the credential layer")
+    probe("B2-6 fav/resource/list", api("x/v3/fav/resource/list", media_id=1, pn=1, ps=20),
+          note="public folder -> readable; PRIVATE folder -> -403 (resource permission, NOT missing signature)")
+    probe("B2-7 emote panel", api("x/emote/user/panel/web", business="reply"),
+          note="reply-emoji panel; ANON gives code=0 + packages=null (B-shape!) -- needs a credential")
+    probe("B2-8 live area getList", live("room/v1/Area/getList"),
+          referer="https://live.bilibili.com/",
+          note="returns the FULL tree (12 parents / 450 children); parent_area_id is IGNORED (A/B: 1/2/999 all identical)")
     if aid:
         rep = probe("B2-5a v2/reply", api("x/v2/reply", type=1, oid=aid, pn=1, ps=20, sort=2))
         replies = ((rep or {}).get("data") or {}).get("replies") or []
         if replies:
             probe("B2-5b reply/reply", api("x/v2/reply/reply", type=1, oid=aid,
-                                           root=replies[0]["rpid"], pn=1))
+                                           root=replies[0]["rpid"], pn=1),
+                  note="sub-replies; NOTE: replies[].replies is null here while the pinned one is []")
+    else:
+        print("           [skip] no aid from bootstrap -- the two reply probes need it")
     print()
 
     if AUTHENTICATED:
@@ -315,11 +380,17 @@ if __name__ == "__main__":
             probe("D3 upstat (ANON)", api("x/space/upstat", mid=my_mid), anon=True,
                   note="if ANON is {} while WITH-cred has data -> it is LOGIN-GATED, not risk-control")
         if bvid and cid:
-            probe("D9 playurl (WITH cred)", api("x/player/wbi/playurl", bvid=bvid, cid=cid,
-                                                qn=64, fnval=1))
-            probe("D9 playurl (ANON)", api("x/player/wbi/playurl", bvid=bvid, cid=cid,
-                                           qn=64, fnval=1), anon=True,
-                  note="2026-09-21: ANON also returned code=0 / qn=64 / durl -> NOT blocked")
+            # 🔴 库内走的是**不带 /wbi/** 的那条路径：带 /wbi/ 实测七格全 HTTP 412
+            # （2026-09-22，见 API_FACTS.md §2.13）。三条都打，让差异保持可见。
+            probe("D9 playurl plain (cred)", api("x/player/playurl", bvid=bvid, cid=cid,
+                                                 qn=64, fnval=1),
+                  note="<- the path the library actually uses (BilibiliEndpoint#playUrlPlainUrl)")
+            probe("D9 playurl plain (ANON)", api("x/player/playurl", bvid=bvid, cid=cid,
+                                                 qn=64, fnval=1), anon=True,
+                  note="expect code=0 / qn=64 / durl -> playurl is NOT credential-gated for 720P")
+            probe("D9 playurl /wbi/ (expect 412)", api("x/player/wbi/playurl", bvid=bvid, cid=cid,
+                                                       qn=64, fnval=1),
+                  note="expected HTTP 412 -- the /wbi/ PREFIX is what gets banned, not the ability")
 
         # --- the rest of the B3.5 list ---
         if my_mid:
@@ -365,7 +436,9 @@ if __name__ == "__main__":
     print("  404 + HTML          = endpoint retired")
     print("  code=0 + empty data = silent risk-control OR needs-login (check the A/B rows above)")
     print("  collection field    = ALWAYS read its LENGTH (items=N), never just the key name")
-    print("  POSITIVE control    = ranking/v2 code=0, else every -352/-403 is your exit, not the endpoint")
+    print("  POSITIVE control    = popular code=0, else every -352/-403 is your exit, not the endpoint")
+    print("  Referer             = CAN decide the outcome. ranking/v2 wants the rank PAGE,")
+    print("                        NOT the site root (-352); popular accepts the site root.")
     print("  -352 vs -403        = which check runs FIRST? risk-control-first => -352 even when signed;")
     print("                        signature-first => -403, and signing reveals -352/-101")
     print("  WBI signing         = NOT covered here. This script cannot sign; a 2x2 matrix")

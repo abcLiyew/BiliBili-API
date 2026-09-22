@@ -4,6 +4,7 @@ import com.esdllm.bilibiliApi.bilibiliApi.UserSpace;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
 import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -216,6 +217,88 @@ class UserStatServiceTest {
 
             assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(FOLLOWERS_PATH));
+        }
+    }
+
+    // ================================================================
+    // 关系数（2026-09-22 B1 批新增）：同一域里的【第三种】门槛
+    //
+    // 本文件的表讲的是"缺凭据的两种形态"，B1 又加进来了对立面：
+    // 这条端点**匿名就能读，且查任意用户都行** —— 与名单端点（-101、只限本人）正好相反。
+    // 它们同域、同参数形状、名字也像，所以是本批最容易被"顺手合并"掉的地方。
+    // ================================================================
+
+    private static final String RELSTAT_PATH = "/x/relation/stat";
+
+    @Nested
+    @DisplayName("用户关系数（x/relation/stat）—— 匿名可读，任意用户")
+    class RelationStatTest {
+
+        @Test
+        @DisplayName("三个数取到：following / follower / black")
+        void readsCounts() throws Exception {
+            mock.register(RELSTAT_PATH, fixture("relation-stat.json"));
+
+            RelationStat data = UserService.INSTANCE.getRelationStat(2L);
+
+            assertEquals(2L, data.getMid());
+            assertEquals(429L, data.getFollowing(), "TA 关注了多少人");
+            assertEquals(1429244L, data.getFollower(), "与 MasterInfo#follower_num 同源");
+            assertEquals(0L, data.getBlack());
+            assertEquals(0L, data.getWhisper(), "悄悄关注数：只有本人带凭据时才可能非 0");
+            assertEquals(0, mock.hitCount(NAV_PATH), "本端点免签名");
+        }
+
+        @Test
+        @DisplayName("参数与 Referer：vmid 上 query，Referer 指向该用户的空间页")
+        void requestShape() throws Exception {
+            mock.register(RELSTAT_PATH, fixture("relation-stat.json"));
+
+            UserService.INSTANCE.getRelationStat(2L);
+
+            assertTrue(mock.requestUri(RELSTAT_PATH).contains("vmid=2"),
+                    "★ 参数名是 vmid（名单端点也是 vmid，两个别写混）。实际：" + mock.requestUri(RELSTAT_PATH));
+            assertEquals("https://space.bilibili.com/2",
+                    mock.requestHeader(RELSTAT_PATH, "Referer"));
+        }
+
+        @Test
+        @DisplayName("★ 与名单端点门槛正相反：同一次设置下，数量能拿到、名单返回 -101")
+        void countsAreAnonymousWhileListsAreNot() throws Exception {
+            mock.register(RELSTAT_PATH, fixture("relation-stat.json"));
+            mock.register(FOLLOWERS_PATH, "{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}");
+
+            RelationStat counts = UserService.INSTANCE.getRelationStat(2L);
+            assertEquals(1429244L, counts.getFollower(), "数量：匿名通");
+
+            BilibiliException listError = assertThrows(BilibiliException.class,
+                    () -> UserService.INSTANCE.getFollowers(2L, 1, 5));
+            assertEquals(-101, listError.getCode(), "名单：必须登录，且只拿得到本人的");
+
+            assertNotEquals(RELSTAT_PATH, FOLLOWERS_PATH,
+                    "★ 两个端点名字像、参数像，但一个免凭据一个要凭据 —— 别合并成同一个方法");
+        }
+
+        @Test
+        @DisplayName("-101（若服务端改了策略）也要透传码值；data 为 null 同样抛")
+        void failures() {
+            mock.register(RELSTAT_PATH, "{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}");
+            assertEquals(-101, assertThrows(BilibiliException.class,
+                    () -> UserService.INSTANCE.getRelationStat(2L)).getCode());
+
+            mock.register(RELSTAT_PATH, "{\"code\":0,\"message\":\"OK\",\"data\":null}");
+            assertEquals(0, assertThrows(BilibiliException.class,
+                    () -> UserService.INSTANCE.getRelationStat(2L)).getCode());
+        }
+
+        @Test
+        @DisplayName("vmid ≤ 0：本地校验，零出站")
+        void badVmid() {
+            BilibiliException e = assertThrows(BilibiliException.class,
+                    () -> UserService.INSTANCE.getRelationStat(0L));
+
+            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertEquals(0, mock.hitCount(RELSTAT_PATH));
         }
     }
 }

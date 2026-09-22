@@ -1,0 +1,103 @@
+{
+  "code": 0,
+  "msg": "success",
+  "message": "success",
+  "data": [
+    {
+      "id": 2,
+      "name": "网游",
+      "list": [
+        {
+          "id": "86",
+          "parent_id": "2",
+          "old_area_id": "4",
+          "name": "英雄联盟",
+          "act_id": "0",
+          "pk_status": "1",
+          "hot_status": 0,
+          "lock_status": "0",
+          "pic": "https://i0.hdslb.com/bfs/vc/0e808167886ad2299971ea49aade69b3663db9b9.png",
+          "complex_area_name": "",
+          "parent_name": "网游",
+          "area_type": 0
+        },
+        {
+          "id": "329",
+          "parent_id": "2",
+          "old_area_id": "3",
+          "name": "无畏契约",
+          "act_id": "0",
+          "pk_status": "1",
+          "hot_status": 0,
+          "lock_status": "0",
+          "pic": "https://i0.hdslb.com/bfs/vc/78d7a625ebcb88f0d1143cf4ba0426ebb7a4a853.png",
+          "complex_area_name": "",
+          "parent_name": "网游",
+          "area_type": 0
+        },
+        {
+          "id": "878",
+          "parent_id": "2",
+          "old_area_id": "3",
+          "name": "三角洲行动",
+          "act_id": "0",
+          "pk_status": "1",
+          "hot_status": 0,
+          "lock_status": "0",
+          "pic": "https://i0.hdslb.com/bfs/live/e121106ce8aefca6d38df4df6adbd77029c854e3.jpg",
+          "complex_area_name": "",
+          "parent_name": "网游",
+          "area_type": 0
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "手游",
+      "list": [
+        {
+          "id": "35",
+          "parent_id": "3",
+          "old_area_id": "12",
+          "name": "王者荣耀",
+          "act_id": "0",
+          "pk_status": "1",
+          "hot_status": 0,
+          "lock_status": "0",
+          "pic": "https://i0.hdslb.com/bfs/vc/0fefa924760b2dd492a12dddafe179bfa1216918.png",
+          "complex_area_name": "",
+          "parent_name": "手游",
+          "area_type": 0
+        },
+        {
+          "id": "1034",
+          "parent_id": "3",
+          "old_area_id": "12",
+          "name": "王者万象棋",
+          "act_id": "0",
+          "pk_status": "1",
+          "hot_status": 0,
+          "lock_status": "0",
+          "pic": "https://i0.hdslb.com/bfs/live/f7903e07e0f542bd7474ccffec544d60a0a398b7.png",
+          "complex_area_name": "",
+          "parent_name": "手游",
+          "area_type": 0
+        },
+        {
+          "id": "292",
+          "parent_id": "3",
+          "old_area_id": "12",
+          "name": "火影忍者手游",
+          "act_id": "0",
+          "pk_status": "1",
+          "hot_status": 0,
+          "lock_status": "0",
+          "pic": "https://i0.hdslb.com/bfs/vc/f2f30d97710a2f017efe8a0ad9a8b55aac82ca1f.png",
+          "complex_area_name": "",
+          "parent_name": "手游",
+          "area_type": 0
+        }
+      ]
+    }
+  ]
+}

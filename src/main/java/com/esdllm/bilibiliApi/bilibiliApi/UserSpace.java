@@ -4,6 +4,7 @@ import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
 import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
 import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
 import com.esdllm.bilibiliApi.service.UserService;
@@ -236,6 +237,33 @@ public class UserSpace {
     public RelationList getFollowings(long vmid, int pn, int ps) throws IOException {
         try {
             return UserService.INSTANCE.getFollowings(vmid, pn, ps);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    // ------------------------------------------------------------------ 匿名域扩容（2026-09-22 B1）
+
+    /**
+     * <b>取用户关系数</b>（{@code x/relation/stat}）：关注数 / 粉丝数。
+     *
+     * <p>✅ <b>本门面唯一"不需要凭据"的方法</b> —— 2026-09-22 实测匿名 {@code code=0}，
+     * 且<b>查任意用户都有效</b>。其余方法（{@link #getAccInfo} / {@link #getArchives} /
+     * {@link #getUpStat} / {@link #getFollowers} / {@link #getFollowings}）全部<b>必须有凭据</b>。
+     *
+     * <p>🔴 <b>别把它与 {@link #getFollowers} 当成"数量 vs 名单"的对称设计</b>：门槛不一样
+     * （这个匿名、那个 {@code -101}），作用域也不一样（这个任意用户、那个只限本人）。
+     * 把它们合并成一个方法或同一种用法，是这里最容易犯的错。
+     *
+     * <p>⚠️ 与 {@code CardInfo} 名片里的 {@code follower} 同源 —— 已打过名片的调用方不必再打。
+     *
+     * @param vmid 用户 mid（<b>任意用户</b>）
+     * @return 关系数，不可为 null
+     * @throws IOException {@code vmid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public RelationStat getRelationStat(long vmid) throws IOException {
+        try {
+            return UserService.INSTANCE.getRelationStat(vmid);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }
