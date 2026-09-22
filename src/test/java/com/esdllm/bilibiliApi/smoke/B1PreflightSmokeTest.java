@@ -1,8 +1,8 @@
 package com.esdllm.bilibiliApi.smoke;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.http.HttpPolicy;
@@ -155,7 +155,7 @@ class B1PreflightSmokeTest {
             return Integer.MIN_VALUE;
         }
         ApiResponse<Object> parsed = JSON.parseObject(body,
-                new com.alibaba.fastjson.TypeReference<>() {
+                new com.alibaba.fastjson2.TypeReference<>() {
                 });
         return parsed == null ? Integer.MIN_VALUE : parsed.getCode();
     }

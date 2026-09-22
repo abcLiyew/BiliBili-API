@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.model.data.pojo.content;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import com.esdllm.bilibiliApi.model.data.pojo.video.Dimension;
 import com.esdllm.bilibiliApi.model.data.pojo.video.Owner;
 import com.esdllm.bilibiliApi.model.data.pojo.video.Stat;

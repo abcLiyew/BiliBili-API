@@ -1,7 +1,7 @@
 package com.esdllm.bilibiliApi.smoke;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.http.HttpPolicy;
@@ -14,10 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -143,9 +140,8 @@ class B4PreflightSmokeTest {
         int oldCode = codeOf(oldPath.getBody());
         report.append(String.format("%-42s http=%d code=%d (expect != 0)%n",
                 "NEG article/view (old path)", oldPath.getStatus(), oldCode));
-        assertFalse(oldCode == 0,
-                "旧路径 x/article/view 竟然通了 —— 意味着【专栏正文】可以做了，"
-                        + "那是本库明确不交付的一项，请重新评估（见 INTERFACE_PLAN.md §4-B4）");
+        assertNotEquals(0, oldCode, "旧路径 x/article/view 竟然通了 —— 意味着【专栏正文】可以做了，"
+                + "那是本库明确不交付的一项，请重新评估（见 INTERFACE_PLAN.md §4-B4）");
 
         // ---------- 4. 边界表：6 个"确认做不动"的候选（只看不判） ----------
         // 待观察端点的 URL 刻意写成字面量、**不**放进 BilibiliEndpoint：
@@ -214,7 +210,7 @@ class B4PreflightSmokeTest {
             return Integer.MIN_VALUE;
         }
         ApiResponse<Object> parsed = JSON.parseObject(body,
-                new com.alibaba.fastjson.TypeReference<>() {
+                new com.alibaba.fastjson2.TypeReference<>() {
                 });
         return parsed == null ? Integer.MIN_VALUE : parsed.getCode();
     }

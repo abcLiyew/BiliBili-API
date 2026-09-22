@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.model.data.pojo.search;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import lombok.Data;
 
 import java.util.ArrayList;

@@ -1,9 +1,9 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.TypeReference;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson2.TypeReference;
 import com.esdllm.bilibiliApi.adapter.DynamicSchemaAdapter;
 import com.esdllm.bilibiliApi.bilibiliApi.Dynamic;
 import com.esdllm.bilibiliApi.bilibiliApi.Dynamic.DynamicInfo;
@@ -277,7 +277,7 @@ public class DynamicService {
 
         ApiResponse<JSONObject> resp;
         try {
-            resp = JSON.parseObject(response.getBody(), new TypeReference<ApiResponse<JSONObject>>() {
+            resp = JSON.parseObject(response.getBody(), new TypeReference<>() {
             });
         } catch (Exception e) {
             throw new IOException("获取动态详情失败：响应不是合法 JSON（前 120 字："
@@ -330,8 +330,7 @@ public class DynamicService {
         JSONObject moduleDynamic = null;
         JSONObject moduleTag = null;
         if (modulesRaw instanceof JSONArray arr) {
-            for (int i = 0; i < arr.size(); i++) {
-                Object o = arr.get(i);
+            for (Object o : arr) {
                 if (!(o instanceof JSONObject m)) {
                     continue;
                 }
@@ -521,11 +520,11 @@ public class DynamicService {
                     if (n == null) continue;
                     String tt = n.getString("text");
                     if (tt != null && !tt.isEmpty()) {
-                        if (sb.length() > 0) sb.append('\n');
+                        if (!sb.isEmpty()) sb.append('\n');
                         sb.append(tt);
                     }
                 }
-                if (sb.length() > 0) t = sb.toString();
+                if (!sb.isEmpty()) t = sb.toString();
             }
         }
         return t;

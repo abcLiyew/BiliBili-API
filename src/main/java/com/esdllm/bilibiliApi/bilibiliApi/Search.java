@@ -1,11 +1,7 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
-import com.esdllm.bilibiliApi.model.data.pojo.search.HotSearch;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchVideo;
+import com.esdllm.bilibiliApi.model.data.pojo.search.*;
 import com.esdllm.bilibiliApi.service.SearchService;
 
 import java.io.IOException;

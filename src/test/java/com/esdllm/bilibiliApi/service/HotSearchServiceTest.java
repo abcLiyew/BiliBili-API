@@ -3,11 +3,7 @@ package com.esdllm.bilibiliApi.service;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.pojo.search.HotSearch;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.lang.reflect.Field;
 import java.nio.file.Files;
@@ -25,9 +21,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *   <li>🔴 <b>{@code trackid} 已超出 {@code long} 范围</b>
  *       （实测 {@code 12414231099029457647} &gt; {@code 9223372036854775807}）。
  *       当成数字反序列化会溢出，所以这里刻意断言"它确实 parse 不成 Long"。</li>
- *   <li>🔴 <b>JSON 键 {@code goto} 在 Java 里是保留字</b>，字段只能叫 {@code goTo}。
- *       这条映射靠 fastjson 的大小写不敏感回退接上 —— 所以必须有一个用例
- *       <b>带着非空 {@code goto} 值</b>来证明它真的接上了（真实响应里这个值恒为空串，
+ *   <li>🔴 <b>JSON 键 {@code goto} 在 Java 里是保留字</b>，字段只能叫 {@code goTo}，
+ *       所以这条映射<b>必须显式写 {@code @JSONField(name = "goto")}</b>
+ *       （2026-09-22 迁 fastjson2 时补的：老版本靠 fastjson 1.x 的大小写不敏感匹配，
+ *       而 <b>fastjson2 没有名字宽容度</b>，不写注解就静默变 null）。
+ *       ⇒ 必须有用例<b>带着非空 {@code goto} 值</b>来证明它真的接上了（真实响应里这个值恒为空串，
  *       光用夹具是测不出来的：null 与 "" 之外的第三种可能"没映射"会被 "" 掩盖）。</li>
  * </ol>
  */
@@ -135,8 +133,8 @@ class HotSearchServiceTest {
             HotSearch.Item item = SearchService.INSTANCE.getHotSearch(10).getTrending().getList().get(0);
 
             assertEquals("av", item.getGoTo(),
-                    "★ 字段叫 goTo（goto 是 Java 保留字），靠大小写不敏感回退匹配接上。"
-                            + "拿不到值就说明这条回退在某处失效了 —— 调用方会静默看到 null");
+                    "★ 字段叫 goTo（goto 是 Java 保留字），靠字段上的 @JSONField(name=\"goto\") 接上。"
+                            + "拿不到值就说明这个注解在某处失效了 —— 调用方会静默看到 null");
             assertEquals("bilibili://a", item.getUri());
             assertTrue(hasField(HotSearch.Item.class, "goTo"),
                     "字段名必须是 goTo（不能是 goto —— 那不是合法 Java 标识符）");

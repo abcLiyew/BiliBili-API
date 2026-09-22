@@ -1,9 +1,9 @@
 package com.esdllm.bilibiliApi.render;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.TypeReference;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson2.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
@@ -131,7 +131,7 @@ public final class RenderModelLoader {
 
         ApiResponse<JSONObject> resp;
         try {
-            resp = JSON.parseObject(response.getBody(), new TypeReference<ApiResponse<JSONObject>>() {
+            resp = JSON.parseObject(response.getBody(), new TypeReference<>() {
             });
         } catch (Exception e) {
             throw new IOException(action + "失败：响应不是合法 JSON", e);
@@ -274,21 +274,14 @@ public final class RenderModelLoader {
         if (type == null) {
             return RenderModel.Type.UNKNOWN;
         }
-        switch (type) {
-            case "DYNAMIC_TYPE_DRAW":
-                return RenderModel.Type.DRAW;
-            case "DYNAMIC_TYPE_AV":
-                return RenderModel.Type.VIDEO;
-            case "DYNAMIC_TYPE_FORWARD":
-                return RenderModel.Type.FORWARD;
-            case "DYNAMIC_TYPE_ARTICLE":
-                return RenderModel.Type.ARTICLE;
-            case "DYNAMIC_TYPE_LIVE_RCMD":
-            case "DYNAMIC_TYPE_LIVE":
-                return RenderModel.Type.LIVE;
-            default:
-                return RenderModel.Type.UNKNOWN;
-        }
+        return switch (type) {
+            case "DYNAMIC_TYPE_DRAW" -> RenderModel.Type.DRAW;
+            case "DYNAMIC_TYPE_AV" -> RenderModel.Type.VIDEO;
+            case "DYNAMIC_TYPE_FORWARD" -> RenderModel.Type.FORWARD;
+            case "DYNAMIC_TYPE_ARTICLE" -> RenderModel.Type.ARTICLE;
+            case "DYNAMIC_TYPE_LIVE_RCMD", "DYNAMIC_TYPE_LIVE" -> RenderModel.Type.LIVE;
+            default -> RenderModel.Type.UNKNOWN;
+        };
     }
 
     /** LEGACY schema 的 desc 是对象，text + rich_text_nodes；这里降级到只取 text */
@@ -337,7 +330,7 @@ public final class RenderModelLoader {
                 header.append(duration);
             }
         }
-        if (header.length() > 0) {
+        if (!header.isEmpty()) {
             RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
             textBlock.getSpans().add(textSpan(header.toString()));
             model.getBlocks().add(textBlock);
@@ -394,7 +387,7 @@ public final class RenderModelLoader {
                     if (dur != null) sb.append(dur);
                     sb.append(')');
                 }
-                return sb.length() > 0 ? sb.toString() : null;
+                return !sb.isEmpty() ? sb.toString() : null;
             }
             case DRAW:
             case ARTICLE:
@@ -418,7 +411,7 @@ public final class RenderModelLoader {
         String cover = article.getString("cover");
         if (cover == null) {
             // 备选：article.covers[0]
-            com.alibaba.fastjson.JSONArray covers = article.getJSONArray("covers");
+            com.alibaba.fastjson2.JSONArray covers = article.getJSONArray("covers");
             if (covers != null && !covers.isEmpty()) {
                 cover = covers.getString(0);
             }
@@ -481,14 +474,14 @@ public final class RenderModelLoader {
                     meta.append(parentArea);
                 }
                 if (areaName != null && !areaName.isEmpty()) {
-                    if (meta.length() > 0) meta.append(" · ");
+                    if (!meta.isEmpty()) meta.append(" · ");
                     meta.append(areaName);
                 }
                 if (online > 0) {
-                    if (meta.length() > 0) meta.append(" · ");
+                    if (!meta.isEmpty()) meta.append(" · ");
                     meta.append("人气 ").append(online);
                 }
-                if (meta.length() > 0) {
+                if (!meta.isEmpty()) {
                     RenderModel.TextBlock textBlock = new RenderModel.TextBlock();
                     textBlock.getSpans().add(textSpan(meta.toString()));
                     model.getBlocks().add(textBlock);
@@ -507,7 +500,7 @@ public final class RenderModelLoader {
         if (major == null) return;
         JSONObject draw = major.getJSONObject("draw");
         if (draw == null) return;
-        com.alibaba.fastjson.JSONArray items = draw.getJSONArray("items");
+        com.alibaba.fastjson2.JSONArray items = draw.getJSONArray("items");
         if (items == null || items.isEmpty()) return;
         RenderModel.ImageBlock image = new RenderModel.ImageBlock();
         for (int i = 0; i < items.size(); i++) {
@@ -716,7 +709,7 @@ public final class RenderModelLoader {
         while (i < len) {
             int cp = raw.codePointAt(i);
             int cpLen = Character.charCount(cp);
-            boolean nextIsVs16 = i + cpLen < len && raw.charAt(i + cpLen) == '\uFE0F';
+            boolean nextIsVs16 = i + cpLen < len && raw.charAt(i + cpLen) == '️';
 
             if (isEmojiCodePoint(cp)) {
                 int end = i + cpLen;
@@ -731,7 +724,7 @@ public final class RenderModelLoader {
                         end += Character.charCount(cp2);
                     }
                 }
-                if (buf.length() > 0) {
+                if (!buf.isEmpty()) {
                     spans.add(textSpan(buf.toString()));
                     buf.setLength(0);
                 }
@@ -748,7 +741,7 @@ public final class RenderModelLoader {
             buf.appendCodePoint(cp);
             i += cpLen;
         }
-        if (buf.length() > 0) {
+        if (!buf.isEmpty()) {
             spans.add(textSpan(buf.toString()));
         }
         return spans;
@@ -786,7 +779,7 @@ public final class RenderModelLoader {
                 i += 1;
                 continue;
             }
-            if (code.length() > 0) {
+            if (!code.isEmpty()) {
                 code.append('-');
             }
             code.append(Integer.toHexString(cp));

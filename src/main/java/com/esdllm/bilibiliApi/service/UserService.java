@@ -1,17 +1,12 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.TypeReference;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.model.BilibiliCardResp;
-import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
-import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
-import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
-import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
-import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
-import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
+import com.esdllm.bilibiliApi.model.data.pojo.user.*;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;

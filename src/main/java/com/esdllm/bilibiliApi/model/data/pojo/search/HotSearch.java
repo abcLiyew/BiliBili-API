@@ -1,5 +1,6 @@
 package com.esdllm.bilibiliApi.model.data.pojo.search;
 
+import com.alibaba.fastjson2.annotation.JSONField;
 import lombok.Data;
 
 import java.util.List;
@@ -79,14 +80,22 @@ public class HotSearch {
         /**
          * 跳转类型（{@code av} / {@code live} 一类）。
          *
-         * <p>🔴 <b>这是全库唯一"字段名不能与 JSON 键同名"的地方</b>：JSON 键是
-         * {@code goto}，而 {@code goto} 是 Java 保留字，不能做字段名。
-         * 这里用 {@code goTo}，靠 fastjson 的<b>大小写不敏感回退匹配</b>接上 ——
-         * 同一机制本库已在 {@code ViewDetail.View} / {@code ViewDetail.Card}
-         * 上验证过（那两个的 JSON 键首字母大写，一样能填进来），所以这里不是新赌注。
+         * <p>🔴 <b>字段名与 JSON 键不同名</b>：JSON 键是 {@code goto}，而 {@code goto} 是 Java
+         * 保留字，不能做字段名 ⇒ 字段只能叫 {@code goTo}。
+         *
+         * <p>🔴 <b>因此必须显式写 {@code @JSONField(name = "goto")}</b>（2026-09-22 迁 fastjson2 时补的）。
+         * 这条映射原先<b>靠 fastjson 1.x 的大小写不敏感"智能匹配"接上</b>，而
+         * <b>fastjson2 完全没有名字宽容度</b> —— 实测 2.0.56：首字母大小写（{@code View}→{@code view}）、
+         * 中段大小写（{@code goto}→{@code goTo}）、下划线↔驼峰（{@code show_name}→{@code showName}）
+         * <b>一律不匹配，只认同名</b>。
+         * ⇒ 少了这个注解，它会<b>静默变 null、不抛任何异常</b>。这是"隐式行为被解析器默认值承载"的
+         * 典型翻车点：迁移时代码注释还在、编译也过，只有真数据能发现。
+         * 📌 同一个坑本库共 3 处（另见 {@code WatchedShow.Switch}、{@code PlayUrl} 的 {@code segment_base}），
+         * 已由一个只扫"字段名 vs 夹具键"的脚本一次性找出，见 `.workbuddy/_audit_fieldnames.py`。
          *
          * <p>⚠️ 本批实测 10 条<b>全是空串</b> —— 别指望它一定有值。
          */
+        @JSONField(name = "goto")
         private String goTo;
 
         /** 热度分值（实测 2976633 / 2118603 / 858032 …，递减） */

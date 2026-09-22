@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.model.data.pojo.user;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import com.esdllm.bilibiliApi.model.data.pojo.card.Official;
 import com.esdllm.bilibiliApi.model.data.pojo.card.Vip;
 import lombok.Data;

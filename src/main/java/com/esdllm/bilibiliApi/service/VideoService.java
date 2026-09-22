@@ -1,18 +1,13 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.TypeReference;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.model.BilibiliVideoResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
-import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
-import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
-import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
-import com.esdllm.bilibiliApi.model.data.pojo.video.PopularList;
-import com.esdllm.bilibiliApi.model.data.pojo.video.RankingList;
-import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
+import com.esdllm.bilibiliApi.model.data.pojo.video.*;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;

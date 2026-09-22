@@ -196,8 +196,8 @@ class B35PreflightSmokeTest {
         if (body == null || body.isBlank() || body.charAt(0) != '{') {
             return Integer.MIN_VALUE;
         }
-        ApiResponse<Object> parsed = com.alibaba.fastjson.JSON.parseObject(body,
-                new com.alibaba.fastjson.TypeReference<ApiResponse<Object>>() {
+        ApiResponse<Object> parsed = com.alibaba.fastjson2.JSON.parseObject(body,
+                new com.alibaba.fastjson2.TypeReference<>() {
                 });
         return parsed == null ? Integer.MIN_VALUE : parsed.getCode();
     }

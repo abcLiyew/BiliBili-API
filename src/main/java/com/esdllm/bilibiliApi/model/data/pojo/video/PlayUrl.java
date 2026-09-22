@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.model.data.pojo.video;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import lombok.Data;
 
 import java.util.List;
@@ -199,11 +199,20 @@ public class PlayUrl {
         /** 备用地址（snake_case） */
         private List<String> backup_url;
 
-        /** 分片索引信息（结构较深、低频，保留原始 JSON） */
+        /**
+         * 分片索引信息（结构较深、低频，保留原始 JSON）。
+         *
+         * <p>🔴 <b>这里原本还有一份 PascalCase 副本 {@code SegmentBase}</b>（沿用本类
+         * "camelCase 主键 + snake_case 副本"的双写法约定），<b>2026-09-22 迁 fastjson2 时删掉了</b>：
+         * DASH 响应里这个键只有 {@code segment_base} 这一种写法，而 <b>fastjson2 不做名字宽容度匹配</b>
+         * （实测 2.0.56 只认同名）⇒ 那份副本<b>永远填不上</b>，留着只会让人以为它有值。
+         * 📌 顺便实测了一条：<b>两个字段映射同一个 JSON 键时 fastjson2 不报错</b>，
+         * 但<b>未注解的那个胜出、另一个恒 null</b> ⇒ "给它补个 {@code @JSONField} 让它也填上"走不通。
+         * ⚠️ 这是本次迁移**唯一的公开面删减**（全库无任何调用方读 {@code getSegmentBase()}）。
+         * 若下游确有引用，可改回该字段并加 {@code @JSONField(name = "segment_base")}，
+         * 但要知道它仍会恒为 null。
+         */
         private JSONObject segment_base;
-
-        /** 分片索引信息（结构较深、低频，保留原始 JSON） */
-        private JSONObject SegmentBase;
     }
 
     /**

@@ -1,7 +1,7 @@
 package com.esdllm.bilibiliApi.adapter;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.esdllm.bilibiliApi.adapter.DynamicSchemaAdapter.SchemaShape;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;

@@ -1,8 +1,8 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.TypeReference;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
+import com.alibaba.fastjson2.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
@@ -565,7 +565,8 @@ public class LoginService {
             throw new BilibiliException("查询登录态失败：HTTP " + httpStatus + "，原文=" + brief(body, 200));
         }
 
-        ApiResponse<JSONObject> parsed = parseOrNull(body, new TypeReference<ApiResponse<JSONObject>>() { });
+        ApiResponse<JSONObject> parsed = parseOrNull(body, new TypeReference<>() {
+        });
         if (parsed == null) {
             throw new BilibiliException("查询登录态失败：响应不是合法 JSON，原文=" + brief(body, 200));
         }
@@ -606,7 +607,8 @@ public class LoginService {
                     BilibiliEndpoint.passportCookieInfoUrl,
                     BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
             ApiResponse<JSONObject> parsed =
-                    parseOrNull(response.getBody(), new TypeReference<ApiResponse<JSONObject>>() { });
+                    parseOrNull(response.getBody(), new TypeReference<>() {
+                    });
             if (parsed == null || parsed.getCode() != 0 || parsed.getData() == null) {
                 log.warn("查询凭据刷新状态未得到结果：HTTP {}，code={}，原文={}",
                         response.getStatus(), parsed == null ? null : parsed.getCode(),

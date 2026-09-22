@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.model.data.pojo.search;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import com.esdllm.bilibiliApi.parse.HighlightStripper;
 import lombok.Data;
 

@@ -1,12 +1,7 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
-import com.esdllm.bilibiliApi.model.data.pojo.content.ArticleInfo;
-import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderInfo;
-import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
-import com.esdllm.bilibiliApi.model.data.pojo.content.FavResourceList;
-import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
-import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
+import com.esdllm.bilibiliApi.model.data.pojo.content.*;
 import com.esdllm.bilibiliApi.service.ArticleService;
 import com.esdllm.bilibiliApi.service.FavoriteService;
 import com.esdllm.bilibiliApi.service.HistoryService;

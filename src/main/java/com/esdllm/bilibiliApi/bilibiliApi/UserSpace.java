@@ -1,12 +1,7 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
-import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
-import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
-import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
-import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
-import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
-import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
+import com.esdllm.bilibiliApi.model.data.pojo.user.*;
 import com.esdllm.bilibiliApi.service.UserService;
 
 import java.io.IOException;

@@ -1,6 +1,6 @@
 package com.esdllm.bilibiliApi.model.data.pojo.user;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson2.JSONObject;
 import com.esdllm.bilibiliApi.model.data.pojo.UserHonourInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.card.Nameplate;
 import com.esdllm.bilibiliApi.model.data.pojo.card.Official;

@@ -6,11 +6,7 @@ import com.esdllm.bilibiliApi.model.data.pojo.content.ArticleInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -218,7 +214,7 @@ class ContentServiceTest {
             mock.register(TOVIEW_PATH, "{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}");
 
             BilibiliException e = assertThrows(BilibiliException.class,
-                    () -> HistoryService.INSTANCE.getToView());
+                    HistoryService.INSTANCE::getToView);
 
             assertEquals(-101, e.getCode());
             assertTrue(e.getMessage().contains("账号未登录"), "实际：" + e.getMessage());
@@ -480,7 +476,7 @@ class ContentServiceTest {
         mock.register(TOVIEW_PATH, "{\"code\":-101,\"message\":\"账号未登录\",\"ttl\":1}");
 
         BilibiliException e = assertThrows(BilibiliException.class,
-                () -> HistoryService.INSTANCE.getToView());
+                HistoryService.INSTANCE::getToView);
 
         assertInstanceOf(RuntimeException.class, e);
         // 注意：BilibiliException 与 IOException 无继承关系，javac 不允许对二者直接 instanceof

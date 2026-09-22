@@ -43,9 +43,14 @@ public class ViewDetail {
     /**
      * 视频主体（{@code View}）。
      *
-     * <p>⚠️ 字段名首字母大写是<b>刻意的</b>：JSON 键就是 {@code View}。本库沿用同包
-     * {@code Card.DisplayRank} 的做法 —— 字段名与 JSON 键逐字对应，靠 fastjson 的
-     * smartMatch 匹配，不引入 {@code @JSONField} 这个全库未用过的注解。
+     * <p>⚠️ 字段名首字母大写是<b>刻意的</b>：JSON 键就是 {@code View}，**字段名与键逐字相同**
+     * ⇒ <b>不需要任何映射注解</b>（本库沿用同包 {@code Card.DisplayRank} 的做法）。
+     *
+     * <p>🔴 <b>别把"逐字同名"和"名字不同名"混为一谈</b>（2026-09-22 迁 fastjson2 时订正了这条注释）：
+     * 原注释写"靠 fastjson 的 smartMatch 匹配"，其实这里用不到任何宽容度 —— 逐字对应走的是精确匹配。
+     * fastjson2 <b>没有</b>名字宽容度（实测 2.0.56：只认同名），真正靠宽容度才好使的
+     * {@code goto} / {@code switch} 两处已改加 {@code @JSONField(name = ...)}，
+     * 并由 {@code KeyNameMappingGuardTest} 钉住。此处<b>刻意不加</b>注解 —— 加了是多余的。
      */
     private VideoInfo View;
 
