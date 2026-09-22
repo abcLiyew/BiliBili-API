@@ -178,6 +178,11 @@ def probe(label, url, referer="https://www.bilibili.com/", note=None, anon=False
             shape = "!! EMPTY OBJECT (silent risk-control?)"
     elif isinstance(data, list):
         shape = "list x%d" % len(data)
+    elif "data" not in obj:
+        # 2026-09-22：与 "data":null 必须分开报。
+        # 连 data 键都没有 ⇒ 不是"合法的空结果"，而是**参数形状就没对上**（换 id / 带凭据都救不回来）。
+        # 真实案例：pgc/web/timeline 带参 code=0 但无 data 键，裸调 -400。
+        shape = "!! NO 'data' KEY (shape mismatch -- NOT an empty result)"
     else:
         shape = repr(data)
 

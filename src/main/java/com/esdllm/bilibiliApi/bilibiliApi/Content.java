@@ -1,18 +1,21 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
+import com.esdllm.bilibiliApi.model.data.pojo.content.ArticleInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavResourceList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
+import com.esdllm.bilibiliApi.service.ArticleService;
 import com.esdllm.bilibiliApi.service.FavoriteService;
 import com.esdllm.bilibiliApi.service.HistoryService;
 
 import java.io.IOException;
 
 /**
- * 内容管理门面：<b>观看历史 / 稍后再看 / 收藏夹目录</b>（库内第 11 个门面，2026-09-22 B3.5 批新增）。
+ * 内容管理门面：<b>观看历史 / 稍后再看 / 收藏夹目录 / 收藏夹详情与内容 / 专栏信息</b>
+ * （库内第 11 个门面，2026-09-22 B3.5 批新增，B2 与 B4 批各补过方法）。
  *
  * <p><b>为什么把这三件事装进一个门面</b>：这是 {@code INTERFACE_PLAN.md} §7-Q1 决策
  * <b>(d)「混合：高频域独立 + 低频域合并」</b>的产物 —— 高频域（视频 / 评论 / 直播 / 用户 / 搜索）
@@ -20,8 +23,12 @@ import java.io.IOException;
  * 给每个建一个门面只会增加调用方的认知成本。
  * <b>门面数量 = 调用方认知成本</b>，这个门面就是按这一条原则合并出来的。
  *
- * <p>⚠️ <b>它不是"内容"的万能入口</b>：专栏正文、弹幕、番剧都不在这里（弹幕属 {@code Danmaku} 门面，
- * 番剧在别的批次）。名字宽泛是合并的代价，边界靠这句话与每个方法的 javadoc 划清。
+ * <p>⚠️ <b>它不是"内容"的万能入口</b>：<b>专栏正文</b>、弹幕、番剧、音频都不在这里
+ * （弹幕属 {@code Danmaku} 门面；番剧时间表与音频在 B4 里实测<b>做不动</b>，见 §4-B4）。
+ * 🆕 B4 批补进来的 {@link #getArticleInfo(long)} 是专栏<b>信息</b>（元数据 + 统计），
+ * <b>不含正文</b> —— 正文那条旧路径 {@code x/article/view} 实测两次都不是 {@code code=0}
+ * （先 {@code -352}、后 {@code -509}，码值会变），本库不用它。
+ * 名字宽泛是合并的代价，边界靠这句话与每个方法的 javadoc 划清。
  *
  * <p>🆕 <b>B2 批（2026-09-22）补了两项</b>：{@link #getFolderInfo(long)} 与
  * {@link #getResources(long, int, int)}（夹内内容）。注意<b>这两项的门槛与上面三项不同</b> ——
@@ -210,6 +217,48 @@ public class Content {
     public FavResourceList getResources(long mediaId, int pn, int ps) throws IOException {
         try {
             return FavoriteService.INSTANCE.getResources(mediaId, pn, ps);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取专栏（图文）信息</b>（{@code x/article/viewinfo}，B4 批 #1，2026-09-22）。
+     *
+     * <p>📌 <b>它是本库的一处"跨表遗留"</b>：{@code INTERFACE_PLAN.md} §3 的证据表把它标成 B2，
+     * 但 §4-B2 的明细表<b>从来没有这一项</b> ⇒ B2 交付时被漏下，最终落在 B4。
+     * 2026-09-22 实测它<b>匿名可用</b>，因此没有跟 B4 其余"做不动"的项一起挂起。
+     *
+     * <p>🔴 <b>本门面里只有本方法不需要凭据</b>：上面所有方法要么<b>真需登录</b>（{@code -101}），
+     * 要么<b>取决于收藏夹可见性</b>（{@code -403}）。本方法实测匿名与带凭据都是 {@code code=0}，
+     * 且 <b>23 个键完全相同</b>，连 {@code stats} 也一致。
+     * ⚠️ 唯二例外是 {@code is_author} / {@code in_list}，且它们的<b>归因不同</b>：
+     * {@code is_author} 与凭据完全同向（可当"已登录"指示器，但读<b>别人的</b>文章也是 {@code true}）；
+     * {@code in_list} 只跟"请求有没有带会话指纹"走 —— <b>零 Cookie 是 {@code false}，
+     * 带上 {@code buvid3}/{@code buvid4} 就变 {@code true}</b>，所以它<b>连"已登录"都指示不了</b>，
+     * 而本库运行时必然带指纹 ⇒ 真实调用通常拿到 {@code true}。
+     * ⇒ 两者都<b>原样映射</b>，别据此判断作者身份／收藏状态／登录与否。详见 {@link ArticleInfo} 的 2×2 表。
+     *
+     * <p>🔴 <b>别把"我视角"当"全局统计"</b> —— 这是本方法最容易踩的地方：
+     * {@code getLike()} / {@code getCoin()} / {@code getFavorite()} / {@code getAttention()}
+     * 表达的是<b>当前凭据</b>对这篇文章做过什么，匿名恒为 {@code 0}／{@code false}；
+     * 文章真正的汇总数在 {@code getStats()} 里。
+     * <b>要"这篇文章有多少赞"读 {@code getStats().getLike()}，不是 {@code getLike()}。</b>
+     * 两者同名、含义完全不同（同一篇文章实测：{@code stats.like=35} 而 {@code like=0}）。
+     *
+     * <p>⚠️ {@code getPre()} / {@code getNext()} 无相邻文章时实测为 <b>{@code 0}</b>，
+     * 不是 {@code null} —— 别用 {@code != null} 判断"有没有下一篇"。
+     *
+     * <p>⚠️ 同域的旧路径 {@code x/article/view} 实测两次都不是 {@code code=0}
+     * （先 {@code -352}、后 {@code -509}，<b>码值会变</b>，所以别把具体码值写进判断），本库不用它。
+     *
+     * @param id 专栏号（{@code cv} 后的数字，如 {@code cv4538122} 传 {@code 4538122}），必须 &gt; 0
+     * @return 专栏信息，不可为 null
+     * @throws IOException {@code id} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public ArticleInfo getArticleInfo(long id) throws IOException {
+        try {
+            return ArticleService.INSTANCE.getArticleInfo(id);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

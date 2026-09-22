@@ -2,6 +2,7 @@ package com.esdllm.bilibiliApi.service;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
+import com.esdllm.bilibiliApi.model.data.pojo.content.ArticleInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
@@ -34,15 +35,20 @@ import static org.junit.jupiter.api.Assertions.*;
  * ⇒ 所以 {@code favFolderEmptyListIsAnError} 与 {@code historyCursorIsCarriedOver} 是本文件的核心：
  * 前者守"别把没凭据读成没收藏夹"，后者守"别让翻页静默失效"（只映射 list 不映射 cursor 也能跑通第一条）。
  */
-@DisplayName("服务：HistoryService / FavoriteService（历史 · 稍后再看 · 收藏夹目录）")
+@DisplayName("服务：HistoryService / FavoriteService / ArticleService（历史 · 稍后再看 · 收藏夹 · 专栏）")
 class ContentServiceTest {
 
     private static final String NAV_PATH = "/x/web-interface/nav";
     private static final String HISTORY_PATH = "/x/web-interface/history/cursor";
     private static final String TOVIEW_PATH = "/x/v2/history/toview";
     private static final String FAV_PATH = "/x/v3/fav/folder/created/list-all";
+    /** B4 批 #1：专栏信息。本文件里<b>唯一不需要凭据</b>的一条。 */
+    private static final String ARTICLE_PATH = "/x/article/viewinfo";
 
     private static final long MID = 497078180L;
+
+    /** 夹具用的专栏号（{@code cv4538122} → 传数字部分） */
+    private static final long CV = 4538122L;
 
     private MockBiliServer mock;
 
@@ -297,6 +303,173 @@ class ContentServiceTest {
 
             assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(FAV_PATH));
+        }
+    }
+
+    /**
+     * 专栏是本文件里<b>唯一不需要凭据</b>的一项（B4 批 #1），也是唯一"<b>同名两个字段含义相反</b>"的一项。
+     * 所以这里守两件事：① 全局统计只在 {@code stats} 里；② 那两个布尔<b>不能按字面理解</b>。
+     *
+     * <p>🔴 <b>2026-09-22 真机订正（本类原来写错了）</b>：原文称 {@code is_author} / {@code in_list}
+     * "都是登录态字段，匿名恒 false"。真机跑冒烟时同一个 cv、同样没带凭据，{@code in_list} 拿到了
+     * {@code true}。于是补做了一次 <b>2×2</b>（{@code 零 Cookie / 匿名指纹} × {@code 无凭据 / 有凭据}），
+     * 结果两者<b>归因完全不同</b>：
+     *
+     * <table border="1">
+     *   <caption>is_author / in_list 的 2×2 实测（cv4538122，作者 mid=5842315，凭据 mid=497078180）</caption>
+     *   <tr><th>请求</th><th>{@code nav.isLogin}</th><th>{@code is_author}</th><th>{@code in_list}</th></tr>
+     *   <tr><td>零 Cookie</td><td>false</td><td>false</td><td><b>false</b></td></tr>
+     *   <tr><td>仅匿名指纹</td><td>false</td><td>false</td><td><b>true</b></td></tr>
+     *   <tr><td>仅凭据（无指纹）</td><td>true</td><td><b>true</b></td><td><b>true</b></td></tr>
+     *   <tr><td>凭据 + 指纹</td><td>true</td><td><b>true</b></td><td><b>true</b></td></tr>
+     * </table>
+     *
+     * <ul>
+     *   <li>{@code is_author} 与凭据<b>完全同向</b>（四格一致）⇒ 可以当"<b>已登录</b>"的指示器；
+     *       但它与"是不是作者"无关 —— 四格都在读<b>别人的</b>文章，有凭据时照样 {@code true}。</li>
+     *   <li>{@code in_list} <b>不跟凭据走，只跟"有没有会话标识"走</b>：零 Cookie 是 {@code false}，
+     *       一旦带上匿名指纹（或凭据）就是 {@code true} ⇒ <b>它连"已登录"都指示不了</b>。
+     *       ⚠️ 本库运行时<b>必然</b>携带匿名指纹 ⇒ 真实调用拿到的 {@code in_list} 通常是 {@code true}，
+     *       与夹具（零 Cookie 快照，{@code false}）<b>不一致</b>。测试断言的是夹具快照，
+     *       调用方<b>不得</b>用它判断"未收藏"。</li>
+     * </ul>
+     *
+     * <p>📌 <b>方法论教训</b>：B4 首轮做过一次 A/B，得到"匿名 false → 凭据 true"，就把两个字段都归因成
+     * "登录态"。但那次 A/B 的"匿名"格用的是<b>零 Cookie</b>，而"凭据"格必然带指纹 ——
+     * <b>两个变量同时在变</b>，于是把 {@code in_list} 的差异错误地归给了凭据。
+     * ⇒ <b>"匿名"不是一个状态</b>（同 WBI 那次的"匿名·无签名 vs 匿名·签名"），
+     * 只变一个变量的对照才叫对照。
+     */
+    @Nested
+    @DisplayName("专栏信息（x/article/viewinfo）")
+    class ArticleTest {
+
+        @Test
+        @DisplayName("★ stats 才是全局统计：同一篇里 stats.like=35 而顶层 like=0，认错字段会读成「没人点赞」")
+        void statsIsTheGlobalCounter() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleInfo data = ArticleService.INSTANCE.getArticleInfo(CV);
+
+            assertNotNull(data.getStats(), "全局统计在 stats 里，不在顶层");
+            assertEquals(3231L, data.getStats().getView());
+            assertEquals(35L, data.getStats().getLike());
+            assertEquals(120L, data.getStats().getFavorite());
+            assertEquals(9L, data.getStats().getReply());
+            assertEquals(8L, data.getStats().getShare());
+            assertEquals(2L, data.getStats().getCoin());
+            assertEquals(4L, data.getStats().getDynamic());
+            assertEquals(0L, data.getStats().getDislike());
+
+            // 🔴 这一行是本文件最值钱的断言：两个同名字段含义完全不同
+            assertEquals(0, data.getLike(), "顶层的 like 是「我点过赞没」，不是点赞总数");
+            assertNotEquals((long) data.getLike(), (long) data.getStats().getLike(),
+                    "若两者相等，说明夹具或映射错了 —— 这个坑就白记了");
+        }
+
+        @Test
+        @DisplayName("「我视角」四个字段：匿名一律 0/false（表达的是「当前凭据做过什么」）")
+        void myViewFieldsAreZeroWhenAnonymous() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleInfo data = ArticleService.INSTANCE.getArticleInfo(CV);
+
+            assertEquals(0, data.getLike());
+            assertEquals(0, data.getCoin());
+            assertFalse(data.getFavorite());
+            assertFalse(data.getAttention());
+        }
+
+        @Test
+        @DisplayName("🔴 两个布尔在夹具里的值：is_author=false（随凭据）／in_list=false（随会话，见类注释的 2×2）"
+                + " —— 都不可拿来判断作者身份、收藏状态或是否已登录")
+        void loginFlagsInFixtureAreTheAnonymousSnapshot() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleInfo data = ArticleService.INSTANCE.getArticleInfo(CV);
+
+            assertFalse(data.getIs_author(),
+                    "夹具的值；带凭据时即使读【别人的】文章也是 true ⇒ 它只能当'已登录'的指示器，"
+                            + "不能当'是不是我的'");
+            assertFalse(data.getIn_list(),
+                    "🔴 这个 false 只是'夹具是零 Cookie 快照'的产物。in_list 跟【会话标识】走而不是跟凭据走："
+                            + "库运行时必然携带匿名指纹，实测那时它是 true。"
+                            + "⇒ 千万不要拿 in_list 判断'未收藏'或'未登录'");
+        }
+
+        @Test
+        @DisplayName("内容字段：标题/作者/作者 mid/图片/分享渠道")
+        void contentFields() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleInfo data = ArticleService.INSTANCE.getArticleInfo(CV);
+
+            assertEquals("辉煌禄来——从2.8（3.5）a~2.8（3.5）e3", data.getTitle());
+            assertEquals("凯申物流公司CEO", data.getAuthor_name());
+            assertEquals(5842315L, data.getMid(), "这是【作者】的 mid，不是当前凭据的");
+            assertEquals(1, data.getImage_urls().size());
+            assertEquals(data.getImage_urls(), data.getOrigin_image_urls(), "实测两者同值");
+            assertEquals(5, data.getShare_channels().size(), "QQ / QQ空间 / 微信 / 朋友圈 / 微博");
+            assertEquals("QZONE", data.getShare_channels().get(1).getShare_channel());
+            assertTrue(data.getShareable());
+            assertFalse(data.getDisable_share());
+            assertEquals("", data.getBanner_url(), "实测空串（不是 null）");
+        }
+
+        @Test
+        @DisplayName("pre/next 无相邻文章时是 0 而不是 null —— 别用 != null 判断有没有下一篇")
+        void prevNextAreZeroNotNull() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleInfo data = ArticleService.INSTANCE.getArticleInfo(CV);
+
+            assertEquals(0L, data.getPre());
+            assertEquals(0L, data.getNext());
+        }
+
+        @Test
+        @DisplayName("请求形状：id 走 query、Referer 是站根（本端点实测免疫）、不签名")
+        void requestShape() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleService.INSTANCE.getArticleInfo(CV);
+
+            String uri = mock.requestUri(ARTICLE_PATH);
+            assertTrue(uri.contains("id=" + CV), "实际：" + uri);
+            assertFalse(uri.contains("cv"), "别把 cv 前缀发出去。实际：" + uri);
+            assertEquals("https://www.bilibili.com/", mock.requestHeader(ARTICLE_PATH, "Referer"),
+                    "四格实测 Referer 无影响，走全库默认站根");
+            assertEquals(0, mock.hitCount(NAV_PATH), "本端点不签名，不该有 nav");
+        }
+
+        @Test
+        @DisplayName("专栏号 ≤ 0：本地就挡掉，不发请求")
+        void badId() {
+            BilibiliException e = assertThrows(BilibiliException.class,
+                    () -> ArticleService.INSTANCE.getArticleInfo(0L));
+
+            assertTrue(e.getMessage().contains("专栏号"), "实际：" + e.getMessage());
+            assertEquals(0, mock.hitCount(ARTICLE_PATH), "参数不合法时不该出站");
+        }
+
+        @Test
+        @DisplayName("业务码非 0：透传")
+        void businessCode() {
+            mock.register(ARTICLE_PATH, "{\"code\":-404,\"message\":\"啥都木有\",\"ttl\":1}");
+
+            BilibiliException e = assertThrows(BilibiliException.class,
+                    () -> ArticleService.INSTANCE.getArticleInfo(CV));
+
+            assertEquals(-404, e.getCode());
+        }
+
+        @Test
+        @DisplayName("data 为空/null：要响亮地报错，不能安静返回 null")
+        void emptyData() {
+            mock.register(ARTICLE_PATH, "{\"code\":0,\"message\":\"OK\",\"ttl\":1,\"data\":null}");
+
+            assertThrows(BilibiliException.class,
+                    () -> ArticleService.INSTANCE.getArticleInfo(CV));
         }
     }
 

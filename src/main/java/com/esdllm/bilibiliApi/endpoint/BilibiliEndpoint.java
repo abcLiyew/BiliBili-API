@@ -821,6 +821,32 @@ public class BilibiliEndpoint {
      */
     public static final String liveAreaListUrl = "https://api.live.bilibili.com/room/v1/Area/getList";
 
+    /**
+     * {@code x/article/viewinfo} —— <b>专栏（图文）信息</b>（B4 批 #1，2026-09-22）。
+     *
+     * <p>📌 <b>它是一处"跨表遗留"</b>：{@code INTERFACE_PLAN.md} §3 的证据总表把它标成 B2，
+     * 但 §4-B2 的明细表<b>从来没有这一项</b> ⇒ B2 交付时按明细表只做了 7 项，本项被漏下，
+     * 最终落在 B4。2026-09-22 实测确认它<b>匿名可用</b>，因此不随 B4 其余"做不动"的项一起挂起。
+     *
+     * <p>🔴 <b>门槛：匿名可用</b>（2026-09-22 同一分钟 A/B）—— 匿名与带凭据都是 {@code code=0}，
+     * <b>23 个键完全相同</b>，连全局统计 {@code stats} 也一致。与 §4-B4.1 的"档②"描述吻合。
+     * ⚠️ 但<b>有两个布尔会变</b>，且它们的<b>归因不同</b>（2026-09-22 真机 2×2 订正）：
+     * {@code is_author} 与凭据完全同向 ⇒ 可当"已登录"指示器，但与"是不是作者"无关；
+     * {@code in_list} <b>只跟"请求有没有带会话指纹"走</b>（零 Cookie {@code false}、
+     * 带 {@code buvid3}/{@code buvid4} 即 {@code true}）⇒ 连"已登录"都指示不了。
+     * 详见 {@code ArticleInfo} 的 2×2 表。
+     *
+     * <p>⚠️ <b>{@code Referer} 实测无影响</b>（同一分钟四格：站根 / 专栏页 {@code read/cv…} /
+     * 不带 / 列表页，全部 {@code code=0} 且形状相同）⇒ 用全库默认的 {@link #referer} 即可。
+     * 这一点与 {@link #dmListUrl}（同样免疫）相同、与 {@link #rankingUrl}（站根会间歇 {@code -352}）相反
+     * —— <b>不能从邻居外推，只能逐端点实测</b>。
+     *
+     * <p>⚠️ 同域的旧路径 {@code x/article/view} 实测两次都不是 {@code code=0}
+     * （先 {@code -352}、后 {@code -509}，<b>码值会变</b>），本库<b>刻意不用</b>那条路径。
+     * 参数：{@code id} —— 专栏号（{@code cv} 后的数字，如 {@code cv4538122} 传 {@code 4538122}）。
+     */
+    public static final String articleViewInfoUrl = "https://api.bilibili.com/x/article/viewinfo";
+
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**
      * @deprecated 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线

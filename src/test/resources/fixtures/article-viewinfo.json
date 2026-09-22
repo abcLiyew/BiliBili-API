@@ -1,0 +1,69 @@
+{
+  "code": 0,
+  "message": "OK",
+  "ttl": 1,
+  "data": {
+    "like": 0,
+    "attention": false,
+    "favorite": false,
+    "coin": 0,
+    "stats": {
+      "view": 3231,
+      "favorite": 120,
+      "like": 35,
+      "dislike": 0,
+      "reply": 9,
+      "share": 8,
+      "coin": 2,
+      "dynamic": 4
+    },
+    "title": "辉煌禄来——从2.8（3.5）a~2.8（3.5）e3",
+    "banner_url": "",
+    "mid": 5842315,
+    "author_name": "凯申物流公司CEO",
+    "is_author": false,
+    "image_urls": [
+      "https://i0.hdslb.com/bfs/article/banner/07e8eb1d7361513aa2cfaf943ac0a04b781ac447.png"
+    ],
+    "origin_image_urls": [
+      "https://i0.hdslb.com/bfs/article/banner/07e8eb1d7361513aa2cfaf943ac0a04b781ac447.png"
+    ],
+    "shareable": true,
+    "show_later_watch": false,
+    "show_small_window": false,
+    "in_list": false,
+    "pre": 0,
+    "next": 0,
+    "share_channels": [
+      {
+        "name": "QQ",
+        "picture": "https://i0.hdslb.com/bfs/album/114ccfb3a999df9c4d11f274c8c61a804c8f8803.png",
+        "share_channel": "QQ"
+      },
+      {
+        "name": "QQ空间",
+        "picture": "https://i0.hdslb.com/bfs/album/30e9608bbce725bca45b5910866f60ab4d5e18b3.png",
+        "share_channel": "QZONE"
+      },
+      {
+        "name": "微信",
+        "picture": "https://i0.hdslb.com/bfs/album/658af3c22431cd78bb7c50be3394f7c032eba12c.png",
+        "share_channel": "WEIXIN"
+      },
+      {
+        "name": "朋友圈",
+        "picture": "https://i0.hdslb.com/bfs/album/c1ebcec8c5302f29f792d15f04e0d6dcef53ec27.png",
+        "share_channel": "WEIXIN_MONMENT"
+      },
+      {
+        "name": "微博",
+        "picture": "https://i0.hdslb.com/bfs/album/3707fc23f7d3e24022712320284b0de9aa78c87d.png",
+        "share_channel": "SINA"
+      }
+    ],
+    "type": 0,
+    "video_url": "",
+    "location": "",
+    "disable_share": false
+  }
+}

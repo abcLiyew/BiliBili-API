@@ -1,0 +1,37 @@
+name: CI
+
+# 触发面：主干 push、面向主干的 PR、以及手动触发。
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Test (JDK 17)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # 🔴 不能省：长图由 Java2D 自绘，即使字体从 jar 内置读取，Java 在 Linux 上
+      # 仍会经 FontManagerFactory → X11FontManager → FontConfiguration 读 fontconfig，
+      # 系统里没有任何字体目录时第一次画字就抛 `Fontconfig head is null`（见 README
+      # 「Linux 上必须装字体（fontconfig）」一节）。
+      - name: Install fontconfig (long-image rendering needs it)
+        run: sudo apt-get update && sudo apt-get install -y fontconfig fonts-dejavu-core
+
+      # 🔴 这里**不能**加 `-o`/`--offline`：本地开发用 -o 是因为 ~/.m2 已缓存，
+      # CI 是干净环境，必须联网拉依赖才能解析。
+      - name: Build and test
+        run: mvn -B verify

@@ -2,6 +2,7 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
+import com.esdllm.bilibiliApi.model.data.pojo.content.ArticleInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavResourceList;
@@ -47,6 +48,13 @@ class ContentTest {
     private static final String FOLDER_INFO_PATH = "/x/v3/fav/folder/info";
     /** B2 批 #6：收藏夹内容 */
     private static final String RESOURCE_LIST_PATH = "/x/v3/fav/resource/list";
+    /**
+     * B4 批 #1：专栏信息。
+     *
+     * <p>📌 它是<b>跨表遗留</b>项 —— {@code INTERFACE_PLAN.md} §3 标它 B2，但 §4-B2 明细表没有它。
+     * 也是本门面里<b>唯一不需要凭据</b>的一条。
+     */
+    private static final String ARTICLE_PATH = "/x/article/viewinfo";
 
     /**
      * 与 {@code fav-folder-info.json} / {@code fav-resource-list.json} 一致 ——
@@ -64,6 +72,9 @@ class ContentTest {
     private static final long MEDIA_ID_PRIVATE = 1095405480L;
 
     private static final long MID = 497078180L;
+
+    /** 夹具用的专栏号（{@code cv4538122} → 传数字部分） */
+    private static final long CV = 4538122L;
 
     private MockBiliServer mock;
     private Content content;
@@ -302,6 +313,69 @@ class ContentTest {
             assertEquals(0, data.getInfo().getMedia_count(),
                     "★ 空能由 media_count 佐证 ⇒ 合法；佐证不了才报错。"
                             + "这与 fav/folder/created/list-all「空列表一律报错」刚好相反，区别就在这里");
+        }
+    }
+
+    // ================================================================
+    // 专栏信息（B4 批 #1）—— 本门面里唯一匿名可用的一条
+    // ================================================================
+
+    /**
+     * 专栏在门面层要守两件本门面独有的事：① 它是<b>唯一不需要凭据</b>的方法
+     * （上面其余全部真需登录，或取决于夹的可见性）；② 它有一对<b>同名字段含义相反</b>的坑
+     * （顶层 {@code like} 是"我点过赞没"，{@code stats.like} 才是全局点赞数）。
+     */
+    @Nested
+    @DisplayName("专栏信息（x/article/viewinfo）")
+    class ArticleTest {
+
+        @Test
+        @DisplayName("getArticleInfo：拿到强类型结果，且 stats 与顶层同名字段各自独立")
+        void articleInfo() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleInfo data = content.getArticleInfo(CV);
+
+            assertEquals("辉煌禄来——从2.8（3.5）a~2.8（3.5）e3", data.getTitle());
+            assertEquals("凯申物流公司CEO", data.getAuthor_name());
+            assertEquals(3231L, data.getStats().getView());
+
+            // 🔴 门面层同样把这对同名坑钉住：同一个 JSON 里两个 like，含义完全不同
+            assertEquals(35L, data.getStats().getLike(), "全局点赞数");
+            assertEquals(0, data.getLike(), "「我」点过赞没");
+        }
+
+        @Test
+        @DisplayName("★ 本门面唯一不需要凭据的方法：不注入 Cookie 也拿到完整数据，且不出签名请求")
+        void worksWithoutCredential() throws Exception {
+            mock.register(ARTICLE_PATH, fixture("article-viewinfo.json"));
+
+            ArticleInfo data = content.getArticleInfo(CV);
+
+            assertNotNull(data.getStats(), "匿名也能拿到全局统计");
+            assertEquals(0, mock.hitCount(NAV_PATH), "本端点既不要签名也不要凭据");
+        }
+
+        @Test
+        @DisplayName("专栏号非法：先抛 IOException，且校验发生在出站之前")
+        void badCv() {
+            IOException e = assertThrows(IOException.class, () -> content.getArticleInfo(0L));
+
+            assertTrue(e.getMessage().contains("专栏号"), "实际：" + e.getMessage());
+            assertInstanceOf(BilibiliException.class, e.getCause(),
+                    "门面边界要把库内的 BilibiliException 包成 IOException，并保留内层");
+            assertEquals(0, mock.hitCount(ARTICLE_PATH), "参数不合法时不该出站");
+        }
+
+        @Test
+        @DisplayName("业务码非 0：同样转成 IOException（门面边界统一）")
+        void articleBusinessCode() {
+            mock.register(ARTICLE_PATH, "{\"code\":-404,\"message\":\"啥都木有\",\"ttl\":1}");
+
+            IOException e = assertThrows(IOException.class, () -> content.getArticleInfo(CV));
+
+            assertInstanceOf(BilibiliException.class, e.getCause());
+            assertEquals(0, mock.hitCount(NAV_PATH));
         }
     }
 

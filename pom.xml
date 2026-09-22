@@ -49,7 +49,7 @@
              2026-09-22 之前 pom 把 argLine 写死成 `-Dfile.encoding=UTF-8`（**没有引用本属性**），
              于是命令行 `-DargLine=-Dbili.smoke=true` 被静默丢弃 ——
              **所有 smoke 测试的"跑法"注释都因此从未真正生效**。 -->
-        <argLine></argLine>
+        <argLine/>
     </properties>
     <dependencies>
         <!-- JSON 序列化 -->

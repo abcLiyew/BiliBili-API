@@ -10,6 +10,7 @@ import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchVideo;
+import com.esdllm.bilibiliApi.model.data.pojo.content.ArticleInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
@@ -551,6 +552,13 @@ class FacadeContractTest {
     //
     // ⚠️ 这个门面全是 **GET 只读**：往稍后再看里增删、清空历史、收藏/取消收藏都不在库里。
     // 那条边界（写操作需 csrf 且会改动账号）必须靠评审守，反射断言只能钉住"现在没有写方法"。
+    //
+    // 🆕 2026-09-22 B4 批：补进第 5 个方法 getArticleInfo(long)（专栏信息 x/article/viewinfo）。
+    //    它是本门面**唯一免凭据**的方法 —— 前四项（历史 / 稍后再看 / 收藏夹）不带 SESSDATA
+    //    一律失败，而专栏信息匿名就能拿到 23 个字段。这正好解释了这个门面为什么名义上叫
+    //    "我的内容"却容得下一个公开端点：它解决的是**同一个下游问题**（"我这一侧与内容的关系"），
+    //    不是同一个鉴权域。签名与其余四项保持一致（同抛 IOException），不额外分裂返回风格。
+    //    同时它也是**只加方法、不加类**的范例：门面计数仍是 15，第 11 个。
     // ================================================================
 
     @Nested
@@ -568,16 +576,19 @@ class FacadeContractTest {
                     Integer.class, Long.class, Long.class, String.class);
             assertSignature(Content.class, "getToView", ToViewList.class);
             assertSignature(Content.class, "getFavoriteFolders", FavFolderList.class, long.class);
+            assertSignature(Content.class, "getArticleInfo", ArticleInfo.class, long.class);
         }
 
         @Test
-        @DisplayName("四个方法都必须声明 throws IOException（三项都依赖凭据，失败是常态）")
+        @DisplayName("五个方法都必须声明 throws IOException（前四项依赖凭据；专栏信息是唯一免凭据的，"
+                + "但网络失败同样是常态，所以一视同仁）")
         void declares() {
             assertDeclares(Content.class, "getWatchHistory", IOException.class, int.class);
             assertDeclares(Content.class, "getWatchHistory", IOException.class,
                     Integer.class, Long.class, Long.class, String.class);
             assertDeclares(Content.class, "getToView", IOException.class);
             assertDeclares(Content.class, "getFavoriteFolders", IOException.class, long.class);
+            assertDeclares(Content.class, "getArticleInfo", IOException.class, long.class);
         }
 
         /**

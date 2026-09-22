@@ -1,5 +1,7 @@
 # Bilibili API
 
+[![CI](https://github.com/abcLiyew/BiliBili-API/actions/workflows/ci.yml/badge.svg)](https://github.com/abcLiyew/BiliBili-API/actions/workflows/ci.yml)
+
 > [!WARNING]
 > **本项目仅供学习与测试使用，请勿滥用。**
 > 本项目为开源项目，不接受任何形式的催单与索取，也不容许存在付费内容。
@@ -93,6 +95,7 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 | `Content` | `x/v3/fav/folder/created/list-all`（收藏夹目录） | 🔒 凭据 |
 | `Content` | `x/v3/fav/folder/info`（收藏夹详情） | 取决于夹本身：公开夹匿名可读，含 `attr=1` 的夹匿名 **`-403`**（⚠️ **不能拿 `attr` 反推公开性**） |
 | `Content` | `x/v3/fav/resource/list`（收藏夹内容，`pn` 翻页） | 同上（空列表要看 `info.media_count` 有没有内容 —— 见下） |
+| `Content` | `x/article/viewinfo`（专栏**信息**，**不含正文**） | **匿名**（本门面唯一免凭据的一项；旧路径 `x/article/view` 匿名 `-352` ⇒ **正文不做**） |
 | `Danmaku` | `x/v1/dm/list.so`（某个分 P 的**全部弹幕**，返回 **XML**） | 匿名（⚠️ 入参是 **`cid`**，不是 `aid` / `bvid`；`Referer` 实测**无影响**） |
 | `Search` | `x/web-interface/search/square`（热搜榜） | 匿名（**不走签名出口**；榜单在 `data.trending` 里） |
 | `Comment` | `x/v2/reply/reply`（楼中楼，**只有一层**） | 匿名（`root` 是**一级评论的 `rpid`**，不是 aid） |
@@ -139,6 +142,11 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 - **表情包**：`Comment.getEmotePanel()` —— ⚠️ 本库**唯一需要凭据**的一项"评论域"能力
   （要 Cookie、**不要签名**；响应很大，实测 68 个包 / 约 1555 个表情）
 - **收藏夹详情与内容**：`Content.getFolderInfo(mediaId)` / `getResources(mediaId, pn, ps)`
+- **专栏信息**：`Content.getArticleInfo(cvId)` —— ⚠️ 这是**本门面唯一免凭据**的方法（其余四项都要 Cookie）。
+  🔴 **计数别读错**：全局统计在 **`stats.*`**（`stats.like` 才是"这篇文章有多少赞"），
+  顶层的 `like` / `coin` / `favorite` / `attention` 是**"我"的交互状态**（匿名恒 0）；
+  `isAuthor` 只能当"**已登录**"的指示器（**不能当"是我的"** —— 拿别人的专栏读也是 `true`）；
+  `inList` 更弱：**它连"已登录"都指示不了**，只反映"请求有没有带会话指纹"，详见下方用法段
   —— ⚠️ 门槛**取决于夹本身**（公开夹匿名可读，含 `attr=1` 的夹匿名 `-403`），且 `-403` 是两义码
 - **直播分区**：`LiveExtra.getAreaList()` 一次拿回一级 + 二级分区树 —— ⚠️ **刻意没有入参**：
   文档里的 `parent_area_id` 实测**完全不起作用**（只在返回结果上自己筛）
@@ -416,6 +424,49 @@ List<LiveArea> areas = liveExtra.getAreaList();                    // 一级 + �
 - ⚠️ **`getAreaList()` 刻意没有入参**：文档里的 `parent_area_id` 实测**完全不起作用**，
   要按父分区筛请在返回结果上自己挑。
 
+### 专栏信息（B4）
+
+```java
+Content content = new Content();
+ArticleInfo info = content.getArticleInfo(4538122L);   // cv4538122，匿名即可读
+
+info.getStats().getLike();   //  35  ← 🔴 这篇专栏的【全局】点赞数
+info.getLike();              //   0  ← "我"有没有赞过（匿名恒 0，不是文章的赞数！）
+```
+
+- 🔴 **同一个词在三层里含义不同，这是本方法最容易读错的地方**：
+
+  | 层 | 字段 | 含义 | 实测 |
+  |---|---|---|---|
+  | ① 全局统计 | `stats.*`（8 项） | **这篇文章本身**的计数 | `view=3231` / `favorite=120` / `like=35` / `reply=9` / … |
+  | ② "我视角" | `like` / `coin` / `favorite` / `attention` | **"我"**有没有赞 / 币 / 藏 / 关注 | 恒 `0` / `false` |
+  | ③ 两个布尔 | `isAuthor` / `inList` | ⚠️ **归因不同，见下** | 见下方 2×2 |
+
+- 🔴 **第 ③ 层的两个布尔不要一起理解** —— 2×2 实测（同一篇文章，凭据是**另一个账号**，
+  所以四格都是"读**别人的**文章"）：
+
+  | 请求 | `isAuthor` | `inList` |
+  |---|---|---|
+  | 零 Cookie | `false` | `false` |
+  | 仅匿名指纹 | `false` | **`true`** |
+  | 仅凭据（不含指纹） | **`true`** | **`true`** |
+  | 凭据 + 指纹 | **`true`** | **`true`** |
+
+  - `isAuthor` 与凭据**完全同向** ⇒ 可以当"**已登录**"的指示器；
+    但**不能当"是不是我的"** —— 四格都在读别人的文章，有凭据时照样 `true`。
+  - 🔴 `inList` **不跟凭据走，只跟"请求有没有带会话指纹"走**。零 Cookie 是 `false`，
+    带上 `buvid3` / `buvid4` 就变 `true` ⇒ **它连"已登录"都指示不了**。
+    ⚠️ 本库运行时**必然**携带匿名指纹 ⇒ 真实调用拿到的 `inList` **通常是 `true`**。
+    **任何"用 `inList` 判断未收藏 / 未登录"的写法都是错的。**
+- ⚠️ **只给"信息"，不给"正文"**：正文走旧路径 `x/article/view`，实测两次都不是 `code=0`
+  （先 `-352`、后 `-509`，**两者都是风控码、码值会变**），本库不做。
+- ⚠️ 顺带一提：**"注入凭据后没差异"不等于"凭据没生效"** —— 正文里那 11 个统计/交互字段匿名与登录
+  取值**完全一致**；会变的只有第 ③ 层那两个布尔，而且**变的原因不同**（`isAuthor` 跟凭据、
+  `inList` 凡带任何会话标识就是 `true`）⇒ 想验证"凭据到底生效没"，看 `nav.isLogin` 比看这两个字段更可靠。
+- 📌 **方法论**：本项目此前"匿名 A/B"里的"匿名"格其实是**零 Cookie**，而"凭据"格必然带指纹 ——
+  **两个变量同时在变**，所以把 `inList` 的差异错归给了凭据。⇒ **"匿名"不是一个状态**，
+  只变一个变量的对照才叫对照。
+
 ## 数据模型
 项目中包含多种数据模型，用于表示不同类型的数据。
 - `Card`: 用户卡片信息
@@ -430,6 +481,7 @@ List<LiveArea> areas = liveExtra.getAreaList();                    // 一级 + �
 - `AiSummary`: AI 视频摘要
 - `PlayUrl`: 视频流地址（MP4 的 `durl` / DASH 的 `dash` 两条通道）
 - `HistoryCursor` / `ToViewList` / `FavFolderList`: 观看历史、稍后再看、收藏夹目录
+- `ArticleInfo`: 专栏信息（⚠️ 全局统计在内部类 `ArticleInfo.Stats` 里，不是顶层字段）
   
 ## 注意事项
 1. 请注意，使用本库时，请遵守哔哩哔哩的API使用规则和限制。
@@ -466,7 +518,7 @@ HttpPolicy.setCookie("SESSDATA=xxx; bili_jct=xxx; ...");
   用户空间的 `acc/info` / `arc/search` / `upstat` / 粉丝与关注列表（`UserSpace`）、
   AI 视频摘要（`VideoExtra`）、观看历史 / 稍后再看 / 收藏夹目录（`Content`），
   完整清单见上文「已覆盖的接口」。
-  （`VideoExtra#getPlayUrl` 是这批里唯一的例外 —— **匿名也能用**。）
+  （`VideoExtra#getPlayUrl` 与 `Content#getArticleInfo` 是这批里仅有的两个例外 —— **匿名也能用**。）
 
 ⚠️ 另有一种**静默空**形态（2026-09-21 实测，比上表更隐蔽）：带上匿名指纹时返回
 `code=0` 而 `items` 是**空数组** —— 它与"这个 UP 真的没发过动态"在响应上**完全同形**
@@ -610,9 +662,20 @@ B 站"带标题的动态 / opus 文章"的标题在 **opus 端点**的 `MODULE_T
   ③ **表情包需要凭据**（匿名 `code=0` 但 `packages=null`，带凭据才有 68 个包）—— 但**需凭据 ≠ 需签名**。
   另修正两条早先的注解方向：弹幕"需自行 deflate 解压"其实**不必**（HTTP 层已解开），
   收藏夹 `attr` 的公开 / 私密方向原先写反了（`attr=2` 可读、`attr=1` 匿名 `-403`）。
+- （**未发布** · B4 收尾）**`Content` 扩 `getArticleInfo(cvId)`（专栏信息）** —— 本门面**唯一免凭据**
+  的方法（其余四项都要 Cookie），也是"**只加方法、不加类**"的范例：**门面数仍是 15**。
+  🔴 交付前把 B4 的 8 个候选逐条实测了一遍，**除它之外全部确认做不动**（4 项属"入口参数拿不到"、
+  2 项属"要先逆向"、2 项属"决策上不做"）⇒ **本库的公开只读面到此基本封顶**。
+  ⚠️ 读这个接口最易错的一点：**同一个词在三层里含义不同** —— 全局统计在 `stats.*`
+  （`stats.like` 才是"这篇文章有多少赞"），顶层 `like` / `coin` / `favorite` / `attention`
+  是**"我"的交互状态**（匿名恒 0）。第 ③ 层的两个布尔**归因不同**：`isAuthor` 跟凭据走
+  （可当"已登录"指示器，但**读别人的专栏也是 `true`**），`inList` **只跟"请求有没有带会话指纹"走**
+  （零 Cookie `false`、带 `buvid3/4` 就 `true`）⇒ **`inList` 连"已登录"都指示不了**。
+  另：正文走 `x/article/view`（实测 `-352` / `-509`，两次都不是 `code=0`），**本库不做**。
 
 > 版本号说明：`0.9.29-beta` 下累积了**四条**（登录 / WBI+搜索 / 凭据解锁 B3.5 / 匿名高频 B1）；
-> **`0.9.30-beta` 起单独递增**，其中包含本批（匿名中频 B2）。
+> **`0.9.30-beta` 起单独递增**，其中包含**匿名中频 B2**（已发布版本即 `0.9.30-beta`，范围 = B3.5 + B1 + B2）。
+> 上面最后一条（B4 专栏信息）**尚未发版**，将随下一版一并发布。
 
 ## 许可证
 
