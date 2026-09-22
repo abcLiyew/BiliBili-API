@@ -1,0 +1,34 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "current_quality": 4,
+  "accept_quality": [
+   "4"
+  ],
+  "current_qn": 10000,
+  "quality_description": [
+   {
+    "qn": 10000,
+    "desc": "原画"
+   }
+  ],
+  "durl": [
+   {
+    "url": "https://cn-jsyz-ct-03-18.bilivideo.com/live-bvc/999322/live_2_332_c521e483.flv?expires=1790047918&qn=10000&order=1",
+    "length": 0,
+    "order": 1,
+    "stream_type": 0,
+    "p2p_type": 1
+   },
+   {
+    "url": "https://d1--cn-gotcha04b.bilivideo.com/live-bvc/999322/live_2_332_c521e483.flv?expires=1790047918&qn=10000&order=2",
+    "length": 0,
+    "order": 2,
+    "stream_type": 0,
+    "p2p_type": 1
+   }
+  ]
+ }
+}

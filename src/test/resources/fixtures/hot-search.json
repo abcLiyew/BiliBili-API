@@ -1,0 +1,38 @@
+{
+  "code": 0,
+  "message": "OK",
+  "ttl": 1,
+  "data": {
+    "trending": {
+      "title": "bilibili热搜",
+      "trackid": "12414231099029457647",
+      "list": [
+        {
+          "keyword": "深度复盘IG战胜JDG晋级世界赛",
+          "show_name": "深度复盘IG战胜JDG晋级世界赛",
+          "icon": "http://i0.hdslb.com/bfs/activity-plat/static/20221118/eaf2dd702d7cc14d8d9511190245d057/UF7B1wVKT2.png",
+          "uri": "",
+          "goto": "",
+          "heat_score": 2976633
+        },
+        {
+          "keyword": "全球冰川在消退",
+          "show_name": "全球冰川在消退",
+          "icon": "",
+          "uri": "",
+          "goto": "",
+          "heat_score": 2118603
+        },
+        {
+          "keyword": "小米发布并开源MiMo V2.6",
+          "show_name": "小米发布并开源MiMo V2.6",
+          "icon": "http://i0.hdslb.com/bfs/activity-plat/static/20221213/eaf2dd702d7cc14d8d9511190245d057/lrx9rnKo24.png",
+          "uri": "",
+          "goto": "",
+          "heat_score": 858032
+        }
+      ],
+      "top_list": []
+    }
+  }
+}

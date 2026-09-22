@@ -13,13 +13,23 @@ import com.esdllm.bilibiliApi.model.data.pojo.search.SearchVideo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
+import com.esdllm.bilibiliApi.model.data.pojo.comment.CommentPage;
+import com.esdllm.bilibiliApi.model.data.pojo.danmaku.DanmakuItem;
+import com.esdllm.bilibiliApi.model.data.pojo.danmaku.DanmakuXml;
+import com.esdllm.bilibiliApi.model.data.pojo.live.LiveStream;
+import com.esdllm.bilibiliApi.model.data.pojo.live.MasterInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
 import com.esdllm.bilibiliApi.model.data.pojo.user.RelationList;
+import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
 import com.esdllm.bilibiliApi.model.data.pojo.user.UpStat;
 import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
+import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
 import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
+import com.esdllm.bilibiliApi.model.data.pojo.video.PopularList;
+import com.esdllm.bilibiliApi.model.data.pojo.video.RankingList;
+import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -429,6 +439,11 @@ class FacadeContractTest {
                     long.class, int.class, int.class);
             assertSignature(UserSpace.class, "getFollowings", RelationList.class,
                     long.class, int.class, int.class);
+
+            // 2026-09-22 B1：关系数。⚠️ 它是本门面**唯一不需要凭据**的方法，
+            // 且查任意用户都行；与上面的名单端点（-101、只限本人）同域、同参数名（vmid）、
+            // 名字也像 —— 最容易被人"顺手合并"的一对，所以两处都单独钉住。
+            assertSignature(UserSpace.class, "getRelationStat", RelationStat.class, long.class);
         }
 
         @Test
@@ -444,6 +459,7 @@ class FacadeContractTest {
             assertDeclares(UserSpace.class, "getUpStat", IOException.class, long.class);
             assertDeclares(UserSpace.class, "getFollowers", IOException.class, long.class, int.class, int.class);
             assertDeclares(UserSpace.class, "getFollowings", IOException.class, long.class, int.class, int.class);
+            assertDeclares(UserSpace.class, "getRelationStat", IOException.class, long.class);
         }
     }
 
@@ -465,16 +481,23 @@ class FacadeContractTest {
             assertSignature(VideoExtra.class, "getPlayUrl", PlayUrl.class, String.class, Long.class);
             assertSignature(VideoExtra.class, "getPlayUrl", PlayUrl.class,
                     String.class, Long.class, Integer.class, Integer.class);
+
+            // 2026-09-22 B1：两项**真·零门槛**。加进来之后本门面的门槛表才完整 ——
+            // 在此之前它四项里三项都"可能失败"（签名/凭据/出口信誉），容易让人以为整个类都难用。
+            assertSignature(VideoExtra.class, "getViewDetail", ViewDetail.class, String.class);
+            assertSignature(VideoExtra.class, "getOnlineTotal", OnlineTotal.class, String.class, Long.class);
         }
 
         @Test
-        @DisplayName("四个方法（含 B3.5 新增的两个 getPlayUrl）都必须声明 throws IOException")
+        @DisplayName("六个方法（含 B1 新增的两个）都必须声明 throws IOException")
         void declares() {
             assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class);
             assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class, Long.class);
             assertDeclares(VideoExtra.class, "getPlayUrl", IOException.class, String.class, Long.class);
             assertDeclares(VideoExtra.class, "getPlayUrl", IOException.class,
                     String.class, Long.class, Integer.class, Integer.class);
+            assertDeclares(VideoExtra.class, "getViewDetail", IOException.class, String.class);
+            assertDeclares(VideoExtra.class, "getOnlineTotal", IOException.class, String.class, Long.class);
         }
     }
 
@@ -577,6 +600,216 @@ class FacadeContractTest {
     }
 
     // ================================================================
+    // §2.1.12 ~ §2.1.14 第 12~14 个门面：Comment / LiveExtra / Ranking（2026-09-22 B1 批）
+    //
+    // B1 一共 11 项能力，为什么只多出**三个**门面（而不是 11 个）：见 INTERFACE_PLAN.md
+    // §7-Q1 决策 (d)「混合：高频域独立 + 低频域合并」——
+    //   · Comment / Ranking 属高频域 ⇒ 独立成类；
+    //   · 直播域的两项（拉流地址 / 主播信息）低频但同域 ⇒ 合并进 LiveExtra；
+    //   · 其余四项（标签 / 相关推荐 / 状态数）**根本不是新端点**，而是复用 view/detail
+    //     与既有 Live/UserSpace 门面的方法扩容 ⇒ 只加方法、不加类。
+    //
+    // 与之前每一批同理：新增类 + 新增方法，**不触碰前 11 个门面的任何一行**。
+    // 这三块的作用不是"防止本次改动破坏了什么"，而是**把本次的公开面固化下来** ——
+    // 从交付这一刻起，它们进入同一套冻结纪律，后续只能加、不能改。
+    // ================================================================
+
+    @Nested
+    @DisplayName("Comment 门面（第 12 个）")
+    class CommentFacade {
+
+        @Test
+        @DisplayName("Comment 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(Comment.class);
+            assertPublicNoArgCtor(Comment.class);
+
+            // 收 aid 的两条：已知 aid 时用，0 次额外请求
+            assertSignature(Comment.class, "getReplies", CommentPage.class, long.class, int.class, int.class);
+            assertSignature(Comment.class, "getReplies", CommentPage.class,
+                    long.class, int.class, int.class, int.class);
+            // 收 bvid 的一条：内部先打一次 view 换 aid（多花一次请求，但不会静默拿空列表）
+            assertSignature(Comment.class, "getRepliesByBvid", CommentPage.class,
+                    String.class, int.class, int.class);
+        }
+
+        @Test
+        @DisplayName("三个方法都必须声明 throws IOException")
+        void declares() {
+            assertDeclares(Comment.class, "getReplies", IOException.class, long.class, int.class, int.class);
+            assertDeclares(Comment.class, "getReplies", IOException.class,
+                    long.class, int.class, int.class, int.class);
+            assertDeclares(Comment.class, "getRepliesByBvid", IOException.class,
+                    String.class, int.class, int.class);
+        }
+
+        /**
+         * 与 {@code Content} 的同名反向断言同一思路：反射只能证明"当前没有写方法"，
+         * 但把它写进契约，至少让"往评论门面里塞发表/删除"变成一个需要显式删用例的动作。
+         */
+        @Test
+        @DisplayName("★ 必须保持只读：不存在 set/add/delete/remove/create/clear 之类的方法")
+        void staysReadOnly() {
+            List<String> verbPrefixes = List.of("set", "add", "delete", "remove", "create", "clear", "update");
+            for (Method m : Comment.class.getDeclaredMethods()) {
+                if (!Modifier.isPublic(m.getModifiers())) {
+                    continue;
+                }
+                assertFalse(verbPrefixes.stream().anyMatch(p -> m.getName().startsWith(p)),
+                        () -> "Comment 是只读门面，不该出现像写操作的方法：" + m.getName()
+                                + "（发表/删除评论需 csrf 且会改动账号，本库不做）");
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("LiveExtra 门面（第 13 个）")
+    class LiveExtraFacade {
+
+        @Test
+        @DisplayName("LiveExtra 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(LiveExtra.class);
+            assertPublicNoArgCtor(LiveExtra.class);
+
+            // ⚠️ 两个方法的参数语义不同：流地址收**房间号**、主播信息收**主播 uid**。
+            // 两者都是 Long，反射上"看起来一样"，所以只能靠这条注释与各自的测试守。
+            assertSignature(LiveExtra.class, "getLiveStream", LiveStream.class, Long.class);
+            assertSignature(LiveExtra.class, "getLiveStream", LiveStream.class, Long.class, Integer.class);
+            assertSignature(LiveExtra.class, "getMasterInfo", MasterInfo.class, Long.class);
+        }
+
+        @Test
+        @DisplayName("三个方法都必须声明 throws IOException")
+        void declares() {
+            assertDeclares(LiveExtra.class, "getLiveStream", IOException.class, Long.class);
+            assertDeclares(LiveExtra.class, "getLiveStream", IOException.class, Long.class, Integer.class);
+            assertDeclares(LiveExtra.class, "getMasterInfo", IOException.class, Long.class);
+        }
+
+        /**
+         * 上游 {@code Live} 门面是冻结红线（XatiiBot 直接依赖），新能力必须走新类。
+         * 这条断言把"新能力没被塞进 Live"也钉住 —— 否则一次"顺手加个方法"就会
+         * 悄悄改变一个下游正在依赖的类的形状。
+         */
+        @Test
+        @DisplayName("★ 新能力不许塞进冻结的 Live 门面：Live 上不能出现 getLiveStream/getMasterInfo")
+        void newCapabilityStaysOutOfFrozenLive() {
+            for (String name : List.of("getLiveStream", "getMasterInfo")) {
+                boolean present = Arrays.stream(Live.class.getMethods())
+                        .anyMatch(m -> m.getName().equals(name));
+                assertFalse(present, "Live 门面是下游逐字依赖的冻结契约，新能力一律走 LiveExtra：" + name);
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("Ranking 门面（第 14 个）")
+    class RankingFacade {
+
+        @Test
+        @DisplayName("Ranking 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(Ranking.class);
+            assertPublicNoArgCtor(Ranking.class);
+
+            assertSignature(Ranking.class, "getRanking", RankingList.class, int.class);
+            assertSignature(Ranking.class, "getRanking", RankingList.class, int.class, String.class);
+            assertSignature(Ranking.class, "getPopular", PopularList.class, int.class, int.class);
+        }
+
+        @Test
+        @DisplayName("三个方法都必须声明 throws IOException")
+        void declares() {
+            assertDeclares(Ranking.class, "getRanking", IOException.class, int.class);
+            assertDeclares(Ranking.class, "getRanking", IOException.class, int.class, String.class);
+            assertDeclares(Ranking.class, "getPopular", IOException.class, int.class, int.class);
+        }
+
+        /**
+         * 榜单与热门<b>返回类型不同</b>（外层容器不一样：一个多 {@code note}、一个多 {@code no_more}），
+         * 元素形状虽然都是 {@code VideoBrief}，但不能互相接收。
+         * 这条断言把两个外层类型钉住，避免有人为了"统一"把它们合并成一个类。
+         */
+        @Test
+        @DisplayName("★ 榜单与热门的返回类型必须分开：RankingList / PopularList 不能合并")
+        void twoContainerTypes() {
+            assertSignature(Ranking.class, "getRanking", RankingList.class, int.class);
+            assertSignature(Ranking.class, "getPopular", PopularList.class, int.class, int.class);
+            assertNotEquals(RankingList.class, PopularList.class);
+        }
+    }
+
+    // ================================================================
+    // §2.1.15 第 15 个门面：Danmaku（2026-09-22 B2 批）
+    //
+    // 为什么单独立类而不是塞进 Comment：弹幕挂 **cid**、评论挂 **aid**，两者的 id 体系都不同，
+    // 合进一个类只会制造"到底该传哪个 id"的混淆。见 INTERFACE_PLAN.md §7-Q1 决策 (d)。
+    //
+    // ⚠️ 本门面是全库唯一**返回 XML** 的公开面（其它全是 JSON），所以它不遵循
+    // "code/data 外层"那套惯例 —— 这是它必须被写进契约文档、让后人看得见的原因。
+    // ================================================================
+
+    @Nested
+    @DisplayName("Danmaku 门面（第 15 个）")
+    class DanmakuFacade {
+
+        @Test
+        @DisplayName("Danmaku 门面的公开方法签名与无参构造器")
+        void methodSignatures() {
+            assertClassInFacadePackage(Danmaku.class);
+            assertPublicNoArgCtor(Danmaku.class);
+
+            // 收 cid 的返回 XML 包装（带 maxlimit，用于判断有没有被截断）
+            assertSignature(Danmaku.class, "getDanmaku", DanmakuXml.class, long.class);
+            // 只要文本列表的便捷重载
+            assertListOf(Danmaku.class, "getDanmakuList", DanmakuItem.class, long.class);
+        }
+
+        @Test
+        @DisplayName("两个方法都必须声明 throws IOException（门面边界统一口径）")
+        void declares() {
+            assertDeclares(Danmaku.class, "getDanmaku", IOException.class, long.class);
+            assertDeclares(Danmaku.class, "getDanmakuList", IOException.class, long.class);
+        }
+
+        /**
+         * 与 {@code Comment} / {@code Content} 的同名反向断言同一思路：反射只能证明
+         * "当前没有写方法"，但把它写进契约，至少让"往弹幕门面里塞发/删弹幕"变成一个
+         * 需要显式删用例的动作。
+         */
+        @Test
+        @DisplayName("★ 必须保持只读：不存在 set/add/delete/remove/create/clear 之类的方法")
+        void staysReadOnly() {
+            List<String> verbPrefixes = List.of("set", "add", "delete", "remove", "create", "clear", "update");
+            for (Method m : Danmaku.class.getDeclaredMethods()) {
+                if (!Modifier.isPublic(m.getModifiers())) {
+                    continue;
+                }
+                assertFalse(verbPrefixes.stream().anyMatch(p -> m.getName().startsWith(p)),
+                        () -> "Danmaku 是只读门面，不该出现像写操作的方法：" + m.getName()
+                                + "（发/删弹幕需 csrf 且会改动账号，本库不做）");
+            }
+        }
+
+        /**
+         * 弹幕与评论的 id 体系不同（{@code cid} vs {@code aid}），
+         * 所以 {@code Comment} 里不该出现弹幕方法、{@code Danmaku} 里也不该出现评论方法。
+         * 两个类都在同一包下、名字都像，最容易被人"顺手合并"。
+         */
+        @Test
+        @DisplayName("★ 弹幕不许塞进 Comment 门面：Comment 上不能出现 getDanmaku 之类")
+        void danmakuStaysOutOfFrozenComment() {
+            for (String name : List.of("getDanmaku", "getDanmakuList")) {
+                boolean present = Arrays.stream(Comment.class.getMethods())
+                        .anyMatch(m -> m.getName().equals(name));
+                assertFalse(present,
+                        "Comment 门面收 aid、Danmaku 收 cid，两者的 id 体系不同，不要合并：" + name);
+            }
+        }
+    }
+
+    // ================================================================
     // §2.2 冻结模型
     // ================================================================
 
@@ -664,14 +897,15 @@ class FacadeContractTest {
     // ================================================================
 
     @Test
-    @DisplayName("11 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
+    @DisplayName("15 个门面都必须在 com.esdllm.bilibiliApi.bilibiliApi 下")
     void facadePackageNamesUnchanged() {
         List<Class<?>> facades = List.of(Dynamic.class, Live.class, CardInfo.class,
                 BilibiliClient.class, ShortChain.class, Login.class,
-                Search.class, UserSpace.class, VideoExtra.class, Wbi.class, Content.class);
+                Search.class, UserSpace.class, VideoExtra.class, Wbi.class, Content.class,
+                Comment.class, LiveExtra.class, Ranking.class, Danmaku.class);
         for (Class<?> facade : facades) {
             assertClassInFacadePackage(facade);
         }
-        assertEquals(11, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
+        assertEquals(15, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
     }
 }

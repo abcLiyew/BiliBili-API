@@ -1,0 +1,1045 @@
+{
+  "code": 0,
+  "message": "OK",
+  "ttl": 1,
+  "data": {
+    "page": {
+      "num": 1,
+      "size": 20,
+      "count": 16
+    },
+    "upper": {
+      "mid": 346749212
+    },
+    "replies": [
+      {
+        "rpid": 314487658177,
+        "oid": 117284131638286,
+        "type": 1,
+        "mid": 487265972,
+        "root": 314487292657,
+        "parent": 314487292657,
+        "dialog": 314487658177,
+        "count": 0,
+        "rcount": 0,
+        "state": 0,
+        "fansgrade": 0,
+        "attr": 0,
+        "ctime": 1789865142,
+        "mid_str": "487265972",
+        "oid_str": "117284131638286",
+        "rpid_str": "314487658177",
+        "root_str": "314487292657",
+        "parent_str": "314487292657",
+        "dialog_str": "314487658177",
+        "like": 118,
+        "action": 0,
+        "member": {
+          "mid": "487265972",
+          "uname": "企鹅要做好人",
+          "handle": "",
+          "sex": "男",
+          "sign": "我好人一个",
+          "avatar": "https://i2.hdslb.com/bfs/face/b405363f985e86d36cd319bbee011c5f5132762d.jpg",
+          "rank": "10000",
+          "face_nft_new": 0,
+          "is_senior_member": 0,
+          "senior": {},
+          "level_info": {
+            "current_level": 6,
+            "current_min": 0,
+            "current_exp": 0,
+            "next_exp": 0
+          },
+          "pendant": {
+            "pid": 0,
+            "name": "",
+            "image": "",
+            "expire": 0,
+            "image_enhance": "",
+            "image_enhance_frame": "",
+            "n_pid": 0
+          },
+          "nameplate": {
+            "nid": 90,
+            "name": "有爱萌新",
+            "image": "https://i0.hdslb.com/bfs/face/51ca16136e570938450bca360f28761ceb609f33.png",
+            "image_small": "https://i2.hdslb.com/bfs/face/9abfa4769357f85937782c2dbc40fafda4f57217.png",
+            "level": "普通勋章",
+            "condition": "当前持有粉丝勋章最高等级>=5级"
+          },
+          "official_verify": {
+            "type": -1,
+            "desc": ""
+          },
+          "vip": {
+            "vipType": 2,
+            "vipDueDate": 1796140800000,
+            "dueRemark": "",
+            "accessStatus": 0,
+            "vipStatus": 1,
+            "vipStatusWarn": "",
+            "themeType": 0,
+            "label": {
+              "path": "http://i0.hdslb.com/bfs/vip/label_annual.png",
+              "text": "年度大会员",
+              "label_theme": "annual_vip",
+              "text_color": "#FFFFFF",
+              "bg_style": 1,
+              "bg_color": "#FB7299",
+              "border_color": "",
+              "use_img_label": true,
+              "img_label_uri_hans": "",
+              "img_label_uri_hant": "",
+              "img_label_uri_hans_static": "https://i0.hdslb.com/bfs/vip/8d4f8bfc713826a5412a0a27eaaac4d6b9ede1d9.png",
+              "img_label_uri_hant_static": "https://i0.hdslb.com/bfs/activity-plat/static/20220614/e369244d0b14644f5e1a06431e22a4d5/VEW8fCC0hg.png",
+              "label_id": -22,
+              "label_goto": {
+                "mobile": "https://big.bilibili.com/mobile/index?navhide=1&from_spmid=vipicon",
+                "pc_web": "https://account.bilibili.com/big?from_spmid=vipicon"
+              },
+              "img_label_uri_i18n": "",
+              "img_label_uri_i18n_static": "",
+              "label_type": 1
+            },
+            "avatar_subscript": 1,
+            "nickname_color": "#FB7299"
+          },
+          "fans_detail": null,
+          "tribee": null,
+          "user_sailing": {
+            "pendant": null,
+            "cardbg": {
+              "id": 69600,
+              "name": "Mygo勋章",
+              "image": "https://i0.hdslb.com/bfs/garb/open/05607f3e4892108f0b4551b2b2ca078f6bbaf4c9.png",
+              "jump_url": "https://www.bilibili.com/h5/mall/digital-card/home?act_id=102857&lottery_id=0&hybrid_set_header=2&anchor_task=1&navhide=1&f_source=garb&from=reply&window_params=%7B%22type%22%3A8%2C%22mid%22%3A487265972%7D",
+              "fan": {
+                "is_fan": 1,
+                "number": 73056,
+                "color": "#BFC8D2",
+                "name": "",
+                "num_desc": "073056",
+                "num_prefix": "CD.",
+                "color_format": {
+                  "start_point": "0,0",
+                  "end_point": "100,100",
+                  "colors": [
+                    "#B8C7D0FF",
+                    "#A2A7B0FF"
+                  ],
+                  "gradients": [
+                    0,
+                    100
+                  ]
+                }
+              },
+              "type": "collect_card",
+              "image_group": null
+            },
+            "cardbg_with_focus": null
+          },
+          "user_sailing_v2": {
+            "card_bg": {
+              "id": 69600,
+              "name": "Mygo勋章",
+              "image": "https://i0.hdslb.com/bfs/garb/open/05607f3e4892108f0b4551b2b2ca078f6bbaf4c9.png",
+              "jump_url": "https://www.bilibili.com/h5/mall/digital-card/home?act_id=102857&lottery_id=0&hybrid_set_header=2&anchor_task=1&navhide=1&f_source=garb&from=reply&window_params=%7B%22type%22%3A8%2C%22mid%22%3A487265972%7D",
+              "fan": {
+                "is_fan": 1,
+                "number": 73056,
+                "color": "#BFC8D2",
+                "num_desc": "073056",
+                "num_prefix": "CD.",
+                "color_format": {
+                  "start_point": "0,0",
+                  "end_point": "100,100",
+                  "colors": [
+                    "#B8C7D0FF",
+                    "#A2A7B0FF"
+                  ],
+                  "gradients": [
+                    0,
+                    100
+                  ]
+                }
+              },
+              "type": "collect_card"
+            }
+          },
+          "is_contractor": false,
+          "contract_desc": "",
+          "nft_interaction": null,
+          "avatar_item": {
+            "container_size": {
+              "width": 1.8,
+              "height": 1.8
+            },
+            "fallback_layers": {
+              "layers": [
+                {
+                  "visible": true,
+                  "general_spec": {
+                    "pos_spec": {
+                      "coordinate_pos": 2,
+                      "axis_x": 0.9,
+                      "axis_y": 0.9
+                    },
+                    "size_spec": {
+                      "width": 1,
+                      "height": 1
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    }
+                  },
+                  "layer_config": {
+                    "tags": {
+                      "AVATAR_LAYER": {},
+                      "GENERAL_CFG": {
+                        "config_type": 1,
+                        "general_config": {
+                          "web_css_style": {
+                            "borderRadius": "50%"
+                          }
+                        }
+                      }
+                    },
+                    "is_critical": true
+                  },
+                  "resource": {
+                    "res_type": 3,
+                    "res_image": {
+                      "image_src": {
+                        "src_type": 1,
+                        "placeholder": 6,
+                        "remote": {
+                          "url": "https://i2.hdslb.com/bfs/face/b405363f985e86d36cd319bbee011c5f5132762d.jpg",
+                          "bfs_style": "widget-layer-avatar"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "visible": true,
+                  "general_spec": {
+                    "pos_spec": {
+                      "coordinate_pos": 1,
+                      "axis_x": 1.025,
+                      "axis_y": 1.025
+                    },
+                    "size_spec": {
+                      "width": 0.41666666666666663,
+                      "height": 0.41666666666666663
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    }
+                  },
+                  "layer_config": {
+                    "tags": {
+                      "GENERAL_CFG": {
+                        "config_type": 1,
+                        "general_config": {
+                          "web_css_style": {
+                            "background-color": "rgb(255,255,255)",
+                            "border": "2px solid rgba(255,255,255,1)",
+                            "borderRadius": "50%",
+                            "boxSizing": "border-box"
+                          }
+                        }
+                      },
+                      "ICON_LAYER": {}
+                    }
+                  },
+                  "resource": {
+                    "res_type": 3,
+                    "res_image": {
+                      "image_src": {
+                        "src_type": 2,
+                        "local": 1
+                      }
+                    }
+                  }
+                }
+              ],
+              "is_critical_group": true
+            },
+            "mid": "487265972"
+          }
+        },
+        "content": {
+          "message": "听人说两句话就知道了\n不擅长应试教育 不一定不是人才\n但擅长应试教育 他一定不是唐人",
+          "members": [],
+          "jump_url": {},
+          "max_line": 6
+        },
+        "replies": null,
+        "assist": 0,
+        "up_action": {
+          "like": false,
+          "reply": false
+        },
+        "invisible": false,
+        "reply_control": {
+          "max_line": 6,
+          "time_desc": "2天前发布",
+          "translation_switch": 1,
+          "support_share": true
+        },
+        "folder": {
+          "has_folded": false,
+          "is_folded": false,
+          "rule": ""
+        },
+        "dynamic_id_str": "0",
+        "note_cvid_str": "0",
+        "track_info": ""
+      },
+      {
+        "rpid": 318002457424,
+        "oid": 117284131638286,
+        "type": 1,
+        "mid": 320174801,
+        "root": 314487292657,
+        "parent": 314487658177,
+        "dialog": 314487658177,
+        "count": 0,
+        "rcount": 0,
+        "state": 0,
+        "fansgrade": 0,
+        "attr": 0,
+        "ctime": 1789865933,
+        "mid_str": "320174801",
+        "oid_str": "117284131638286",
+        "rpid_str": "318002457424",
+        "root_str": "314487292657",
+        "parent_str": "314487658177",
+        "dialog_str": "314487658177",
+        "like": 12,
+        "action": 0,
+        "member": {
+          "mid": "320174801",
+          "uname": "冶胧冬月",
+          "handle": "",
+          "sex": "男",
+          "sign": "这个人很神秘，什么都没有写（真的！确信！超小声的说：“才没有心虚呢！”）",
+          "avatar": "https://i2.hdslb.com/bfs/face/7ab063bf3efb86ea501ba7c2cd28e0f633836047.webp",
+          "rank": "10000",
+          "face_nft_new": 0,
+          "is_senior_member": 0,
+          "senior": {},
+          "level_info": {
+            "current_level": 6,
+            "current_min": 0,
+            "current_exp": 0,
+            "next_exp": 0
+          },
+          "pendant": {
+            "pid": 1111374489,
+            "name": "全兽出击2",
+            "image": "https://i2.hdslb.com/bfs/garb/open/b38e0faef69549fae65a6ae45fa96c87e521718a.png",
+            "expire": 0,
+            "image_enhance": "https://i2.hdslb.com/bfs/garb/open/b38e0faef69549fae65a6ae45fa96c87e521718a.png",
+            "image_enhance_frame": "",
+            "n_pid": 1706213391001
+          },
+          "nameplate": {
+            "nid": 91,
+            "name": "有爱楷模",
+            "image": "https://i0.hdslb.com/bfs/face/5a90f715451325c642a6ac39e01195cb6d075734.png",
+            "image_small": "https://i0.hdslb.com/bfs/face/5bfc1b4fb3f4b411495dddb0b2127ad80f6fbcac.png",
+            "level": "普通勋章",
+            "condition": "当前持有粉丝勋章最高等级>=10级"
+          },
+          "official_verify": {
+            "type": -1,
+            "desc": ""
+          },
+          "vip": {
+            "vipType": 2,
+            "vipDueDate": 1855324800000,
+            "dueRemark": "",
+            "accessStatus": 0,
+            "vipStatus": 1,
+            "vipStatusWarn": "",
+            "themeType": 0,
+            "label": {
+              "path": "http://i0.hdslb.com/bfs/vip/label_annual.png",
+              "text": "年度大会员",
+              "label_theme": "annual_vip",
+              "text_color": "#FFFFFF",
+              "bg_style": 1,
+              "bg_color": "#FB7299",
+              "border_color": "",
+              "use_img_label": true,
+              "img_label_uri_hans": "",
+              "img_label_uri_hant": "",
+              "img_label_uri_hans_static": "https://i0.hdslb.com/bfs/vip/8d4f8bfc713826a5412a0a27eaaac4d6b9ede1d9.png",
+              "img_label_uri_hant_static": "https://i0.hdslb.com/bfs/activity-plat/static/20220614/e369244d0b14644f5e1a06431e22a4d5/VEW8fCC0hg.png",
+              "label_id": -22,
+              "label_goto": {
+                "mobile": "https://big.bilibili.com/mobile/index?navhide=1&from_spmid=vipicon",
+                "pc_web": "https://account.bilibili.com/big?from_spmid=vipicon"
+              },
+              "img_label_uri_i18n": "",
+              "img_label_uri_i18n_static": "",
+              "label_type": 1
+            },
+            "avatar_subscript": 1,
+            "nickname_color": "#FB7299"
+          },
+          "fans_detail": null,
+          "tribee": null,
+          "user_sailing": {
+            "pendant": {
+              "id": 1706213391001,
+              "name": "全兽出击2",
+              "image": "https://i0.hdslb.com/bfs/garb/open/b38e0faef69549fae65a6ae45fa96c87e521718a.png",
+              "jump_url": "",
+              "type": "",
+              "image_enhance": "https://i0.hdslb.com/bfs/garb/open/b38e0faef69549fae65a6ae45fa96c87e521718a.png",
+              "image_enhance_frame": ""
+            },
+            "cardbg": {
+              "id": 66627,
+              "name": "全兽出击2",
+              "image": "https://i0.hdslb.com/bfs/garb/open/5f7e018585894c0c0f37a4307c3c7a6eea4143a3.png",
+              "jump_url": "https://www.bilibili.com/h5/mall/digital-card/home?act_id=100963&lottery_id=0&hybrid_set_header=2&anchor_task=1&navhide=1&f_source=garb&from=reply&window_params=%7B%22type%22%3A8%2C%22mid%22%3A320174801%7D",
+              "fan": {
+                "is_fan": 1,
+                "number": 953,
+                "color": "#E5B261",
+                "name": "",
+                "num_desc": "000953",
+                "num_prefix": "CD.",
+                "color_format": {
+                  "start_point": "0,0",
+                  "end_point": "100,100",
+                  "colors": [
+                    "#E29D2FFF",
+                    "#FDC773FF",
+                    "#FDC773FF",
+                    "#E19B2EFF"
+                  ],
+                  "gradients": [
+                    0,
+                    33,
+                    67,
+                    100
+                  ]
+                }
+              },
+              "type": "collect_card",
+              "image_group": null
+            },
+            "cardbg_with_focus": null
+          },
+          "user_sailing_v2": {
+            "pendant": {
+              "id": 1706213391001,
+              "name": "全兽出击2",
+              "image": "https://i0.hdslb.com/bfs/garb/open/b38e0faef69549fae65a6ae45fa96c87e521718a.png",
+              "image_enhance": "https://i0.hdslb.com/bfs/garb/open/b38e0faef69549fae65a6ae45fa96c87e521718a.png"
+            },
+            "card_bg": {
+              "id": 66627,
+              "name": "全兽出击2",
+              "image": "https://i0.hdslb.com/bfs/garb/open/5f7e018585894c0c0f37a4307c3c7a6eea4143a3.png",
+              "jump_url": "https://www.bilibili.com/h5/mall/digital-card/home?act_id=100963&lottery_id=0&hybrid_set_header=2&anchor_task=1&navhide=1&f_source=garb&from=reply&window_params=%7B%22type%22%3A8%2C%22mid%22%3A320174801%7D",
+              "fan": {
+                "is_fan": 1,
+                "number": 953,
+                "color": "#E5B261",
+                "num_desc": "000953",
+                "num_prefix": "CD.",
+                "color_format": {
+                  "start_point": "0,0",
+                  "end_point": "100,100",
+                  "colors": [
+                    "#E29D2FFF",
+                    "#FDC773FF",
+                    "#FDC773FF",
+                    "#E19B2EFF"
+                  ],
+                  "gradients": [
+                    0,
+                    33,
+                    67,
+                    100
+                  ]
+                }
+              },
+              "type": "collect_card"
+            }
+          },
+          "is_contractor": false,
+          "contract_desc": "",
+          "nft_interaction": {
+            "region": {
+              "type": 1,
+              "icon": "https://i0.hdslb.com/bfs/activity-plat/static/20220506/334553dd7c506a92b88eaf4d59ac8b4d/j8AeXAkEul.gif",
+              "show_status": 1
+            }
+          },
+          "avatar_item": {
+            "container_size": {
+              "width": 1.8,
+              "height": 1.8
+            },
+            "fallback_layers": {
+              "layers": [
+                {
+                  "visible": true,
+                  "general_spec": {
+                    "pos_spec": {
+                      "coordinate_pos": 2,
+                      "axis_x": 0.9,
+                      "axis_y": 0.9
+                    },
+                    "size_spec": {
+                      "width": 0.94,
+                      "height": 0.94
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    }
+                  },
+                  "layer_config": {
+                    "tags": {
+                      "AVATAR_LAYER": {},
+                      "GENERAL_CFG": {
+                        "config_type": 1,
+                        "general_config": {
+                          "web_css_style": {
+                            "borderRadius": "50%"
+                          }
+                        }
+                      }
+                    },
+                    "is_critical": true
+                  },
+                  "resource": {
+                    "res_type": 4,
+                    "res_animation": {
+                      "webp_src": {
+                        "src_type": 1,
+                        "placeholder": 6,
+                        "remote": {
+                          "url": "https://i2.hdslb.com/bfs/face/7ab063bf3efb86ea501ba7c2cd28e0f633836047.webp",
+                          "bfs_style": "widget-layer-avatar"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "visible": true,
+                  "general_spec": {
+                    "pos_spec": {
+                      "coordinate_pos": 2,
+                      "axis_x": 0.9,
+                      "axis_y": 0.9
+                    },
+                    "size_spec": {
+                      "width": 1.65,
+                      "height": 1.65
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    }
+                  },
+                  "layer_config": {
+                    "tags": {
+                      "PENDENT_LAYER": {}
+                    }
+                  },
+                  "resource": {
+                    "res_type": 3,
+                    "res_image": {
+                      "image_src": {
+                        "src_type": 1,
+                        "remote": {
+                          "url": "https://i2.hdslb.com/bfs/garb/open/b38e0faef69549fae65a6ae45fa96c87e521718a.png",
+                          "bfs_style": "widget-layer-avatar"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "visible": true,
+                  "general_spec": {
+                    "pos_spec": {
+                      "coordinate_pos": 1,
+                      "axis_x": 1.0450000000000002,
+                      "axis_y": 1.0616666666666668
+                    },
+                    "size_spec": {
+                      "width": 0.41666666666666663,
+                      "height": 0.41666666666666663
+                    },
+                    "render_spec": {
+                      "opacity": 1
+                    }
+                  },
+                  "layer_config": {
+                    "tags": {
+                      "GENERAL_CFG": {
+                        "config_type": 1,
+                        "general_config": {
+                          "web_css_style": {
+                            "background-color": "rgb(255,255,255)",
+                            "border": "2px solid rgba(255,255,255,1)",
+                            "borderRadius": "50%",
+                            "boxSizing": "border-box"
+                          }
+                        }
+                      },
+                      "ICON_LAYER": {}
+                    }
+                  },
+                  "resource": {
+                    "res_type": 4,
+                    "res_animation": {
+                      "webp_src": {
+                        "src_type": 1,
+                        "placeholder": 5,
+                        "remote": {
+                          "url": "https://i0.hdslb.com/bfs/activity-plat/static/20220506/334553dd7c506a92b88eaf4d59ac8b4d/j8AeXAkEul.gif",
+                          "bfs_style": "widget-layer-avatar"
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "is_critical_group": true
+            },
+            "mid": "320174801"
+          }
+        },
+        "content": {
+          "message": "回复 @企鹅要做好人 :我去，还真是",
+          "at_name_to_mid": {
+            "企鹅要做好人": 487265972
+          },
+          "at_name_to_mid_str": {
+            "企鹅要做好人": "487265972"
+          },
+          "members": [
+            {
+              "mid": "487265972",
+              "uname": "企鹅要做好人",
+              "handle": "",
+              "sex": "男",
+              "sign": "我好人一个",
+              "avatar": "https://i2.hdslb.com/bfs/face/b405363f985e86d36cd319bbee011c5f5132762d.jpg",
+              "rank": "10000",
+              "face_nft_new": 0,
+              "is_senior_member": 0,
+              "senior": {},
+              "level_info": {
+                "current_level": 6,
+                "current_min": 0,
+                "current_exp": 0,
+                "next_exp": 0
+              },
+              "pendant": {
+                "pid": 0,
+                "name": "",
+                "image": "",
+                "expire": 0,
+                "image_enhance": "",
+                "image_enhance_frame": "",
+                "n_pid": 0
+              },
+              "nameplate": {
+                "nid": 90,
+                "name": "有爱萌新",
+                "image": "https://i0.hdslb.com/bfs/face/51ca16136e570938450bca360f28761ceb609f33.png",
+                "image_small": "https://i2.hdslb.com/bfs/face/9abfa4769357f85937782c2dbc40fafda4f57217.png",
+                "level": "普通勋章",
+                "condition": "当前持有粉丝勋章最高等级>=5级"
+              },
+              "official_verify": {
+                "type": -1,
+                "desc": ""
+              },
+              "vip": {
+                "vipType": 2,
+                "vipDueDate": 1796140800000,
+                "dueRemark": "",
+                "accessStatus": 0,
+                "vipStatus": 1,
+                "vipStatusWarn": "",
+                "themeType": 0,
+                "label": {
+                  "path": "http://i0.hdslb.com/bfs/vip/label_annual.png",
+                  "text": "年度大会员",
+                  "label_theme": "annual_vip",
+                  "text_color": "#FFFFFF",
+                  "bg_style": 1,
+                  "bg_color": "#FB7299",
+                  "border_color": "",
+                  "use_img_label": true,
+                  "img_label_uri_hans": "",
+                  "img_label_uri_hant": "",
+                  "img_label_uri_hans_static": "https://i0.hdslb.com/bfs/vip/8d4f8bfc713826a5412a0a27eaaac4d6b9ede1d9.png",
+                  "img_label_uri_hant_static": "https://i0.hdslb.com/bfs/activity-plat/static/20220614/e369244d0b14644f5e1a06431e22a4d5/VEW8fCC0hg.png",
+                  "label_id": -22,
+                  "label_goto": {
+                    "mobile": "https://big.bilibili.com/mobile/index?navhide=1&from_spmid=vipicon",
+                    "pc_web": "https://account.bilibili.com/big?from_spmid=vipicon"
+                  },
+                  "img_label_uri_i18n": "",
+                  "img_label_uri_i18n_static": "",
+                  "label_type": 1
+                },
+                "avatar_subscript": 1,
+                "nickname_color": "#FB7299"
+              }
+            }
+          ],
+          "jump_url": {},
+          "max_line": 6
+        },
+        "replies": null,
+        "parent_reply_member": {
+          "mid": "487265972",
+          "name": "企鹅要做好人"
+        },
+        "assist": 0,
+        "up_action": {
+          "like": false,
+          "reply": false
+        },
+        "invisible": false,
+        "reply_control": {
+          "max_line": 6,
+          "time_desc": "2天前发布",
+          "translation_switch": 1,
+          "support_share": true
+        },
+        "folder": {
+          "has_folded": false,
+          "is_folded": false,
+          "rule": ""
+        },
+        "dynamic_id_str": "0",
+        "note_cvid_str": "0",
+        "track_info": ""
+      }
+    ],
+    "root": {
+      "rpid": 314487292657,
+      "oid": 117284131638286,
+      "type": 1,
+      "mid": 233645119,
+      "root": 0,
+      "parent": 0,
+      "dialog": 0,
+      "count": 22,
+      "rcount": 16,
+      "state": 0,
+      "fansgrade": 0,
+      "attr": 0,
+      "ctime": 1789864607,
+      "mid_str": "233645119",
+      "oid_str": "117284131638286",
+      "rpid_str": "314487292657",
+      "root_str": "0",
+      "parent_str": "0",
+      "dialog_str": "0",
+      "like": 2307,
+      "action": 0,
+      "member": {
+        "mid": "233645119",
+        "uname": "-汪-汪-碎-冰-冰-",
+        "handle": "",
+        "sex": "男",
+        "sign": " ",
+        "avatar": "https://i1.hdslb.com/bfs/face/84acd95f02cf4d29428ed319372cbc78a6732bd7.jpg",
+        "rank": "10000",
+        "face_nft_new": 0,
+        "is_senior_member": 0,
+        "senior": {},
+        "level_info": {
+          "current_level": 6,
+          "current_min": 0,
+          "current_exp": 0,
+          "next_exp": 0
+        },
+        "pendant": {
+          "pid": 1758,
+          "name": "至尊戒",
+          "image": "https://i1.hdslb.com/bfs/garb/item/025d07fa04d38236bc2258be2faf2867e2c48fe1.png",
+          "expire": 0,
+          "image_enhance": "https://i1.hdslb.com/bfs/garb/item/025d07fa04d38236bc2258be2faf2867e2c48fe1.png",
+          "image_enhance_frame": "",
+          "n_pid": 1758
+        },
+        "nameplate": {
+          "nid": 0,
+          "name": "",
+          "image": "",
+          "image_small": "",
+          "level": "",
+          "condition": ""
+        },
+        "official_verify": {
+          "type": -1,
+          "desc": ""
+        },
+        "vip": {
+          "vipType": 2,
+          "vipDueDate": 1811433600000,
+          "dueRemark": "",
+          "accessStatus": 0,
+          "vipStatus": 1,
+          "vipStatusWarn": "",
+          "themeType": 0,
+          "label": {
+            "path": "http://i0.hdslb.com/bfs/vip/label_annual.png",
+            "text": "年度大会员",
+            "label_theme": "annual_vip",
+            "text_color": "#FFFFFF",
+            "bg_style": 1,
+            "bg_color": "#FB7299",
+            "border_color": "",
+            "use_img_label": true,
+            "img_label_uri_hans": "",
+            "img_label_uri_hant": "",
+            "img_label_uri_hans_static": "https://i0.hdslb.com/bfs/vip/8d4f8bfc713826a5412a0a27eaaac4d6b9ede1d9.png",
+            "img_label_uri_hant_static": "https://i0.hdslb.com/bfs/activity-plat/static/20220614/e369244d0b14644f5e1a06431e22a4d5/VEW8fCC0hg.png",
+            "label_id": -22,
+            "label_goto": {
+              "mobile": "https://big.bilibili.com/mobile/index?navhide=1&from_spmid=vipicon",
+              "pc_web": "https://account.bilibili.com/big?from_spmid=vipicon"
+            },
+            "img_label_uri_i18n": "",
+            "img_label_uri_i18n_static": "",
+            "label_type": 1
+          },
+          "avatar_subscript": 1,
+          "nickname_color": "#FB7299"
+        },
+        "fans_detail": null,
+        "tribee": null,
+        "user_sailing": {
+          "pendant": {
+            "id": 1758,
+            "name": "至尊戒",
+            "image": "https://i0.hdslb.com/bfs/garb/item/025d07fa04d38236bc2258be2faf2867e2c48fe1.png",
+            "jump_url": "",
+            "type": "vip",
+            "image_enhance": "https://i0.hdslb.com/bfs/garb/item/025d07fa04d38236bc2258be2faf2867e2c48fe1.png",
+            "image_enhance_frame": ""
+          },
+          "cardbg": null,
+          "cardbg_with_focus": null
+        },
+        "user_sailing_v2": {
+          "pendant": {
+            "id": 1758,
+            "name": "至尊戒",
+            "image": "https://i0.hdslb.com/bfs/garb/item/025d07fa04d38236bc2258be2faf2867e2c48fe1.png",
+            "type": "vip",
+            "image_enhance": "https://i0.hdslb.com/bfs/garb/item/025d07fa04d38236bc2258be2faf2867e2c48fe1.png"
+          }
+        },
+        "is_contractor": false,
+        "contract_desc": "",
+        "nft_interaction": null,
+        "avatar_item": {
+          "container_size": {
+            "width": 1.8,
+            "height": 1.8
+          },
+          "fallback_layers": {
+            "layers": [
+              {
+                "visible": true,
+                "general_spec": {
+                  "pos_spec": {
+                    "coordinate_pos": 2,
+                    "axis_x": 0.9,
+                    "axis_y": 0.9
+                  },
+                  "size_spec": {
+                    "width": 0.787,
+                    "height": 0.787
+                  },
+                  "render_spec": {
+                    "opacity": 1
+                  }
+                },
+                "layer_config": {
+                  "tags": {
+                    "AVATAR_LAYER": {},
+                    "GENERAL_CFG": {
+                      "config_type": 1,
+                      "general_config": {
+                        "web_css_style": {
+                          "borderRadius": "50%"
+                        }
+                      }
+                    }
+                  },
+                  "is_critical": true
+                },
+                "resource": {
+                  "res_type": 3,
+                  "res_image": {
+                    "image_src": {
+                      "src_type": 1,
+                      "placeholder": 6,
+                      "remote": {
+                        "url": "https://i1.hdslb.com/bfs/face/84acd95f02cf4d29428ed319372cbc78a6732bd7.jpg",
+                        "bfs_style": "widget-layer-avatar"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "visible": true,
+                "general_spec": {
+                  "pos_spec": {
+                    "coordinate_pos": 2,
+                    "axis_x": 0.9,
+                    "axis_y": 0.9
+                  },
+                  "size_spec": {
+                    "width": 1.375,
+                    "height": 1.375
+                  },
+                  "render_spec": {
+                    "opacity": 1
+                  }
+                },
+                "layer_config": {
+                  "tags": {
+                    "PENDENT_LAYER": {}
+                  }
+                },
+                "resource": {
+                  "res_type": 3,
+                  "res_image": {
+                    "image_src": {
+                      "src_type": 1,
+                      "remote": {
+                        "url": "https://i1.hdslb.com/bfs/garb/item/025d07fa04d38236bc2258be2faf2867e2c48fe1.png",
+                        "bfs_style": "widget-layer-avatar"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "visible": true,
+                "general_spec": {
+                  "pos_spec": {
+                    "coordinate_pos": 1,
+                    "axis_x": 0.9685,
+                    "axis_y": 0.9851666666666666
+                  },
+                  "size_spec": {
+                    "width": 0.41666666666666663,
+                    "height": 0.41666666666666663
+                  },
+                  "render_spec": {
+                    "opacity": 1
+                  }
+                },
+                "layer_config": {
+                  "tags": {
+                    "GENERAL_CFG": {
+                      "config_type": 1,
+                      "general_config": {
+                        "web_css_style": {
+                          "background-color": "rgb(255,255,255)",
+                          "border": "2px solid rgba(255,255,255,1)",
+                          "borderRadius": "50%",
+                          "boxSizing": "border-box"
+                        }
+                      }
+                    },
+                    "ICON_LAYER": {}
+                  }
+                },
+                "resource": {
+                  "res_type": 3,
+                  "res_image": {
+                    "image_src": {
+                      "src_type": 2,
+                      "local": 1
+                    }
+                  }
+                }
+              }
+            ],
+            "is_critical_group": true
+          },
+          "mid": "233645119"
+        }
+      },
+      "content": {
+        "message": "若不争那一纸文凭，世人怎知我寒窗苦读数十载",
+        "members": [],
+        "jump_url": {},
+        "max_line": 6
+      },
+      "replies": null,
+      "assist": 0,
+      "up_action": {
+        "like": false,
+        "reply": false
+      },
+      "invisible": false,
+      "reply_control": {
+        "max_line": 6,
+        "sub_reply_entry_text": "共16条回复",
+        "sub_reply_title_text": "相关回复共16条",
+        "time_desc": "2天前发布",
+        "translation_switch": 1,
+        "support_share": true
+      },
+      "folder": {
+        "has_folded": false,
+        "is_folded": false,
+        "rule": ""
+      },
+      "dynamic_id_str": "0",
+      "note_cvid_str": "0",
+      "track_info": ""
+    },
+    "config": {
+      "showtopic": 0,
+      "show_up_flag": false,
+      "read_only": false
+    },
+    "control": {
+      "input_disable": false,
+      "root_input_text": "宫廷玉液酒，评论走一走",
+      "child_input_text": "宫廷玉液酒，评论走一走",
+      "giveup_input_text": "不发没关系，请继续友善哦~",
+      "screenshot_icon_state": 1,
+      "upload_picture_icon_state": 1,
+      "answer_guide_text": "需要升级成为lv2会员后才可以评论，先去答题转正吧！",
+      "answer_guide_icon_url": "http://i0.hdslb.com/bfs/emote/96940d16602cacbbac796245b7bb99fa9b5c970c.png",
+      "answer_guide_ios_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1&re_src=12",
+      "answer_guide_android_url": "https://www.bilibili.com/h5/newbie/entry?navhide=1&re_src=6",
+      "bg_text": "",
+      "empty_page": null,
+      "show_type": 1,
+      "show_text": "",
+      "web_selection": false,
+      "disable_jump_emote": false,
+      "enable_charged": false,
+      "enable_cm_biz_helper": false,
+      "preload_resources": null
+    }
+  }
+}

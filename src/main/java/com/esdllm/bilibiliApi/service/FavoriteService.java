@@ -1,24 +1,34 @@
 package com.esdllm.bilibiliApi.service;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import com.esdllm.bilibiliApi.endpoint.BilibiliEndpoint;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
+import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
-import com.esdllm.bilibiliApi.parse.ApiResponse;
-import com.esdllm.bilibiliApi.parse.ErrorMapper;
+import com.esdllm.bilibiliApi.model.data.pojo.content.FavResourceList;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * <b>收藏夹目录</b>数据服务（{@code Content} 门面的后端，B3.5 批 #6）。
+ * <b>收藏夹数据服务</b>（{@code Content} 门面的后端，B3.5 批 #6；B2 批另有扩项）。
  *
- * <p>📌 <b>本批只做"列出自己创建的收藏夹"</b>。夹内内容（{@code x/v3/fav/resource/list}）
- * 刻意不做：它对<b>私密</b>夹匿名会返回 {@code -403}，而那个 {@code -403} 是"资源权限不足"、
- * <b>不是</b>"缺 WBI 签名"（同一个码在本库有两种成因，见 {@code ErrorMapper}）——
- * 这种容易让人误判的接口不放进这一批。
+ * <p>📌 本服务覆盖三个端点，<b>它们门槛不同</b>，先看这张表再看方法：
+ * <table border="1">
+ *   <caption>三个收藏夹端点</caption>
+ *   <tr><th>方法 / 端点</th><th>门槛</th><th>备注</th></tr>
+ *   <tr><td>{@link #getCreatedFolders}({@code folder/created/list-all})</td>
+ *       <td>🔴 需凭据（B 形态）</td><td>"我创建的"夹目录</td></tr>
+ *   <tr><td>{@link #getFolderInfo}({@code folder/info})</td>
+ *       <td>⚠️ 看夹的可见性</td><td>公开夹匿名可读；含 {@code attr=1} 的夹匿名 {@code -403}</td></tr>
+ *   <tr><td>{@link #getResources}({@code resource/list})</td>
+ *       <td>⚠️ 同上</td><td>夹内内容，同样 {@code -403} 规则</td></tr>
+ * </table>
+ *
+ * <p>🔴 <b>{@code -403} 在本域有"两义"</b>：既可能是"缺 WBI 签名"，也可能是
+ * <b>"资源权限不足"（访问的是私密夹）</b>。本库在后一种情形下会把服务端的原话
+ * {@code 访问权限不足} 连同"这两种成因"的解释一起抛出去，见 {@link #favoriteFailure}。
  *
  * <p><b>异常语义</b>：只抛 {@link BilibiliException}（运行时），门面边界包装成 {@code IOException}。
  *
@@ -53,7 +63,7 @@ public class FavoriteService {
         String url = BilibiliEndpoint.favFolderListAllUrl + "?up_mid=" + upMid;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
                 BilibiliEndpoint.spaceFavlistReferer.formatted(String.valueOf(upMid)));
-        FavFolderList data = requireData(response, new TypeReference<>() {
+        FavFolderList data = ResponseParserSupport.requireData(response, new TypeReference<>() {
         }, "获取收藏夹目录");
         if (data.getList() == null || data.getList().isEmpty()) {
             throw new BilibiliException(0,
@@ -66,41 +76,124 @@ public class FavoriteService {
         return data;
     }
 
+    // ------------------------------------------------------------------ B2 收藏夹扩（2026-09-22 新增）
+
     /**
-     * HTTP 状态 → 反序列化 → 业务码 → 取 data。
+     * <b>取收藏夹详情</b>（{@code x/v3/fav/folder/info}，B2 批 #5）。
      *
-     * <p>与其它 Service 的同名私有方法一样是<b>刻意的拷贝</b>（理由见 {@code HistoryService}）。
+     * <p>⚠️ <b>门槛取决于夹本身</b>（2026-09-22 同一分钟实测）：
+     * <table border="1">
+     *   <caption>同一端点、同一时刻、只换 media_id（全匿名）</caption>
+     *   <tr><th>{@code media_id}</th><th>标题</th><th>{@code attr}</th><th>结果</th></tr>
+     *   <tr><td>3526698880</td><td>小雨绒Candy</td><td>2</td><td>{@code code=0}</td></tr>
+     *   <tr><td>1095405480</td><td>默认收藏夹</td><td>1</td><td><b>{@code -403 访问权限不足}</b></td></tr>
+     * </table>
+     * ⇒ 🔴 <b>别用 {@code attr} 反推公开性</b>（B3.5 批曾把方向写反，B2 已订正）：
+     * 判据是响应码。私密夹要用<b>本人</b>的凭据才读得到。
      *
-     * @param response 原始响应
-     * @param type     目标类型
-     * @param action   正在做的事
-     * @param <T>      data 类型
-     * @return 非 null 的 data
-     * @throws BilibiliException HTTP 非 2xx、响应无法解析、业务码非 0、或 data 为空
+     * <p>⚠️ 返回的 {@code id} 才是夹内查询要用的 {@code media_id}；{@code fid} 是另一套短 id。
+     *
+     * @param mediaId 夹 id（{@code list-all} 里那条的 {@code id}，<b>不是</b> {@code fid}）
+     * @return 夹详情，不可为 null
+     * @throws BilibiliException {@code mediaId} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0
+     *                           （含<b>私密夹的 {@code -403}</b>，消息里会说明两种成因）
      */
-    private static <T> T requireData(HttpResponse<String> response, TypeReference<ApiResponse<T>> type,
-                                     String action) {
-        BilibiliException httpError = ErrorMapper.forHttpStatus(response.getStatus(), action);
-        if (httpError != null) {
-            throw httpError;
+    public FavFolderInfo getFolderInfo(long mediaId) {
+        if (mediaId <= 0) {
+            throw new BilibiliException("media_id不能小于0");
         }
-        ApiResponse<T> parsed;
+        String url = BilibiliEndpoint.favFolderInfoUrl + "?media_id=" + mediaId;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.referer);
+        FavFolderInfo data;
         try {
-            parsed = JSON.parseObject(response.getBody(), type);
-        } catch (Exception e) {
-            throw new BilibiliException(0, action + "失败：HTTP " + response.getStatus()
-                    + " 的响应无法解析（前 120 字：" + brief(response.getBody()) + "）", "响应形状不符");
+            data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+            }, "获取收藏夹详情");
+        } catch (BilibiliException e) {
+            throw favoriteFailure("获取收藏夹详情", mediaId, e);
         }
-        return ResponseParserSupport.unwrap(parsed, action);
+        log.info("收藏夹详情 media_id={}：{}（attr={}，内容 {} 条）",
+                mediaId, data.getTitle(), data.getAttr(), data.getMedia_count());
+        return data;
     }
 
-    private static String brief(String text) {
-        if (text == null) {
-            return "";
+    /**
+     * <b>取收藏夹内容（一页）</b>（{@code x/v3/fav/resource/list}，B2 批 #6）。
+     *
+     * <p>门槛与 {@link #getFolderInfo} <b>完全相同</b>（实测两个端点对同一个夹的裁决一致）：
+     * 公开夹匿名可读，含 {@code attr=1} 的夹匿名 {@code -403}。
+     *
+     * <p>🔴 <b>"本页 0 条"与"夹里没有内容"是两件事</b>，所以这里加了一道交叉校验：
+     * 若 {@code info.media_count > 0} 却一条 {@code medias} 都没给，本方法<b>抛异常</b>。
+     * 反过来说，<b>{@code media_count=0} 的空夹是合法结果，不会抛</b> ——
+     * 与 {@link #getCreatedFolders} 那种"空列表一律报错"的处理刚好相反，
+     * 因为这里的空<b>能</b>由 {@code media_count} 佐证，而那里不能。
+     *
+     * <p>⚠️ 翻页靠 {@code pn}，默认每页 20 条（实测 {@code ps=20} 时正好给 20 条），
+     * 是否还有下一页看 {@code has_more}。
+     *
+     * <p>⚠️ 内容条目里 {@code season} / {@code ogv} 实测为 {@code null}（视频内容用不到），
+     * 形状未验证 —— 详见 {@code FavResourceList.Media}。
+     *
+     * @param mediaId 夹 id
+     * @param pn      页码（从 1 开始）；{@code ≤0} 时按 1
+     * @param ps      每页条数；{@code ≤0} 时按 20
+     * @return 一页内容（含夹信息 {@code info}），不可为 null
+     * @throws BilibiliException {@code mediaId} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0
+     *                           （含私密夹的 {@code -403}），或<b>夹里明明有内容却一条都没给</b>
+     */
+    public FavResourceList getResources(long mediaId, int pn, int ps) {
+        if (mediaId <= 0) {
+            throw new BilibiliException("media_id不能小于0");
         }
-        String oneLine = text.replace('\n', ' ');
-        return oneLine.length() <= 120 ? oneLine : oneLine.substring(0, 120) + "...";
+        String url = BilibiliEndpoint.favResourceListUrl + "?media_id=" + mediaId
+                + "&pn=" + Math.max(1, pn)
+                + "&ps=" + (ps <= 0 ? 20 : ps);
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.referer);
+        FavResourceList data;
+        try {
+            data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+            }, "获取收藏夹内容");
+        } catch (BilibiliException e) {
+            throw favoriteFailure("获取收藏夹内容", mediaId, e);
+        }
+
+        int got = data.getMedias() == null ? 0 : data.getMedias().size();
+        Integer declared = data.getInfo() == null ? null : data.getInfo().getMedia_count();
+        if (got == 0 && declared != null && declared > 0) {
+            throw new BilibiliException(0,
+                    "获取收藏夹内容失败：夹信息说有 " + declared + " 条，但本页一条都没给（media_id="
+                            + mediaId + "，pn=" + Math.max(1, pn) + "）",
+                    "两种可能：① pn 超出范围（该夹内容不足这么多页）；"
+                            + "② 响应形状变了。先换 pn=1 复验，再看原始响应的 data.medias");
+        }
+        log.info("收藏夹内容 media_id={} 第 {} 页：{} 条 / 共 {} 条（has_more={}）",
+                mediaId, Math.max(1, pn), got, declared, data.getHas_more());
+        return data;
     }
 
-    private FavoriteService() {}
+    /**
+     * 把收藏夹域的失败包装成"能分辨 {@code -403} 两种成因"的异常。
+     *
+     * <p>为什么单独立一个方法：{@code -403} 在本库是<b>两义码</b> ——
+     * 既可能是"缺 WBI 签名"，也可能是"资源权限不足"。这两个端点的失败<b>几乎总是后者</b>
+     * （实测服务端原话就是 {@code 访问权限不足}），而 {@code ErrorMapper} 的通用文案
+     * 不会替调用方把这个区分讲出来。所以这里补一句人名话。
+     *
+     * <p>⚠️ 只在 {@code -403} 时改写；其它码原样抛出，避免把通用错误掩盖成收藏夹专属文案。
+     */
+    private static BilibiliException favoriteFailure(String action, long mediaId, BilibiliException cause) {
+        if (cause.getCode() != -403) {
+            return cause;
+        }
+        return new BilibiliException(-403,
+                action + "失败：code=-403，" + cause.getDescription() + "（media_id=" + mediaId + "）",
+                "-403 有两种成因：① 缺 WBI 签名（本域不需要签名，所以基本不是这个）；"
+                        + "② 资源权限不足 —— 这个夹是私密的，匿名读不到，需要注入夹主人的凭据。"
+                        + "另注：夹的 attr 字段不能用来提前判断公开性，实测含 attr=1 的夹匿名为 -403");
+    }
+
+    private FavoriteService() {
+    }
 }

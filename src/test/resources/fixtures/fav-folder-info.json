@@ -1,0 +1,39 @@
+{
+  "code": 0,
+  "message": "OK",
+  "ttl": 1,
+  "data": {
+    "id": 3526698880,
+    "fid": 35266988,
+    "mid": 497078180,
+    "attr": 2,
+    "title": "小雨绒Candy",
+    "cover": "http://i0.hdslb.com/bfs/medialist/cover/b5dc7d07e7f6a69cf10177cf219adccb1d034387.jpg",
+    "upper": {
+      "mid": 497078180,
+      "name": "可可小绒猫",
+      "face": "https://i2.hdslb.com/bfs/face/f6015c4dae137ebdec169c0e01a1c1f130cbd298.jpg",
+      "followed": false,
+      "vip_type": 2,
+      "vip_statue": 1
+    },
+    "cover_type": 0,
+    "cnt_info": {
+      "collect": 0,
+      "play": 1,
+      "thumb_up": 0,
+      "share": 0
+    },
+    "type": 11,
+    "intro": "",
+    "ctime": 1742619602,
+    "mtime": 1742622269,
+    "state": 0,
+    "fav_state": 0,
+    "like_state": 0,
+    "media_count": 101,
+    "is_top": false,
+    "is_kid_playlist": false,
+    "kid_playlist_desc": ""
+  }
+}

@@ -1,6 +1,7 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
+import com.esdllm.bilibiliApi.model.data.pojo.search.HotSearch;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
 import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
@@ -109,5 +110,49 @@ public class Search {
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }
+    }
+
+    /**
+     * <b>取热搜榜</b>（{@code x/web-interface/search/square}，B2 批 #3）。
+     *
+     * <p>✅ <b>零门槛</b>：不需要凭据，也<b>不需要 WBI 签名</b>（2026-09-22 实测匿名
+     * {@code code=0}）。所以它<b>不走签名出口</b> —— 上面三个搜索方法走签名是"防服务端
+     * 哪天恢复强制签名"，而这个端点的响应里连签名相关字段都没有，给它签名只是白算一次。
+     *
+     * <p>🔴 <b>榜单在 {@code data.trending} 里，不是 {@code data} 本身</b>：
+     * <pre>{@code
+     * HotSearch hot = search.getHotSearch(10);
+     * for (HotSearch.Item item : hot.getTrending().getList()) {
+     *     System.out.println(item.getKeyword() + "  " + item.getHeat_score());
+     * }
+     * }</pre>
+     *
+     * <p>⚠️ {@code trending.trackid} 是<b>字符串</b>，实测值已超出 {@code long} 范围
+     * （{@code 12414231099029457647}）—— 别对它做数值运算。
+     *
+     * <p>⚠️ 条目里的 {@code icon} / {@code uri} / {@code goTo}（JSON 键是 {@code goto}，
+     * 因为它是 Java 保留字）<b>实测常为空串</b>，别当必填。
+     *
+     * @param limit 期望条数；{@code ≤0} 按 10。⚠️ 实测只验过 10，更大的值<b>未验证</b>
+     *              （服务端可能夹回自己的默认值），实际条数以 {@code getTrending().getList().size()} 为准
+     * @return 热搜榜，不可为 null
+     * @throws IOException 网络失败、HTTP 非 2xx、业务码非 0，或 {@code code=0} 但榜单为空
+     */
+    public HotSearch getHotSearch(int limit) throws IOException {
+        try {
+            return SearchService.INSTANCE.getHotSearch(limit);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取热搜榜</b>（默认 10 条）—— 等价于 {@link #getHotSearch(int) getHotSearch(10)}。
+     *
+     * @return 热搜榜，不可为 null
+     * @throws IOException 同 {@link #getHotSearch(int)}
+     */
+    public HotSearch getHotSearch() throws IOException {
+        return getHotSearch(SearchService.DEFAULT_HOT_LIMIT);
     }
 }

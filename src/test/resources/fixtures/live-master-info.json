@@ -1,0 +1,42 @@
+{
+ "code": 0,
+ "msg": "",
+ "message": "",
+ "data": {
+  "info": {
+   "uid": 2,
+   "uname": "碧诗",
+   "face": "https://i2.hdslb.com/bfs/face/ef0457addb24141e15dfac6fbf45293ccf1e32ab.jpg",
+   "official_verify": {
+    "type": 0,
+    "desc": "bilibili个人认证:bilibili创始人（站长）"
+   },
+   "gender": 1
+  },
+  "exp": {
+   "master_level": {
+    "level": 30,
+    "color": 10512625,
+    "current": [
+     2870000,
+     11883810
+    ],
+    "next": [
+     3730000,
+     15613810
+    ]
+   }
+  },
+  "follower_num": 1429244,
+  "room_id": 1024,
+  "medal_name": "逸国",
+  "glory_count": 0,
+  "pendant": "",
+  "link_group_num": 0,
+  "room_news": {
+   "content": "",
+   "ctime": "",
+   "ctime_text": ""
+  }
+ }
+}

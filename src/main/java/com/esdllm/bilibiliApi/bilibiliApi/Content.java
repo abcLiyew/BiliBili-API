@@ -1,7 +1,9 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
+import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
+import com.esdllm.bilibiliApi.model.data.pojo.content.FavResourceList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ToViewList;
 import com.esdllm.bilibiliApi.service.FavoriteService;
@@ -18,9 +20,14 @@ import java.io.IOException;
  * 给每个建一个门面只会增加调用方的认知成本。
  * <b>门面数量 = 调用方认知成本</b>，这个门面就是按这一条原则合并出来的。
  *
- * <p>⚠️ <b>它不是"内容"的万能入口</b>：夹内内容（{@code fav/resource/list}）、专栏正文、
- * 弹幕、番剧都不在这里（前者在 B4 且对私密夹会 {@code -403}，后几项在别的批次）。
- * 名字宽泛是合并的代价，边界靠这句话与每个方法的 javadoc 划清。
+ * <p>⚠️ <b>它不是"内容"的万能入口</b>：专栏正文、弹幕、番剧都不在这里（弹幕属 {@code Danmaku} 门面，
+ * 番剧在别的批次）。名字宽泛是合并的代价，边界靠这句话与每个方法的 javadoc 划清。
+ *
+ * <p>🆕 <b>B2 批（2026-09-22）补了两项</b>：{@link #getFolderInfo(long)} 与
+ * {@link #getResources(long, int, int)}（夹内内容）。注意<b>这两项的门槛与上面三项不同</b> ——
+ * 上面三项<b>全部真需登录</b>，而夹详情/夹内容<b>取决于夹的可见性</b>：
+ * 公开夹匿名就能读，含 {@code attr=1} 的夹（如"默认收藏夹"）匿名会拿到
+ * {@code -403 访问权限不足}。详见下面那张对照表（{@link #getFolderInfo(long)}）。
  *
  * <p><b>🔴 本门面所有方法都依赖调用方提供的有效凭据</b>（三者实测全部<b>真需登录</b>）：
  * 未注入凭据时会拿到 {@code -101 账号未登录}（{@link #getWatchHistory} / {@link #getToView}），
@@ -124,10 +131,12 @@ public class Content {
      * 而不是安静地返回一个空目录（那会被读成"此人没有收藏夹"，与"我没带凭据"无法区分）。
      *
      * <p>⚠️ 取到的 {@code list[].id} 才是夹内内容要用的 {@code media_id}；{@code fid} 是另一套短 id，
-     * 混用会查不到。{@code attr=2} 表示私密夹（后续查内容时权限会收紧）。
+     * 混用会查不到。
      *
-     * <p>⚠️ 夹内内容（{@code fav/resource/list}）<b>本批不做</b>：它对私密夹匿名会 {@code -403}，
-     * 而那个 {@code -403} 是"资源权限不足"不是"缺签名"，容易误判 —— 单独排期。
+     * <p>⚠️ <b>{@code attr} 不能用来提前判断公开性</b>（B2 批已订正，B3.5 曾写反）：实测含
+     * {@code attr=1} 的夹（"默认收藏夹"）匿名访问夹详情/夹内容会 {@code -403}，
+     * {@code attr=2} 的那个却能匿名读。判据是响应码，不是这个字段。
+     * 夹内内容见 {@link #getResources(long, int, int)}。
      *
      * @param upMid 目标用户 mid（实测只有本人的 mid 能给到有效数据）
      * @return 收藏夹目录，不可为 null
@@ -137,6 +146,70 @@ public class Content {
     public FavFolderList getFavoriteFolders(long upMid) throws IOException {
         try {
             return FavoriteService.INSTANCE.getCreatedFolders(upMid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取收藏夹详情</b>（{@code x/v3/fav/folder/info}，B2 批 #5）。
+     *
+     * <p>⚠️ <b>门槛取决于夹本身 —— 与本门面另外三个方法不同，它不是"一律需登录"</b>
+     * （2026-09-22 同一分钟实测，全匿名）：
+     * <table border="1">
+     *   <caption>同一端点、只换 media_id</caption>
+     *   <tr><th>{@code media_id}</th><th>标题</th><th>{@code attr}</th><th>结果</th></tr>
+     *   <tr><td>3526698880</td><td>小雨绒Candy</td><td>2</td><td>{@code code=0}</td></tr>
+     *   <tr><td>1095405480</td><td>默认收藏夹</td><td>1</td><td><b>{@code -403 访问权限不足}</b></td></tr>
+     * </table>
+     * ⇒ 🔴 <b>别用 {@code attr} 反推公开性</b>（这与 {@link #getFavoriteFolders} 上的旧注相反，
+     * B2 批已订正）：只含低位 {@code 1} 的夹匿名读不到，但"不含 {@code 1}"<b>不等于</b>公开。
+     * 判据是响应码本身。
+     *
+     * <p>🔴 <b>{@code -403} 在本库是两义码</b>：既可能是"缺 WBI 签名"，也可能是
+     * <b>"资源权限不足"</b>。这个端点<b>根本不需要签名</b>，所以这里的 {@code -403}
+     * 几乎一定是后者 —— 异常消息里会把两种成因都写出来，不用再去翻文档。
+     *
+     * @param mediaId 夹 id（{@link #getFavoriteFolders} 里那条的 {@code id}，<b>不是</b> {@code fid}）
+     * @return 夹详情，不可为 null
+     * @throws IOException {@code mediaId} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0
+     *                     （含<b>私密夹的 {@code -403}</b>，消息里会说明两种成因）
+     */
+    public FavFolderInfo getFolderInfo(long mediaId) throws IOException {
+        try {
+            return FavoriteService.INSTANCE.getFolderInfo(mediaId);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取收藏夹内容（一页）</b>（{@code x/v3/fav/resource/list}，B2 批 #6）。
+     *
+     * <p>门槛与 {@link #getFolderInfo(long)} <b>完全一致</b>（实测两个端点对同一个夹的裁决相同）：
+     * 公开夹匿名可读，含 {@code attr=1} 的夹匿名 {@code -403}。
+     *
+     * <p>🔴 <b>"本页 0 条"与"夹是空的"不是一回事</b>：本方法会拿 {@code info.media_count}
+     * 做交叉校验 —— 夹里明明有内容却一条都没给会<b>抛异常</b>（多半是 {@code pn} 越界或形状变了）；
+     * 而 {@code media_count=0} 的空夹返回空列表，<b>不抛</b>。
+     *
+     * <p>⚠️ 翻页用 {@code pn}（每页默认 20 条，实测正好给 20 条），是否还有下一页看
+     * {@code result.getHas_more()}。
+     *
+     * <p>⚠️ 条目里 {@code season} / {@code ogv} 实测为 {@code null}（视频内容用不到），
+     * 其形状<b>未验证</b>；{@code id} 是 {@code aid}、{@code bv_id} 与 {@code bvid} 同值，
+     * 详见 {@code FavResourceList.Media}。
+     *
+     * @param mediaId 夹 id
+     * @param pn      页码（从 1 开始）；{@code ≤0} 时按 1
+     * @param ps      每页条数；{@code ≤0} 时按 20
+     * @return 一页内容（含夹信息 {@code info}），不可为 null
+     * @throws IOException {@code mediaId} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0
+     *                     （含私密夹的 {@code -403}），或<b>夹里明明有内容却一条都没给</b>
+     */
+    public FavResourceList getResources(long mediaId, int pn, int ps) throws IOException {
+        try {
+            return FavoriteService.INSTANCE.getResources(mediaId, pn, ps);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

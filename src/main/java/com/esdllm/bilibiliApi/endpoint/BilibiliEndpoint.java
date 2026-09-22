@@ -587,6 +587,240 @@ public class BilibiliEndpoint {
     /** 收藏夹页 Referer 模板（{@code %s} = mid）—— 对应空间页的"收藏夹"标签。 */
     public static final String spaceFavlistReferer = "https://space.bilibili.com/%s/favlist";
 
+    // ---------------------------------------------------------------- B1 匿名高频域（2026-09-22 新增）
+
+    /**
+     * {@code x/web-interface/view/detail} —— <b>视频一站式</b>（B1 批 #1，一个端点顶四个需求）。
+     *
+     * <p>实测响应（2026-09-22，本机，匿名）有 <b>16 个顶层键</b>，其中四项直接满足 B1 的清单：
+     * <table border="1">
+     *   <caption>一次出站能拿到什么</caption>
+     *   <tr><th>顶层键</th><th>实测规模</th><th>顶掉 B1 的哪一项</th></tr>
+     *   <tr><td>{@code View}</td><td>49 键，<b>内含完整 {@code stat}</b>（13 项）</td>
+     *       <td>#1 视频详情 <b>+ #5 状态数</b>（后者因此是 0 次出站）</td></tr>
+     *   <tr><td>{@code Tags}</td><td>11 条</td><td>#2 视频标签</td></tr>
+     *   <tr><td>{@code Related}</td><td>40 条</td><td>#3 相关推荐</td></tr>
+     *   <tr><td>{@code Card}</td><td>7 键（含 {@code follower}/{@code archive_count}/{@code like_num}）</td>
+     *       <td>UP 主概览 —— ⚠️ 与 {@link #cardBaseUrl} <b>字段重叠</b>，已有名片的调用方优先复用它</td></tr>
+     * </table>
+     * 另有 {@code Reply}（<b>只有一条热评</b>）、{@code participle}（分词）、{@code hot_share} /
+     * {@code emergency} / {@code view_addit} / {@code module_ctrl} / {@code replace_recommend} 等；
+     * {@code Spec} / {@code elec} / {@code guide} / {@code query_tags} 本次为 {@code null}
+     * —— <b>可空，别当必填字段设计模型</b>。
+     *
+     * <p>🔴 <b>但 {@code Reply} 不能顶掉 B1 #6（评论列表）</b>：实测它只有 {@code page} 与
+     * {@code replies}（<b>x1，仅一条热评</b>）。完整评论必须另调 {@link #replyUrl}。
+     * 把这条记下来是因为"一站式"很容易被读成"评论也包了"，那样交付的会是"一条评论的评论列表"。
+     *
+     * <p>匿名可用（本次实测 {@code code=0}）。参数：{@code bvid} 或 {@code aid} 二选一。
+     */
+    public static final String viewDetailUrl = "https://api.bilibili.com/x/web-interface/view/detail";
+
+    /**
+     * {@code x/player/online/total} —— <b>在线观看数</b>（B1 批 #4）。
+     *
+     * <p>匿名可用（实测 {@code code=0}）—— 尽管文档把它标成"APP 端、需签名"。又一个
+     * "文档 vs 实测"分歧。
+     *
+     * <p>⚠️ <b>{@code total} 与 {@code count} 实测是字符串数字</b>（{@code "690"} / {@code "215"}），
+     * 不是 JSON number。模型用数值类型接（fastjson 会转），但<b>别在别处对这两个字段做字符串比较</b>。
+     *
+     * <p>参数：{@code bvid} + {@code cid}（{@code cid} 必需）。
+     */
+    public static final String onlineTotalUrl = "https://api.bilibili.com/x/player/online/total";
+
+    /**
+     * {@code x/v2/reply} —— <b>评论列表</b>（B1 批 #6）。
+     *
+     * <p>🔴 <b>{@code oid} 是 {@code aid}，不是 {@code bvid}</b>。门面收 {@code bvid} 时必须先经
+     * {@code view} 换算 —— 直接把 {@code BV…} 丢进 {@code oid} 只会得到空列表（不报错）。
+     *
+     * <p>匿名可用（实测 {@code code=0}，{@code replies=3}）。文档标 {@code Wbi}，实测不需要签名。
+     *
+     * <p>参数：{@code type=1}（视频）/ {@code oid}（aid）/ {@code pn}（页码，从 1 起）/
+     * {@code ps}（每页条数）/ {@code sort}（{@code 0}=按时间、{@code 1}=按点赞、{@code 2}=按热度）。
+     */
+    public static final String replyUrl = "https://api.bilibili.com/x/v2/reply";
+
+    /**
+     * {@code x/relation/stat} —— <b>用户关系数</b>（B1 批 #9）：关注数 / 粉丝数。
+     *
+     * <p>✅ <b>匿名可用且不需要任何签名</b>（实测 {@code code=0}，{@code follower=1429244}）。
+     * 与 B3.5 的 {@link #relationFollowersUrl}（粉丝<b>列表</b>，需登录）是两回事 ——
+     * 本条只给<b>数量</b>，所以匿名读得到；列表版匿名是 {@code -101}。
+     *
+     * <p>参数：{@code vmid}。
+     */
+    public static final String relationStatUrl = "https://api.bilibili.com/x/relation/stat";
+
+    /**
+     * {@code x/web-interface/ranking/v2} —— <b>排行榜</b>（B1 批 #11）。
+     *
+     * <p>🔴 <b>Referer 决定成败，且只有"站根"这一种会挂 —— 2026-09-22 实测，两轮共 4 次复现</b>：
+     * <table border="1">
+     *   <caption>同一端点、同一枚 Cookie、同一分钟，<b>只改 Referer</b></caption>
+     *   <tr><th>Referer</th><th>{@code code}</th></tr>
+     *   <tr><td>{@code https://www.bilibili.com/}（站根，<b>本库其它端点的默认值</b>）</td>
+     *       <td><b>{@code -352 风控校验失败}</b></td></tr>
+     *   <tr><td>{@code https://www.bilibili.com/v/popular/rank/all}（排行榜页）</td><td>{@code code=0}，{@code list=95}</td></tr>
+     *   <tr><td>不带 Referer</td><td>{@code code=0}</td></tr>
+     *   <tr><td>{@code https://space.bilibili.com/2}</td><td>{@code code=0}</td></tr>
+     * </table>
+     * ⇒ 不是"必须带排行榜页 Referer"，而是<b>"别带站根"</b>。库内因此固定用
+     * {@link #rankingReferer}，而不是那个全库默认的 {@link #referer}。
+     *
+     * <p>⚠️ <b>这条还顺手解释了一次真实的排期事故</b>：{@code tools/endpoint-preflight.py} 的
+     * bootstrap 正好用站根 Referer 打本端点，拿到 {@code -352} 后 {@code bvid} 为空，
+     * 于是后面<b>整段 B1 全变成 {@code -400}（参数是 {@code None}）</b> —— 看起来像"端点全挂了"，
+     * 实际只是第一个请求的 Referer 不对。<b>这就是那条"阳性对照"纪律的价值</b>：
+     * 脚本自己报了 {@code POSITIVE CONTROL FAILED}，才没把这批 {@code -400} 当成结论。
+     *
+     * <p>参数：{@code rid}（分区 id，{@code 0}=全站、{@code 1}=动画…）/ {@code type}（{@code all}）。
+     */
+    public static final String rankingUrl = "https://api.bilibili.com/x/web-interface/ranking/v2";
+
+    /**
+     * {@code x/web-interface/popular} —— <b>热门视频</b>（B1 批 #12）。
+     *
+     * <p>匿名可用（实测 {@code code=0}，{@code list} 非空；<b>站根 Referer 即可，不需要专属 Referer</b>）。
+     * 与 {@link #rankingUrl} 同一分钟实测对照过，只有 ranking 对站根敏感。
+     *
+     * <p>⚠️ {@code data} 只有 {@code list} 与 {@code no_more} 两个键：<b>没有 {@code page}</b>，
+     * 所以"翻到第几页了"只能靠调用方自己记 {@code pn}。
+     *
+     * <p>参数：{@code ps}（每页条数）/ {@code pn}（页码）。
+     */
+    public static final String popularUrl = "https://api.bilibili.com/x/web-interface/popular";
+
+    /** 排行榜页 Referer —— {@link #rankingUrl} <b>必须</b>用它，不能用站根（原因见该常量的实测表）。 */
+    public static final String rankingReferer = "https://www.bilibili.com/v/popular/rank/all";
+
+    /**
+     * {@code room/v1/Room/playUrl} —— <b>直播流地址</b>（B1 批 #7，零门槛高价值）。
+     *
+     * <p>域名是 {@code api.live.bilibili.com} —— 与视频域的 {@code api.bilibili.com} <b>是两套</b>，
+     * 拼相对路径时会踩空（与本库 {@link #liveBaseUrl} 同域）。
+     *
+     * <p>匿名可用（实测 {@code code=0}，{@code durl=2} 两条 CDN 地址）。参数：
+     * {@code cid}（<b>直播间号，不是视频 cid</b>）/ {@code qn}（清晰度；实测 {@code 10000}=原画）/
+     * {@code platform=web}。
+     *
+     * <p>⚠️ {@code accept_quality} 实测是<b>字符串</b>数组（{@code ["4"]}），不是数字数组。
+     */
+    public static final String liveStreamUrl = "https://api.live.bilibili.com/room/v1/Room/playUrl";
+
+    /**
+     * {@code live_user/v1/Master/info} —— <b>主播信息</b>（B1 批 #8）。
+     *
+     * <p>匿名可用（实测 {@code code=0}）。参数：{@code uid}（<b>主播 uid，不是房间号</b>）。
+     *
+     * <p>它把"这人是谁"和"这人在哪个房间"一次给全：{@code info}（昵称/头像/认证/性别）、
+     * {@code room_id}、{@code follower_num}、{@code medal_name}、{@code exp.master_level}。
+     * 想从房间号出发时先用 {@link #liveBaseUrl} 拿 {@code uid}，或用本端点返回的 {@code room_id} 反向校验。
+     */
+    public static final String liveMasterInfoUrl = "https://api.live.bilibili.com/live_user/v1/Master/info";
+
+    /**
+     * 直播域 Referer。
+     *
+     * <p>{@link #liveStreamUrl} / {@link #liveMasterInfoUrl} 都是"在直播间页面里发起的请求"，
+     * 带 {@code https://live.bilibili.com/} 比带 {@code api.bilibili.com} 那个站根更像真实前端。
+     * 实测两者带站根也能通，但这里按"与真实客户端形状一致"的原则统一到直播域。
+     */
+    public static final String liveReferer = "https://live.bilibili.com/";
+
+    /**
+     * {@code x/v1/dm/list.so} —— <b>弹幕（XML）</b>（B2 批 #1）。
+     *
+     * <p>🔴 <b>这是全库唯一一个"响应不是 JSON"的端点</b>，两条特殊之处都必须写进调用链：
+     * <ul>
+     *   <li>响应体是 <b>{@code Content-Encoding: deflate}</b> 的 <b>XML</b>
+     *       （2026-09-22 实测：原始 171468 字节、{@code enc=deflate}；解压后形如
+     *       {@code <i><d p="出现时间,模式,字号,颜色,时间戳,池,用户hash,行号">文本</d>…</i>}）。
+     *       <b>别用 JSON 解析器接它</b> —— 会得到"HTTP 200 但解析失败"这种最难查的形态。</li>
+     *   <li>⚠️ <b>{@code oid} 是 {@code cid}</b> —— 既不是 {@code aid} 也不是 {@code bvid}。
+     *       传错值服务端回 <b>HTTP 400</b>（不是业务码），看着像"端点挂了"。
+     *       三个 id 的用途务必分清：{@code bvid} 给视频详情、{@code aid} 给评论、{@code cid} 给弹幕。</li>
+     * </ul>
+     *
+     * <p>匿名可用（2026-09-22 实测 HTTP 200）。参数：{@code oid}（cid）。
+     */
+    public static final String dmListUrl = "https://api.bilibili.com/x/v1/dm/list.so";
+
+    /**
+     * {@code x/web-interface/search/square} —— <b>热搜榜</b>（B2 批 #3）。
+     *
+     * <p>匿名可用（2026-09-22 实测 {@code code=0}）。参数：{@code limit}。
+     *
+     * <p>⚠️ <b>形状坑：{@code data.trending} 是「对象」不是数组</b>，榜单在
+     * <b>{@code data.trending.list}</b> 里（2026-09-22 实测 {@code trending.list=10}）。
+     * "热搜列表"这个名字很容易让人直接对 {@code data.trending} 做遍历 —— 那样会当场拿到
+     * 一个 {@code JSONObject} 而不是列表。判长度的口径也因此要往里挖一层。
+     */
+    public static final String searchSquareUrl = "https://api.bilibili.com/x/web-interface/search/square";
+
+    /**
+     * {@code x/v2/reply/reply} —— <b>二级评论（楼中楼）</b>（B2 批 #4）。
+     *
+     * <p>匿名可用（2026-09-22 实测 {@code code=0}、{@code replies=9}）。
+     * 参数：{@code type=1} / {@code oid}（<b>aid</b>，与一级评论同口径）/ {@code root}（主评论的
+     * {@code rpid}）/ {@code pn}（页码）/ {@code ps}。
+     *
+     * <p>⚠️ 与 {@link #replyUrl} 的形状差异（两处，实测）：
+     * ① 这里 {@code data} 的键是 {@code ['config','control','page','replies','root','upper']}
+     * —— <b>没有一级评论那些 {@code assist}/{@code blacklist}/{@code mode}/{@code folder}</b>；
+     * ② 它多一个 {@code upper}（楼主信息），少一个"置顶"概念。
+     * ⇒ <b>两级的 POJO 不能互相套用</b>，共用的只有 {@code Comment} 本身。
+     */
+    public static final String replyReplyUrl = "https://api.bilibili.com/x/v2/reply/reply";
+
+    /**
+     * {@code x/v3/fav/folder/info} —— <b>收藏夹信息（单个）</b>（B2 批 #5）。
+     *
+     * <p>参数：{@code media_id}（收藏夹 id，形如 {@code 1095405480}）。
+     *
+     * <p>🔴 <b>公开夹匿名可读、私密夹要凭据</b>：私密夹匿名访问返回
+     * {@code -403 访问权限不足}（2026-09-22 复验）。⚠️ 这个 {@code -403} 是<b>资源权限</b>，
+     * 不是"缺 WBI 签名" —— 本库的 {@code -403} 有两种成因，别一律当签名问题（见 {@code ErrorMapper}）。
+     *
+     * <p>⚠️ {@code data} 可能是 <b>{@code null}</b>（{@code media_id} 不存在时，
+     * {@code code=0} 但 {@code data=null}）—— 这是"没有这个收藏夹"，不是"没带凭据"。
+     */
+    public static final String favFolderInfoUrl = "https://api.bilibili.com/x/v3/fav/folder/info";
+
+    /**
+     * {@code x/v3/fav/resource/list} —— <b>收藏夹内容</b>（B2 批 #6）。
+     *
+     * <p>参数：{@code media_id} / {@code pn} / {@code ps} / {@code keyword} / {@code order}
+     * （{@code mtime} 收藏时间 / {@code view} 播放量）。
+     *
+     * <p>门槛与权限同 {@link #favFolderInfoUrl}：<b>公开夹匿名可读，私密夹 {@code -403}</b>。
+     */
+    public static final String favResourceListUrl = "https://api.bilibili.com/x/v3/fav/resource/list";
+
+    /**
+     * {@code x/emote/user/panel/web} —— <b>表情包面板</b>（B2 批 #7）。
+     *
+     * <p>匿名可用（2026-09-22 实测 {@code code=0}，键 {@code ['packages','setting']}）。
+     * 参数：{@code business}（{@code reply}=评论区 / {@code dynamic}=动态区）。
+     *
+     * <p>⚠️ {@code data.packages} 未必是数组 —— 实测它<b>既不是 list 也不是 dict 的可遍历形态</b>，
+     * 所以按 {@code packages} 直接遍历是不安全的。取值前先判类型（形状见 {@code EmotePanel} 的说明）。
+     */
+    public static final String emotePanelUrl = "https://api.bilibili.com/x/emote/user/panel/web";
+
+    /**
+     * {@code room/v1/Area/getList} —— <b>直播分区列表</b>（B2 批 #8）。
+     *
+     * <p>域名是 {@code api.live.bilibili.com} —— 与视频域的 {@code api.bilibili.com}
+     * <b>是两套</b>，拼相对路径会踩空（与 {@link #liveBaseUrl} 同域）。
+     *
+     * <p>匿名可用（2026-09-22 实测 {@code code=0}，{@code data} 是 <b>12 个分区对象的数组</b>，
+     * 注意本端点的列表<b>在 {@code data} 顶层</b>而不是 {@code data.list}）。
+     * 参数：{@code parent_area_id}（父分区 id）。
+     */
+    public static final String liveAreaListUrl = "https://api.live.bilibili.com/room/v1/Area/getList";
+
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**
      * @deprecated 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线

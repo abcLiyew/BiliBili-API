@@ -6,37 +6,69 @@
 
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.29-beta</version>
+    <version>0.9.30-beta</version>
     <name>bilibili-api</name>
     <description>哔哩哔哩（Bilibili）常用数据接口的 Java 客户端：用户名片、视频、动态、直播间、短链解析、搜索、用户空间与 AI 视频摘要，并支持登录（扫码 / 密码 / 短信）与 WBI 签名。</description>
 
     <properties>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <java.version>17</java.version>
+        <maven.surefire.plugin.version>3.5.4</maven.surefire.plugin.version>
+        <!-- 编译目标：release 已同时约束语法版本与字节码版本，无需再写 source/target -->
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <!-- 保留方法形参名（反射可获取真实参数名） -->
+        <maven.compiler.parameters>true</maven.compiler.parameters>
+        <!-- 生成调试信息：异常堆栈可显示源码行号 -->
+        <maven.compiler.debug>true</maven.compiler.debug>
+        <!-- 输出告警：deprecation 用于提示过时 API，warnings 覆盖 unchecked 等其余告警 -->
+        <maven.compiler.showDeprecation>true</maven.compiler.showDeprecation>
+        <maven.compiler.showWarnings>true</maven.compiler.showWarnings>
 
+
+        <!-- 测试：junit-jupiter -->
         <junit.version>5.11.4</junit.version>
+        <!-- Lombok 仅在编译期生成代码，运行期不需要，声明为 provided 避免传递给下游 -->
         <lombok.version>1.18.42</lombok.version>
-    </properties>
+        <!-- JSON 序列化 -->
+        <fastjson.version>1.2.83</fastjson.version>
+        <!-- HTTP 请求 -->
+        <unirest-java.version>3.13.2</unirest-java.version>
+        <httpclient.version>4.5.14</httpclient.version>
+        <!-- 日志 -->
+        <slf4j.version>2.0.16</slf4j.version>
+        <logback.version>1.5.12</logback.version>
+        <!-- 测试：二维码渲染 -->
+        <qrcode.version>3.3.3</qrcode.version>
 
+        <!-- surefire 的 argLine 追加位：默认空，命令行可覆盖。
+             🔴 这里**必须留一个空定义**，否则未传参时 ${argLine} 会以字面量形式进入 JVM 参数。
+             存在的理由：`smoke/*` 测试全部靠 `-Dbili.smoke=true` 开关，而开关只能通过
+             forked JVM 的系统属性传进去（见下面 surefire 的 argLine）。
+             2026-09-22 之前 pom 把 argLine 写死成 `-Dfile.encoding=UTF-8`（**没有引用本属性**），
+             于是命令行 `-DargLine=-Dbili.smoke=true` 被静默丢弃 ——
+             **所有 smoke 测试的"跑法"注释都因此从未真正生效**。 -->
+        <argLine></argLine>
+    </properties>
     <dependencies>
         <!-- JSON 序列化 -->
         <dependency>
             <groupId>com.alibaba</groupId>
             <artifactId>fastjson</artifactId>
-            <version>1.2.83</version>
+            <version>${fastjson.version}</version>
         </dependency>
 
         <!-- HTTP 请求 -->
         <dependency>
             <groupId>com.konghq</groupId>
             <artifactId>unirest-java</artifactId>
-            <version>3.13.2</version>
+            <version>${unirest-java.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.5.14</version>
+            <version>${httpclient.version}</version>
         </dependency>
 
         <!-- Lombok 仅在编译期生成代码，运行期不需要，声明为 provided 避免传递给下游 -->
@@ -51,12 +83,12 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
-            <version>2.0.16</version>
+            <version>${slf4j.version}</version>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.5.12</version>
+            <version>${logback.version}</version>
         </dependency>
 
         <!-- 测试：junit-jupiter 聚合包同时提供 api / params / engine。
@@ -75,7 +107,7 @@
         <dependency>
             <groupId>com.google.zxing</groupId>
             <artifactId>core</artifactId>
-            <version>3.3.3</version>
+            <version>${qrcode.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -85,7 +117,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
+                <version>${maven.compiler.plugin.version}</version>
                 <configuration>
                     <!-- 显式声明注解处理器路径：JDK 23 起 javac 默认不再从 classpath 自动发现处理器，
                          缺少这段配置会让 Lombok 完全失效，编译时报大量“找不到符号” -->
@@ -101,7 +133,12 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.5.4</version>
+                <version>${maven.surefire.plugin.version}</version>
+                <configuration>
+                    <!-- ${argLine} 是命令行的注入点（默认空，见 <properties>）。
+                         写死不引用它，会让 `mvn test -DargLine=-Dbili.smoke=true` 静默失效。 -->
+                    <argLine>${argLine} -Dfile.encoding=UTF-8</argLine>
+                </configuration>
             </plugin>
         </plugins>
     </build>

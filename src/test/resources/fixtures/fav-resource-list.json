@@ -1,0 +1,119 @@
+{
+  "code": 0,
+  "message": "OK",
+  "ttl": 1,
+  "data": {
+    "info": {
+      "id": 3526698880,
+      "fid": 35266988,
+      "mid": 497078180,
+      "attr": 2,
+      "title": "小雨绒Candy",
+      "cover": "http://i0.hdslb.com/bfs/medialist/cover/b5dc7d07e7f6a69cf10177cf219adccb1d034387.jpg",
+      "upper": {
+        "mid": 497078180,
+        "name": "可可小绒猫",
+        "face": "https://i2.hdslb.com/bfs/face/f6015c4dae137ebdec169c0e01a1c1f130cbd298.jpg",
+        "followed": false,
+        "vip_type": 2,
+        "vip_statue": 1
+      },
+      "cover_type": 0,
+      "cnt_info": {
+        "collect": 0,
+        "play": 1,
+        "thumb_up": 0,
+        "share": 0
+      },
+      "type": 11,
+      "intro": "",
+      "ctime": 1742619602,
+      "mtime": 1742622269,
+      "state": 0,
+      "fav_state": 0,
+      "like_state": 0,
+      "media_count": 101,
+      "is_top": false,
+      "is_kid_playlist": false,
+      "kid_playlist_desc": ""
+    },
+    "medias": [
+      {
+        "id": 117283494035779,
+        "type": 2,
+        "title": "甜嗓翻唱『执迷不悟』所以会忙忙碌碌～",
+        "cover": "http://i2.hdslb.com/bfs/archive/92b670a62e1801a12a9a536fef8d71976d8664f1.jpg",
+        "intro": "-",
+        "page": 1,
+        "duration": 33,
+        "upper": {
+          "mid": 3546774476163227,
+          "name": "小雨绒Candy",
+          "face": "https://i2.hdslb.com/bfs/face/0fe048b384f258575101221c64953210fb470c9f.jpg",
+          "jump_link": ""
+        },
+        "attr": 0,
+        "cnt_info": {
+          "collect": 11,
+          "play": 306,
+          "danmaku": 0,
+          "vt": 0,
+          "play_switch": 0,
+          "reply": 0,
+          "view_text_1": "306"
+        },
+        "link": "bilibili://video/117283494035779",
+        "ctime": 1789604172,
+        "pubtime": 1789604171,
+        "fav_time": 1789618622,
+        "bv_id": "BV1mpeK6nEDK",
+        "bvid": "BV1mpeK6nEDK",
+        "season": null,
+        "ogv": null,
+        "ugc": {
+          "first_cid": 41958378053
+        },
+        "media_list_link": "bilibili://music/playlist/playpage/4023776980?page_type=3&oid=117283494035779&otype=2"
+      },
+      {
+        "id": 116791502179245,
+        "type": 2,
+        "title": "如果我！和你的猫咪一起掉进水里",
+        "cover": "http://i0.hdslb.com/bfs/archive/310babadf1807d4ad3c9d3e23167ac09dca14e93.jpg",
+        "intro": "",
+        "page": 1,
+        "duration": 27,
+        "upper": {
+          "mid": 3546774476163227,
+          "name": "小雨绒Candy",
+          "face": "https://i2.hdslb.com/bfs/face/0fe048b384f258575101221c64953210fb470c9f.jpg",
+          "jump_link": ""
+        },
+        "attr": 0,
+        "cnt_info": {
+          "collect": 15,
+          "play": 613,
+          "danmaku": 2,
+          "vt": 0,
+          "play_switch": 0,
+          "reply": 0,
+          "view_text_1": "613"
+        },
+        "link": "bilibili://video/116791502179245",
+        "ctime": 1782097110,
+        "pubtime": 1782097110,
+        "fav_time": 1782288242,
+        "bv_id": "BV1n57w6pEkG",
+        "bvid": "BV1n57w6pEkG",
+        "season": null,
+        "ogv": null,
+        "ugc": {
+          "first_cid": 39302792967
+        },
+        "media_list_link": "bilibili://music/playlist/playpage/4023776980?page_type=3&oid=116791502179245&otype=2"
+      }
+    ],
+    "has_more": true,
+    "ttl": 1790057068
+  }
+}
