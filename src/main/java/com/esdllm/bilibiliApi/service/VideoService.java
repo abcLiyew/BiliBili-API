@@ -380,6 +380,40 @@ public class VideoService {
         return data;
     }
 
+    // ------------------------------------------------------------------ B5 批（2026-09-23）
+
+    /**
+     * <b>取笔记入口是否被禁</b>（{@code x/note/is_forbid}，B5 批）。
+     *
+     * <p>✅ <b>匿名可用、不需签名</b>；匿名与带凭据<b>形状完全相同</b>（2026-09-23 实测）。
+     *
+     * <p>🔴 <b>它不校验 {@code aid} 是否存在 —— 这是本方法最该记住的一条。</b>
+     * 实测 {@code aid=1}（不存在的稿件）返回的仍是 {@code code=0} + 一个布尔
+     * ⇒ <b>调用方不能拿"调用成功"当"这个稿件存在"的证明</b>。
+     * 同批对照：同一个 {@code aid=1} 在 {@code web-interface/view} 上是 {@code 62012}
+     * —— 想在取本值之前确认稿件有效，请自己先打一次 view。
+     *
+     * <p>⚠️ 服务端给的是布尔；字段缺失时按 {@code false} 处理（不抛异常），
+     * 因为"没给"在这种单布尔端点里只可能是解析异常，而不是一个需要调用方处置的状态。
+     *
+     * @param aid 稿件 avid（<b>不是 bvid</b>）
+     * @return {@code true} 表示该稿件的笔记入口被禁
+     * @throws BilibiliException {@code aid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public boolean isNoteForbidden(long aid) {
+        if (aid <= 0) {
+            throw new BilibiliException("aid不能小于0");
+        }
+        String url = BilibiliEndpoint.noteIsForbidUrl + "?aid=" + aid;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.referer);
+        NoteForbid data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取笔记入口状态");
+        boolean forbidden = Boolean.TRUE.equals(data.getForbid_note_entrance());
+        log.info("笔记入口 aid={}：{}", aid, forbidden ? "已禁" : "可用");
+        return forbidden;
+    }
+
     /** 按插入顺序拼 query（值不做 URL 编码：本批参数全是数字与 {@code BV…} 这类安全串） */
     private static String queryOf(Map<String, String> params) {
         StringBuilder sb = new StringBuilder();

@@ -421,7 +421,10 @@ public class BilibiliEndpoint {
      *   <li>{@code fnval=1} → MP4，结果在 {@code data.durl[]}（每个元素有 {@code url} 与
      *       {@code backup_url[]}）。<b>本批实现</b>。</li>
      *   <li>{@code fnval=16} → DASH，结果在 {@code data.dash}（音视频分离、需自行合流）。
-     *       规划里判它"必须签名"，<b>留二期</b>，本批不承诺。</li>
+     *       📌 原文写"规划里判它必须签名，<b>留二期</b>，本批不承诺" —— <b>已过时</b>
+     *       （2026-09-23 订正）：DASH <b>不签名也通</b>，且本库<b>已经支持</b> ——
+     *       {@code VideoExtra#getPlayUrl(bvid, cid, qn, fnval)} 传 {@code fnval=16} 即走这条。
+     *       🔴 并且它是<b>拿到 1080P 的唯一通道</b>（MP4 那条封顶 720P，带凭据也救不了）。</li>
      * </ul>
      *
      * <p>🔴 <b>稳定性不可承诺 —— 这是本库唯一一个"翻案过两次"的端点，别把任何一次结论当恒定</b>：
@@ -562,8 +565,10 @@ public class BilibiliEndpoint {
      * <p>返回里 {@code list[].id} 才是收藏夹的 {@code media_id}（{@code fid} 是另一套短 id），
      * 要拿夹内内容时用 {@code id}。{@code season} 字段实测为 {@code null}。
      *
-     * <p>⚠️ 同域的 {@code x/v3/fav/resource/list}（夹内内容）<b>本批不做</b> —— 它在 B4，
-     * 且对<b>私密</b>夹匿名会返回 {@code -403}（那是"资源权限不足"，不是"缺签名"，见 {@code ErrorMapper}）。
+     * <p>📌 原文写"同域的 {@code x/v3/fav/resource/list}（夹内内容）<b>本批不做</b>" ——
+     * <b>已过时</b>（2026-09-23 订正）：它<b>已随 B2 批交付</b>，见 {@link #favResourceListUrl}。
+     * 顺带保留那条门槛结论：它对<b>私密</b>夹匿名会返回 {@code -403}
+     * （那是"资源权限不足"，不是"缺签名"，见 {@code ErrorMapper}）。
      */
     public static final String favFolderListAllUrl = "https://api.bilibili.com/x/v3/fav/folder/created/list-all";
 
@@ -846,6 +851,42 @@ public class BilibiliEndpoint {
      * 参数：{@code id} —— 专栏号（{@code cv} 后的数字，如 {@code cv4538122} 传 {@code 4538122}）。
      */
     public static final String articleViewInfoUrl = "https://api.bilibili.com/x/article/viewinfo";
+
+    // ------------------------------------------------------------------ B5 批（2026-09-23）
+
+    /**
+     * {@code x/space/top/arc} —— <b>UP 主的置顶视频</b>（B5 批）。
+     *
+     * <p>🔴 <b>参数名是 {@code vmid}，不是 {@code mid}</b> —— 本端点最容易踩的就是这里：
+     * 传 {@code mid} 得到 {@code -400 请求错误}。⚠️ <b>09-22 那次 B5 盘点正是栽在这一格</b>
+     * （扫库脚本传了 {@code mid}，拿到 {@code -400} 差点把这个能用的端点判死），
+     * 后来用正确入参复验才翻案 —— <b>"拿到负面结果先怀疑自己"那条红线的现场就是这里</b>。
+     *
+     * <p>🔴 <b>{@code code=53016「没有置顶视频」是正常业务码，不是错误</b>（2026-09-23 实测：
+     * {@code vmid=1} → {@code 53016}；{@code vmid=2} → {@code code=0}、38 键）。
+     * ⇒ 它<b>不能直接走 {@code ResponseParserSupport.unwrap}</b>（那个对 {@code code != 0} 一律抛），
+     * 调用方要用"可空返回值"来表达"这个 UP 没有置顶"。
+     *
+     * <p>门槛：✅ <b>匿名可用、不需签名、不需凭据</b>。⚠️ 但<b>带不带凭据给出的字段数不同</b>：
+     * 匿名 38 键、带凭据 36 键（凭据那格少了 {@code state} / {@code attribute}）
+     * ⇒ <b>POJO 不能假设某个字段一定在</b>。
+     *
+     * <p>⚠️ {@code Referer} 用全库默认的站根即可（2026-09-23 实测通过）。
+     */
+    public static final String spaceTopArcUrl = "https://api.bilibili.com/x/space/top/arc";
+
+    /**
+     * {@code x/note/is_forbid} —— <b>笔记入口是否被禁</b>（B5 批）。
+     *
+     * <p>必须带 {@code aid}（漏传得 {@code -400}）。响应只有一个键 {@code forbid_note_entrance}。
+     *
+     * <p>🔴 <b>它不校验 {@code aid} 是否存在</b>：实测 {@code aid=1}（不存在的稿件）照样
+     * {@code code=0} ⇒ <b>它的成功不能证明 id 有效</b>。同批对照：同一个 {@code aid=1} 在
+     * {@code web-interface/view} 上是 {@code 62012} ⇒ <b>别拿本端点的成功当"稿件存在"的证据</b>。
+     *
+     * <p>门槛：✅ 匿名可用，且匿名与带凭据<b>形状完全相同</b>（都是 {@code {forbid_note_entrance}}）。
+     */
+    public static final String noteIsForbidUrl = "https://api.bilibili.com/x/note/is_forbid";
 
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**

@@ -2,6 +2,7 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.user.*;
+import com.esdllm.bilibiliApi.model.data.pojo.video.VideoBrief;
 import com.esdllm.bilibiliApi.service.UserService;
 
 import java.io.IOException;
@@ -259,6 +260,40 @@ public class UserSpace {
     public RelationStat getRelationStat(long vmid) throws IOException {
         try {
             return UserService.INSTANCE.getRelationStat(vmid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    // ------------------------------------------------------------------ 匿名域扩容（2026-09-23 B5）
+
+    /**
+     * <b>取 UP 主置顶视频</b>（{@code x/space/top/arc}，B5 批）。
+     *
+     * <p>✅ <b>匿名可用</b>（2026-09-23 实测）—— 与 {@link #getRelationStat(long)} 一样属于
+     * 本门面的"免凭据"一档，而 <b>不像</b> {@link #getArchives} / {@link #getAccInfo} 那样必须登录。
+     *
+     * <p>🔴 <b>返回 {@code null} 有确切含义，别当成失败</b>：服务端在一个 UP 主<b>没有设置置顶</b>时
+     * 回 {@code code=53016}（实测 {@code vmid=1}），本库把它翻译成 {@code null}，
+     * <b>不抛异常</b> —— "没有置顶"是正常状态，不是故障。
+     * ⚠️ 而 {@code -404}（UP 不存在）照常抛 —— 所以 {@code null} 与异常是两件事。
+     *
+     * <p>⚠️ 与 {@link #findSeasonId(long)} 一样是"可能返回 {@code null}"的方法，
+     * 调用方请显式判空；本门面不为了"看起来整齐"而改成 Optional。
+     *
+     * <p>⚠️ 返回类型是 {@code VideoBrief}（与排行榜/热门/相关推荐同一个类，理由见该类的类注释），
+     * 不是 {@code VideoInfo}：本端点的键名属于<b>列表那一代</b>
+     * （{@code tidv2} / {@code pid_v2} / {@code short_link_v2}），与 {@code view} 的
+     * {@code tid_v2} <b>不是同一套</b>，用 {@code VideoInfo} 接会大面积静默 null。
+     *
+     * @param vmid 用户 mid（<b>任意用户都有效</b>）
+     * @return 置顶视频；该 UP 没有置顶时返回 {@code null}
+     * @throws IOException {@code vmid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0（{@code 53016} 除外）、
+     *                     或 {@code code=0} 但 {@code data} 为空
+     */
+    public VideoBrief getTopArchive(long vmid) throws IOException {
+        try {
+            return UserService.INSTANCE.getTopArchive(vmid);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

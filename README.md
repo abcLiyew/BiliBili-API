@@ -10,7 +10,7 @@
 
 ## 项目简介
 
-Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java库。该项目提供了一系列API接口，可以获取用户信息、视频、动态内容、直播信息等数据，也支持搜索、用户空间、短链解析，以及登录（扫码 / 密码 / 短信）与 WBI 签名。
+Bilibili API 是一个用于获取哔哩哔哩（Bilibili）平台数据的Java库。该项目提供了一系列API接口，可以获取用户信息、视频、动态内容、直播信息等数据，也支持搜索、用户空间、短链解析，以及登录（扫码 / 密码 / 短信）、WBI 签名与 `bvid ⇄ aid` 本地换算。
 
 ## 接口来源与覆盖范围
 
@@ -85,7 +85,7 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 | `VideoExtra` | `x/player/playurl`（视频流地址，MP4 / DASH） | **匿名**（凭据只提升清晰度，见下） |
 | `VideoExtra` | `x/web-interface/view/detail`（**一站式详情**：`View` 内含 `stat` 13 项 + `Tags` + `Related`） | 匿名（标签 / 相关推荐 / 状态数**都由它顺带给出**，本库不为它们单独发请求） |
 | `VideoExtra` | `x/player/online/total`（在线观看数） | 匿名（文档标 APP 端需签名，实测免签） |
-| `Comment` | `x/v2/reply`（评论列表；⚠️ `oid` 要的是 **aid**） | 匿名（文档标 Wbi，实测免签；门面收 `bvid` 时内部先经 `view` 换算出 `aid`） |
+| `Comment` | `x/v2/reply`（评论列表；⚠️ `oid` 要的是 **aid**） | 匿名（文档标 Wbi，实测免签；门面收 `bvid` 时内部**用纯算法**换算出 `aid`，**不额外发请求**） |
 | `LiveExtra` | `room/v1/Room/playUrl`（直播拉流地址） | 匿名（`cid` 是**直播间号**，与视频的 `cid` 同名不同物） |
 | `LiveExtra` | `live_user/v1/Master/info`（主播信息） | 匿名（入参 `uid` 是**主播 uid**，不是房间号） |
 | `Ranking` | `x/web-interface/ranking/v2`（排行榜） | 匿名，🔴 **要带排行榜页 `Referer`**（站根会…**间歇**换来 `-352`） |
@@ -102,6 +102,9 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
 | `Comment` | `x/emote/user/panel/web`（表情包面板） | 🔒 **凭据**（匿名 `code=0` 但 `packages` 为空；⚠️ **需要 Cookie，不需要签名**） |
 | `LiveExtra` | `room/v1/Area/getList`（直播分区树，一级 + 二级） | 匿名（⚠️ `parent_area_id` 实测**无效**，本库**不暴露**该参数） |
 | `Wbi` | `x/web-interface/nav`（只取 `data.wbi_img`） | 匿名（`img_key` / `sub_key` 是公共值，不是凭据） |
+| `UserSpace` | `x/space/top/arc`（UP 主**置顶视频**） | 匿名（⚠️ 参数名是 **`vmid`**，写成 `mid` 得 `-400`；该 UP **没置顶**时服务端回 `53016` ⇒ 返回 **`null`**，**不抛异常**） |
+| `VideoExtra` | `x/note/is_forbid`（笔记入口**是否**被禁） | 匿名（⚠️ 它**不校验 `aid` 是否存在**，传个不存在的 id 也回 `code=0` —— 成功 ≠ 稿件有效） |
+| `VideoExtra` | *（不发请求）* `bvid ⇄ aid` 纯算法换算 | —（`bvid` 本就是 `aid` 的 base58 编码；B5 起**零出站**，`Comment#getRepliesByBvid` 因此省掉一次 `view`） |
 
 > 表中「凭据」指登录 Cookie（至少含 `SESSDATA`），注入方式见下文
 > **「动态列表返回 -352 / 412 怎么办」**；「签名」指 WBI 签名，走 `UserSpace` /
@@ -130,7 +133,8 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
   —— 这三项都在 `Content` 门面，且**全是 GET 只读**
 - **视频一站式详情**：`getViewDetail` 一次拿到 `View`（内含 `stat` 13 项）/ `Tags` / `Related` / `Card`
   —— **标签、相关推荐、状态数都不必再单独发请求**
-- **评论列表**：`Comment.getReplies`，支持**按热度 / 按点赞 / 按时间**三种排序（收 `bvid` 时自动换算 `aid`）
+- **评论列表**：`Comment.getReplies`，支持**按热度 / 按点赞 / 按时间**三种排序（收 `bvid` 时**用纯算法**换算 `aid`，
+  不额外发请求）
 - **直播拉流**：`LiveExtra.getLiveStream` 给 CDN 播放地址、`getMasterInfo` 给主播信息 —— **都不需要凭据**
 - **榜单**：`Ranking.getRanking`（分区排行榜）/ `getPopular`（热门视频）—— 同为匿名可读
 - **弹幕**：`Danmaku.getDanmaku(cid)` 取某个分 P 的**全部弹幕**（含 `maxlimit`，可判断有没有被截断）。
@@ -154,6 +158,14 @@ WBI 签名算法（`wts` / `w_rid` / 密钥重排表 `MIXIN_KEY_ENC_TAB`）出�
   —— 长驻进程可用它把"凭据失效"从静默失败变成一个可判的布尔值
 - **WBI 签名**：`Wbi` 门面可给**任意** B 站 WBI 接口算签名（`wts` + `w_rid`），
   用于本库尚未覆盖的接口 —— **不需要凭据**，密钥由本库按天缓存
+- **置顶视频**：`UserSpace.getTopArchive(vmid)` —— ⚠️ 参数名是 **`vmid`**（不是 `mid`）；
+  ⚠️ **`null` 表示"该 UP 没设置置顶"**（服务端 `53016`，是正常结果），而**"UP 不存在"是 `-404`、会抛异常**
+- **笔记入口**：`VideoExtra.isNoteForbidden(aid)` 查某个稿件**能不能进笔记** ——
+  ⚠️ 与该稿件的**笔记内容无关**，也 ⚠️ **不校验 `aid` 是否存在**（传错 id 不报错，成功 ≠ 稿件有效）
+- **`bvid ⇄ aid` 纯算法**：`VideoExtra.toAid(bvid)` / `toBvid(aid)` —— **零出站**，
+  用来顶替"打一次 `view` 换 aid"的老做法（因此 `getRepliesByBvid` 少一次请求）。
+  ⚠️ 二者**不声明** `throws IOException`（不发请求），参数非法抛 `IllegalArgumentException`；
+  ⚠️ 它们只认格式，**不保证那个 bvid 真实存在**
 
 ## 环境要求
 
@@ -466,6 +478,40 @@ info.getLike();              //   0  ← "我"有没有赞过（匿名恒 0，�
 - 📌 **方法论**：本项目此前"匿名 A/B"里的"匿名"格其实是**零 Cookie**，而"凭据"格必然带指纹 ——
   **两个变量同时在变**，所以把 `inList` 的差异错归给了凭据。⇒ **"匿名"不是一个状态**，
   只变一个变量的对照才叫对照。
+
+### 置顶视频 / 笔记入口 / bvid⇄aid 换算（B5）
+
+```java
+UserSpace space = new UserSpace();
+VideoExtra extra = new VideoExtra();
+
+// 1) 置顶视频：匿名可读
+VideoBrief pinned = space.getTopArchive(2L);      // 该 UP 没设置置顶时返回 null（服务端 code=53016）
+if (pinned != null) {
+    pinned.getBvid();        // "BV1xx411c7DS"
+    pinned.getStat().getView();
+}
+
+// 2) 笔记入口是否被禁
+boolean forbidden = extra.isNoteForbidden(80433022L);
+
+// 3) bvid ⇄ aid：纯算法，不发任何请求
+long aid = extra.toAid("BV1GJ411x7h7");           //  80433022
+String bvid = extra.toBvid(80433022L);            // "BV1GJ411x7h7"
+```
+
+- ⚠️ **`getTopArchive` 的参数名是 `vmid`**（不是 `mid`）。写成 `mid` 服务端回 `-400`，
+  与"参数写错"撞在一起很难分辨 —— 所以门面直接用 `vmid` 命名。
+- 🔴 **`null` 与异常是两件事**：返回 `null` **只表示"这个 UP 主没有置顶视频"**（`code=53016`，属于正常结果）；
+  **UP 不存在**是 `-404`，会照常抛 `IOException`。别拿 `null` 当"查不到这个人"。
+- 🔴 **`isNoteForbidden` 不校验 `aid` 是否存在** —— 实测传一个不存在的稿件照样 `code=0` 并给出一个布尔。
+  ⇒ **它的成功不能当"稿件存在"的证明**；要确认稿件有效请先用 `BilibiliClient` / `getViewDetail`。
+  另外它**与"笔记内容"无关**（取笔记正文需要真实 `cvid`，本库不提供）。
+- 📌 **`toAid` / `toBvid` 刻意不声明 `throws IOException`**：它们是纯函数、不产生 I/O，
+  逼调用方 `catch` 一个永不抛出的受检异常纯属噪音。参数非法时抛 `IllegalArgumentException`。
+  它们**也不会告诉你这个 bvid 是否真实存在**（格式合法即出数）。
+- 📌 **收益**：`Comment#getRepliesByBvid` 以前要**多打一次 `x/web-interface/view`** 才能拿到 `aid`，
+  现在走纯算法 ⇒ **该路径少一次出站**。已拿过 `VideoInfo` 的调用方，直接用 `getReplies(aid, …)` 即可。
 
 ## 数据模型
 项目中包含多种数据模型，用于表示不同类型的数据。

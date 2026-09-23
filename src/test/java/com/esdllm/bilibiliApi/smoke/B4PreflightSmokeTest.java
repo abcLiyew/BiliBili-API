@@ -42,9 +42,18 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *       而不是让冒烟测试变红**。硬 assert 只会把"上游变好"报成"我们坏了"。</li>
  * </ol>
  *
- * <p>唯一的**阴性对照**是旧路径 {@code x/article/view}：它必须不是 {@code code=0}
- * （实测匿名 {@code -352}）。这条断言有两个作用 —— ① 记住"本库只交付专栏**信息**、不交付**正文**"；
- * ② 和阳性对照一起，证明"表中的 {@code code=0} 是有信息量的"，而不是全都是 0。
+ * <p>⚠️ <b>旧路径 {@code x/article/view}（专栏正文）不再充当"阴性对照"</b> ——
+ * 它的断言已于 <b>2026-09-23 撤掉</b>。撤的理由不是"它挡路了"，而是<b>那条断言本身不成立</b>：
+ * 该端点的通/不通由<b>风控是否放行</b>决定，不是协议约束。同一天两趟实测分别是
+ * {@code code=0}（39 键、{@code content} 13909 字符）与 {@code -352}；**同一趟里
+ * {@code ranking/v2} 站根还反向翻成 {@code code=0}** ⇒ 两个端点在同趟里反向翻转。
+ * 把它写进断言只会得到一条<b>时而绿时而红</b>的检查 —— 而它<b>红绿都不带信息</b>，
+ * 还会训练出"红了先重跑一次"的习惯（比"稳定红"更糟）。现在它只打印当前状态，
+ * 一旦放行就打一行 {@code ★ OPENED} 提醒人去重新评估（详见 {@code API_FACTS.md} §2.16）。
+ *
+ * <p>⇒ 因此本类**有意地没有阴性对照**了：本批的"边界"全部由边界表承载，而边界表一向只打印。
+ * 🔴 <b>判断一条检查能不能写成断言，只看一件事：它依赖的是<b>协议</b>，还是<b>上游状态</b>。</b>
+ * {@code 404}（端点已下线）是协议 ⇒ 可断言；风控 / 需登录 / 无 {@code data} 键都是状态 ⇒ 只能打印。
  *
  * <p>跑法（本批全匿名，<b>不需要</b> {@code -Dbili.cookieFile}）：
  * <pre>
@@ -132,16 +141,34 @@ class B4PreflightSmokeTest {
         report.append(String.format("%-42s is_author=%s in_list=%s  (printed only, NOT asserted)%n",
                 "  -> 两个布尔（归因不同）", isAuthor, inList));
 
-        // ---------- 3. 阴性对照：旧路径必须不通 ----------
+        // ---------- 3. 旧路径 x/article/view：只分类打印它的**当前状态**（不断言） ----------
+        // 🔴 2026-09-23 撤掉了这里原有的 assertNotEquals(0, ...)。那曾是本类唯一的"阴性对照"，
+        // 但旧路径的通/不通**取决于风控放不放行**，不是协议约束 —— 实测同一天两趟分别拿到
+        // code=0（39 键、content 13909 字符）与 -352，且同一趟里 ranking/v2 站根反向翻成 0。
+        // ⇒ 那条断言会时而绿时而红；红绿都不带信息，比"稳定红"更糟（会训练出"红了先重跑一次"）。
+        // 判据留在下面，供人看到表格后决定，而不是靠构建变红来提醒。
+        //
+        // 两个结论都要留着（它们在不同时点各自成立，别再互相"翻案"）：
+        //   ① 本库只交付专栏**信息**、不交付**正文** —— 这在 2026-09-22 那个时点成立；
+        //   ② 2026-09-23 起它**间歇可取**，且已用三条判据排除"降级载荷"：
+        //      不同 id 给不同文章、不存在的 id → -404 啥都木有、正文非空（见 API_FACTS.md §2.16）。
+        // ⚠️ 另注意同族端点 x/article/viewinfo（本类第 2 段断言的那个）**不随**这里的状态变 ——
+        //    它是稳定可用的，别因为旧路径间歇就把上面那条断言也撤了。
         HttpResponse<String> oldPath = BilibiliHttp.get(
                 "https://api.bilibili.com/x/article/view?id=" + SAMPLE_CV,
                 BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
         dump("article-view-oldpath", oldPath);
         int oldCode = codeOf(oldPath.getBody());
-        report.append(String.format("%-42s http=%d code=%d (expect != 0)%n",
-                "NEG article/view (old path)", oldPath.getStatus(), oldCode));
-        assertNotEquals(0, oldCode, "旧路径 x/article/view 竟然通了 —— 意味着【专栏正文】可以做了，"
-                + "那是本库明确不交付的一项，请重新评估（见 INTERFACE_PLAN.md §4-B4）");
+        report.append(String.format("%-44s http=%d code=%d%s%n",
+                "STATE article/view (old path)", oldPath.getStatus(), oldCode,
+                oldCode == 0 ? "  <<< OPENED" : "  (closed this run)"));
+        if (oldCode == 0) {
+            report.append("  ★ OPENED: 旧路径这次放行了 —— 【专栏正文】间歇可取，"
+                            + "要不要交付需重新评估（API_FACTS.md §2.16 / INTERFACE_PLAN.md §4-B4）\n")
+                    .append("  ★ 注意：同一批的 x/article/viewinfo 才是本库交付的那个，它的断言不受影响\n");
+        } else {
+            report.append("  -> 本次未放行。这【不代表】它已死：同日两趟曾分别得到 0 与 -352，属风控间歇\n");
+        }
 
         // ---------- 4. 边界表：6 个"确认做不动"的候选（只看不判） ----------
         // 待观察端点的 URL 刻意写成字面量、**不**放进 BilibiliEndpoint：

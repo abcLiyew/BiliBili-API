@@ -5,6 +5,7 @@ import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
+import com.esdllm.bilibiliApi.model.data.pojo.video.VideoBrief;
 import com.esdllm.bilibiliApi.sign.WbiKeyStore;
 import org.junit.jupiter.api.*;
 
@@ -35,6 +36,8 @@ class UserSpaceServiceTest {
     private static final String ACC_PATH = "/x/space/wbi/acc/info";
     private static final String ARC_PATH = "/x/space/wbi/arc/search";
     private static final String SEAS_PATH = "/x/polymer/web-space/seasons_archives_list";
+    /** B5 批：置顶视频。实测<b>参数名是 vmid</b>，传 mid 直接 -400 */
+    private static final String TOP_ARC_PATH = "/x/space/top/arc?vmid=";
 
     private static final String NAV_BODY = "{\"code\":-101,\"data\":{\"wbi_img\":{"
             + "\"img_url\":\"https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png\","
@@ -288,6 +291,114 @@ class UserSpaceServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> UserService.INSTANCE.getSeasonArchives(MID, 5485575L, 1, 5));
             assertEquals(-404, e.getCode());
+        }
+    }
+
+    // ================================================================
+    // getTopArchive（B5 批，2026-09-23）
+    //
+    // 🔴 本组守的不是"能不能解析"，而是**「没有置顶」不是一个错误**：
+    // 服务端在 UP 主没设置置顶时回 code=53016，而 ResponseParserSupport.requireData
+    // 对 code != 0 一律抛异常 ⇒ 服务层必须**特地把 53016 catch 回来**翻成 null。
+    // 漏了这一步的症状很隐蔽：调用方会收到一个异常，于是把"没有置顶"当成"接口坏了"。
+    // ================================================================
+
+    @Nested
+    @DisplayName("getTopArchive（置顶视频 · 🔴 没有置顶是正常结果）")
+    class TopArchiveTest {
+
+        @Test
+        @DisplayName("解析出置顶视频；键名是列表那一代（tidv2 / vt_display），不是 view 那一代")
+        void happyPath() throws Exception {
+            mock.register(TOP_ARC_PATH, fixture("top-arc.json"));
+
+            VideoBrief data = UserService.INSTANCE.getTopArchive(2L);
+
+            assertEquals(349L, data.getAid());
+            assertEquals("BV1xx411c7DS", data.getBvid());
+            assertEquals("[人生的导师松冈修造]東方修夢造", data.getTitle());
+            assertEquals(2L, data.getOwner().getMid());
+            assertEquals("碧诗", data.getOwner().getName());
+            assertEquals(643227L, data.getStat().getView());
+
+            // 这一组是"归到 VideoBrief 而不是 VideoInfo"的实证：三个字段只有列表那一代才有
+            assertEquals(2010, data.getTidv2(), "列表那一代是 tidv2（view 那代是 tid_v2）");
+            assertEquals("明星剪辑", data.getTnamev2());
+            assertEquals("57.3万", data.getVt_display(), "★ 只有 space/top/arc 给这个键");
+            assertEquals(Integer.valueOf(32768), data.getAttribute(),
+                    "★ 本端点给 attribute；ranking/popular 给的是 attribute_v3 —— 两个字段都要留");
+        }
+
+        @Test
+        @DisplayName("🔴 走的是普通 GET：一次 nav 都不打（匿名可用）")
+        void doesNotUseSignedExit() throws Exception {
+            mock.register(TOP_ARC_PATH, fixture("top-arc.json"));
+
+            UserService.INSTANCE.getTopArchive(2L);
+
+            assertEquals(0, mock.hitCount(NAV_PATH),
+                    "本端点实测匿名 code=0 —— 套上签名只会白打一次 nav 并放大失败面");
+            assertFalse(mock.requestUri(TOP_ARC_PATH).contains("w_rid"),
+                    "不该有签名字段：" + mock.requestUri(TOP_ARC_PATH));
+        }
+
+        @Test
+        @DisplayName("★ 参数名是 vmid：真的发出去的是 vmid=2，不是 mid=2")
+        void parameterNameIsVmid() throws Exception {
+            mock.register(TOP_ARC_PATH, fixture("top-arc.json"));
+
+            UserService.INSTANCE.getTopArchive(2L);
+
+            String uri = mock.requestUri(TOP_ARC_PATH);
+            assertTrue(uri.contains("vmid=2"), "实际：" + uri);
+            // 🔴 这里不能用 uri.contains("mid=2") —— "vmid=2" 本身就<b>包含</b>子串 "mid=2"，
+            // 那样写会永远为 true（本用例第一版就栽在这，跑全量才暴露）。
+            // 判"有没有一个独立参数叫 mid"，必须带上它的分隔符。
+            assertFalse(uri.contains("?mid=") || uri.contains("&mid="),
+                    "★ 09-22 那次盘点正是把参数写成 mid、拿到 -400 才差点把端点判死。实际：" + uri);
+        }
+
+        @Test
+        @DisplayName("🔴 code=53016（没有置顶视频）→ 返回 null，【不】抛异常")
+        void noTopArchiveIsNotAnError() throws Exception {
+            mock.register(TOP_ARC_PATH, "{\"code\":53016,\"message\":\"没有置顶视频\",\"ttl\":1}");
+
+            VideoBrief data = assertDoesNotThrow(() -> UserService.INSTANCE.getTopArchive(1L));
+
+            assertNull(data,
+                    "★ '没有置顶'是正常状态。requireData 会对它抛异常，服务层必须特判 catch 回来");
+        }
+
+        @Test
+        @DisplayName("🔴 「没有置顶」(53016→null) 与「UP 不存在」(-404→抛) 是两件事")
+        void nullVersusNotFound() throws Exception {
+            mock.register(TOP_ARC_PATH, fixture("top-arc.json"));
+            assertNotNull(UserService.INSTANCE.getTopArchive(2L));
+
+            // 换成 -404：此时必须抛，且码值要能读到 —— 否则调用方会把"查无此人"当成"没有置顶"
+            mock.register(TOP_ARC_PATH, "{\"code\":-404,\"message\":\"啥都木有\",\"ttl\":1}");
+            BilibiliException e = assertThrows(BilibiliException.class,
+                    () -> UserService.INSTANCE.getTopArchive(999999999999L));
+            assertEquals(-404, e.getCode(),
+                    "★ 只有 53016 才翻译成 null；其它非 0 码照常抛，否则'UP 不存在'会被静默吞掉");
+        }
+
+        @Test
+        @DisplayName("vmid ≤ 0 → 抛异常且没发请求")
+        void invalidVmid() {
+            BilibiliException e = assertThrows(BilibiliException.class,
+                    () -> UserService.INSTANCE.getTopArchive(0L));
+            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertEquals(0, mock.hitCount(TOP_ARC_PATH));
+        }
+
+        @Test
+        @DisplayName("code=0 但 data 为空 → 抛异常（不当成'没有置顶'放过）")
+        void emptyDataStillFails() throws Exception {
+            mock.register(TOP_ARC_PATH, "{\"code\":0,\"message\":\"OK\",\"data\":null}");
+
+            assertThrows(BilibiliException.class, () -> UserService.INSTANCE.getTopArchive(2L),
+                    "★ 只有 53016 是'正常但没有'；code=0 却不给数据是异常，两者别混");
         }
     }
 }

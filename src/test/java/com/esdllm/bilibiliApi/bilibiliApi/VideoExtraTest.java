@@ -300,4 +300,83 @@ class VideoExtraTest {
             assertEquals(-404, assertInstanceOf(BilibiliException.class, e.getCause()).getCode());
         }
     }
+
+    // ================================================================
+    // B5 批（2026-09-23）：笔记入口禁令 + bvid⇄aid 纯算法
+    //
+    // 这一组塞进本门面的理由写在类注释的门槛表里：它俩把"门槛"这件事拉到了两个极端 ——
+    // isNoteForbidden 是"匿名即通、但参数写错也不报错"，而 toAid/toBvid 干脆"不发请求"。
+    // ================================================================
+
+    private static final String NOTE_PATH = "/x/note/is_forbid?aid=";
+
+    @Nested
+    @DisplayName("B5 新增：笔记入口禁令 / bvid⇄aid 纯算法")
+    class B5Test {
+
+        @Test
+        @DisplayName("isNoteForbidden：解析出布尔，且一次 nav 都不打")
+        void noteForbidden() throws Exception {
+            mock.register(NOTE_PATH, fixture("note-isforbid.json"));
+
+            assertFalse(videoExtra.isNoteForbidden(80433022L));
+
+            assertTrue(mock.requestUri(NOTE_PATH).contains("aid=80433022"),
+                    "实际：" + mock.requestUri(NOTE_PATH));
+            assertEquals(0, mock.hitCount(NAV_PATH), "匿名可用、不需签名");
+        }
+
+        @Test
+        @DisplayName("isNoteForbidden：true 也要读对；-404 走 IOException 边界并保住码值")
+        void noteForbiddenTrueAndError() throws Exception {
+            mock.register(NOTE_PATH, "{\"code\":0,\"message\":\"OK\",\"data\":{\"forbid_note_entrance\":true}}");
+            assertTrue(videoExtra.isNoteForbidden(1L));
+
+            mock.register(NOTE_PATH, "{\"code\":-404,\"message\":\"啥都木有\",\"ttl\":1}");
+            IOException e = assertThrows(IOException.class, () -> videoExtra.isNoteForbidden(1L));
+            assertEquals(-404, assertInstanceOf(BilibiliException.class, e.getCause()).getCode());
+        }
+
+        @Test
+        @DisplayName("isNoteForbidden：aid ≤ 0 包成 IOException，零出站")
+        void noteForbiddenBadAid() {
+            IOException e = assertThrows(IOException.class, () -> videoExtra.isNoteForbidden(0L));
+
+            assertTrue(e.getMessage().contains("aid不能小于0"), "实际：" + e.getMessage());
+            assertEquals(0, mock.hitCount(NOTE_PATH));
+        }
+
+        /**
+         * ★ <b>本用例的"编译通过"本身就是一条断言</b>：方法体里<b>没有 try/catch</b>，
+         * 测试方法也<b>没有 throws IOException</b> —— 若 {@code toAid}/{@code toBvid}
+         * 哪天被加上 {@code throws IOException}，这里会直接编译失败。
+         * 这正是契约测试里那条反向断言的"调用方视角"版本。
+         */
+        @Test
+        @DisplayName("★ toAid / toBvid：纯函数、零出站，真机样本双向都对")
+        void pureConversion() {
+            assertEquals(80433022L, videoExtra.toAid("BV1GJ411x7h7"));
+            assertEquals(170001L, videoExtra.toAid("BV17x411w7KC"));
+            assertEquals(349L, videoExtra.toAid("BV1xx411c7DS"));
+
+            assertEquals("BV1GJ411x7h7", videoExtra.toBvid(80433022L));
+            assertEquals("BV1xx411c7DS", videoExtra.toBvid(349L));
+
+            assertEquals(0, mock.hitCount(NAV_PATH), "★ 一次出站都没有 —— 不是'少打'，是根本不发请求");
+            assertEquals(0, mock.hitCount(CONC_PATH), "别把纯算法写成偷偷查一次接口");
+        }
+
+        @Test
+        @DisplayName("★ 参数非法时抛 IllegalArgumentException，而不是静默给一个错的 aid")
+        void pureConversionRejectsBadInput() {
+            assertThrows(IllegalArgumentException.class, () -> videoExtra.toAid("AV1GJ411x7h7"));
+            assertThrows(IllegalArgumentException.class, () -> videoExtra.toAid("BV1GJ411x7h"));
+            assertThrows(IllegalArgumentException.class, () -> videoExtra.toAid("BV1GJ411x7hO"),
+                    "★ O 是码表刻意排除的形近字");
+            assertThrows(IllegalArgumentException.class, () -> videoExtra.toBvid(0L));
+            assertThrows(IllegalArgumentException.class, () -> videoExtra.toBvid(1L << 51));
+
+            assertEquals(0, mock.hitCount(NAV_PATH), "校验失败当然也不出站");
+        }
+    }
 }

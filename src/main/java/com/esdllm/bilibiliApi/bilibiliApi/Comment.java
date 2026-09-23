@@ -4,8 +4,8 @@ import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.comment.CommentPage;
 import com.esdllm.bilibiliApi.model.data.pojo.comment.EmotePanel;
 import com.esdllm.bilibiliApi.model.data.pojo.comment.SubReplyPage;
+import com.esdllm.bilibiliApi.parse.BvCode;
 import com.esdllm.bilibiliApi.service.CommentService;
-import com.esdllm.bilibiliApi.service.VideoService;
 
 import java.io.IOException;
 
@@ -35,8 +35,12 @@ import java.io.IOException;
  * <ul>
  *   <li>{@link #getReplies(long, int, int)} —— 已经知道 {@code aid} 时用，<b>0 次额外请求</b>；</li>
  *   <li>{@link #getRepliesByBvid(String, int, int)} —— 只有 {@code bvid} 时用，
- *       内部先打一次 {@code view} 换 {@code aid}（<b>多花一次请求</b>，但不会静默拿空列表）。</li>
+ *       内部用<b>纯算法</b>换 {@code aid}（{@code parse.BvCode}，同样是 <b>0 次额外请求</b>）。</li>
  * </ul>
+ * 📌 <b>2026-09-23（B5 批）变化</b>：上面第二条路径<b>从前要多打一次 {@code x/web-interface/view}</b>
+ * 才能换到 {@code aid}（当时的理由是"不这么干会静默拿空列表"）。现在改走纯算法 ——
+ * {@code bvid} 本来就是 {@code aid} 的 base58 编码，<b>那一次出站纯属浪费</b>。
+ * ⇒ 两条路径现在<b>都是零额外请求</b>，区别只剩"你手里是哪个 id"。
  *
  * <p><b>🔴 评论不是"评论"一个东西，它有三块会重叠的内容</b>：
  * {@code replies}（正文）/ {@code top_replies}（置顶）/ {@code upper.top}（UP 主置顶）。
@@ -108,28 +112,38 @@ public class Comment {
     }
 
     /**
-     * <b>按 BV 号取评论列表</b>（内部先换算成 {@code aid}）。
+     * <b>按 BV 号取评论列表</b>（内部换算出 {@code aid}）。
      *
-     * <p>🔴 <b>为什么值得多花一次请求</b>：端点要 {@code oid=aid}，而调用方手里通常是 {@code bvid}。
+     * <p>🔴 <b>为什么需要这条重载</b>：端点要 {@code oid=aid}，而调用方手里通常是 {@code bvid}。
      * 直接猜 aid 或把 bvid 当 aid 传，会静默拿到空列表 —— 这个错误<b>没有任何异常提示</b>，
-     * 定位成本远高于一次 {@code view} 请求。所以这条重载存在的意义就是<b>把易错点从调用方挪进库里</b>。
+     * 定位成本远高于"换算"这一步。所以这条重载存在的意义是<b>把易错点从调用方挪进库里</b>。
      *
-     * <p>📌 已经拿过 {@code VideoInfo} 的调用方请直接用 {@link #getReplies(long, int, int)}
-     * （{@code VideoInfo#getAid()} 就是需要的东西），别为了省事再走这条多花的路径。
+     * <p>📌 <b>2026-09-23（B5 批）起，换算走纯算法、<u>不再发起任何额外请求</u></b>
+     * （{@code parse.BvCode}）：{@code bvid} 就是 {@code aid} 的 base58 编码，
+     * 此前"打一次 {@code view} 换 aid"的做法<b>被省掉了</b>。
+     * ⇒ 本方法与 {@link #getReplies(long, int, int)} 现在同样是 <b>1 次出站</b>（只打评论端点）。
+     *
+     * <p>📌 已经拿过 {@code VideoInfo} 的调用方仍可直接用 {@link #getReplies(long, int, int)}
+     * （{@code VideoInfo#getAid()} 就是要的东西）—— 两条路现在都只有一次请求，按手里的 id 选即可。
      *
      * @param bvid BV 号（{@code BV1xxx...}）
      * @param pn   页码（从 1 开始）
      * @param ps   每页条数
      * @return 评论页，不可为 null
-     * @throws IOException {@code bvid} 为空、换算 {@code aid} 失败，或后续任一步失败
+     * @throws IOException {@code bvid} 格式非法（长度不是 12 / 不以 {@code BV} 开头 /
+     *                     含 base58 码表外的字符），或后续任一步失败
      *                     （见 {@link #getReplies(long, int, int)}）
      */
     public CommentPage getRepliesByBvid(String bvid, int pn, int ps) throws IOException {
+        long aid;
         try {
-            Long aid = VideoService.INSTANCE.getVideoInfo(bvid).getAid();
-            if (aid == null || aid <= 0) {
-                throw new BilibiliException("换算 aid 失败：视频信息里没有可用的 aid（bvid=" + bvid + "）");
-            }
+            aid = BvCode.toAid(bvid);
+        } catch (IllegalArgumentException e) {
+            // IllegalArgumentException 是 runtime，逃出门面会让下游的 catch (IOException) 兜不住 ——
+            // 本门面所有方法都声明 throws IOException，所以在这里转成受检异常（语义也更准：换算失败）。
+            throw new IOException("换算 aid 失败：" + e.getMessage(), e);
+        }
+        try {
             return CommentService.INSTANCE.getReplies(aid, pn, ps);
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);

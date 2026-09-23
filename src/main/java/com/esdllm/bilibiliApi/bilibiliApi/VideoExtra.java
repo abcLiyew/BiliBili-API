@@ -5,6 +5,7 @@ import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
 import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
 import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
 import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
+import com.esdllm.bilibiliApi.parse.BvCode;
 import com.esdllm.bilibiliApi.service.VideoService;
 
 import java.io.IOException;
@@ -12,7 +13,7 @@ import java.io.IOException;
 /**
  * 视频附加信息门面：<b>AI 摘要 / 播放地址 / 一站式详情 / 在线观看数</b>。
  *
- * <p>四件事的门槛<b>各不相同，且分布很散</b> —— 这是本门面最需要注意的地方：
+ * <p>本门面各项能力的门槛<b>各不相同，且分布很散</b> —— 这是它最需要注意的地方：
  * <table border="1">
  *   <caption>方法 × 门槛（全部为 2026-09 实测）</caption>
  *   <tr><th>方法</th><th>WBI 签名</th><th>登录凭据</th><th>备注</th></tr>
@@ -22,8 +23,14 @@ import java.io.IOException;
  *       <td>唯一"可选"的一项：匿名也能拿地址，凭据买到的是更高清晰度；⚠️ 依赖出口信誉</td></tr>
  *   <tr><td>{@link #getViewDetail(String)}</td><td>不要</td><td>不要</td><td>匿名即通</td></tr>
  *   <tr><td>{@link #getOnlineTotal(String, Long)}</td><td>不要</td><td>不要</td><td>匿名即通</td></tr>
+ *   <tr><td>{@link #isNoteForbidden(long)}</td><td>不要</td><td>不要</td>
+ *       <td>匿名即通；⚠️ 但它<b>不校验 aid 是否存在</b>，见方法注释（B5 批）</td></tr>
+ *   <tr><td>{@link #toAid(String)} / {@link #toBvid(long)}</td>
+ *       <td colspan="2"><b>不发请求</b></td>
+ *       <td>纯算法换算、零出站 ⇒ 因此刻意<b>不声明</b> {@code throws IOException}（B5 批）</td></tr>
  * </table>
- * ⇒ 别把"这个门面"当成一个门槛整体看：<b>同一个类里有"两样都要"的，也有一项都不要的</b>。
+ * ⇒ 别把"这个门面"当成一个门槛整体看：<b>同一个类里有"两样都要"的，也有一样都不要的，
+ * 还有根本不发请求的</b>。
  *
  * <p>库内第 9 个门面（见 {@code Search} 的说明）。新增类，<b>不触碰任何既有签名</b>，
  * 对 XatiiBot 是纯增量。
@@ -208,5 +215,79 @@ public class VideoExtra {
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }
+    }
+
+    // ------------------------------------------------------------------ B5 匿名补充域（2026-09-23 新增）
+
+    /**
+     * <b>取笔记入口是否被禁</b>（{@code x/note/is_forbid}）。
+     *
+     * <p>✅ <b>匿名可用、不需签名</b>（2026-09-23 实测：匿名与带凭据都是 {@code code=0}、
+     * 形状完全相同）。
+     *
+     * <p>🔴 <b>本方法最该记住的一条：它不校验 {@code aid} 是否存在。</b>实测
+     * {@code aid=1}（不存在的稿件）照样返回 {@code code=0} —— 也就是说
+     * <b>返回值只对"真实存在的稿件"有意义</b>，传错 id <b>不会报错</b>，
+     * 只会安静地给出一个与该稿件无关的布尔。这与本库其它"传错 id 会 {@code -404}"的端点不同
+     * （同一批实测：{@code aid=1} 时 {@code x/note/is_forbid} 是 {@code 0}、
+     * 而 {@code x/web-interface/view} 是 {@code 62012}）⇒ <b>别把它的成功当"id 有效"的证明</b>。
+     *
+     * <p>⚠️ 它是**只读**的“能不能进笔记”查询，<b>与"笔记内容"无关</b>：
+     * {@code x/note/info}（取笔记正文）需要真实 {@code cvid}，本库<b>没有</b>也不打算给
+     * （拿不到入口参数，见 {@code API_FACTS.md} §2.17）。想拿笔记正文的调用方不要在这里找。
+     *
+     * <p>⚠️ 响应里字段缺失时按 {@code false} 处理（服务端给的是布尔，不给 {@code null}）。
+     *
+     * @param aid 稿件 avid（<b>不是 bvid</b>；只有 bvid 时先用 {@link #toAid(String)} 换算）
+     * @return {@code true} 表示该稿件的笔记入口被禁
+     * @throws IOException {@code aid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public boolean isNoteForbidden(long aid) throws IOException {
+        try {
+            return VideoService.INSTANCE.isNoteForbidden(aid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>bvid → aid</b>（纯算法，<b>零出站</b>）。
+     *
+     * <p>🔴 <b>为什么它值得单独暴露</b>：{@code bvid} 就是 {@code aid} 的 base58 编码，
+     * 两者一一对应、<b>不需要请求任何接口</b>。而本库与 B 站的大量端点要的是 {@code aid}
+     * （评论的 {@code oid}、笔记的 {@code aid}…），调用方手里却常年只有 {@code bvid}。
+     * 此前唯一的办法是打一次 {@code x/web-interface/view} 换 {@code aid}（本库自己的
+     * {@code Comment#getRepliesByBvid} 就这么干过）—— 本方法把那一次出站<b>彻底省掉</b>。
+     *
+     * <p>⚠️ <b>它不发请求，所以刻意不声明 {@code throws IOException}</b> ——
+     * 逼调用方 {@code catch} 一个永不抛出的受检异常纯属噪音（与 {@code Wbi#signQuery} 的
+     * 离线重载同一条规矩）。参数非法时抛的是 {@link IllegalArgumentException}。
+     *
+     * <p>⚠️ 它是<b>纯函数、不联网</b>，所以<b>不会告诉你这个 bvid 是否真实存在</b> ——
+     * 格式合法即返回一个数。要"这个稿件在不在"请用 {@link #getViewDetail(String)}。
+     *
+     * @param bvid BV 号，形如 {@code BV1L9Uoa9EUx}（12 字符）
+     * @return 对应的 {@code aid}（正整数）
+     * @throws IllegalArgumentException {@code bvid} 格式不对（长度不是 12、不以 {@code BV} 开头，
+     *                                  或含 base58 码表以外的字符 {@code 0} / {@code I} / {@code O} / {@code l}）
+     */
+    public long toAid(String bvid) {
+        return BvCode.toAid(bvid);
+    }
+
+    /**
+     * <b>aid → bvid</b>（纯算法，<b>零出站</b>）。
+     *
+     * <p>与 {@link #toAid(String)} 互逆，同样不发请求、同样不声明 {@code throws IOException}。
+     *
+     * <p>⚠️ {@code aid} 的可编码上限是 <b>{@code 2^51 - 1}</b>（这是 BV 号算法的硬边界，
+     * 不是本库的限制），超出即 {@link IllegalArgumentException}。
+     *
+     * @param aid 稿件 avid（{@code 1 .. 2^51 - 1}）
+     * @return 对应的 BV 号（12 字符）
+     * @throws IllegalArgumentException {@code aid} 不在 {@code [1, 2^51)} 内
+     */
+    public String toBvid(long aid) {
+        return BvCode.toBvid(aid);
     }
 }

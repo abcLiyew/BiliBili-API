@@ -50,6 +50,22 @@ Cookie 自动发现顺序：`.workbuddy/bili-anon-cookie.txt` → `.workbuddy/bi
 没有任何 Cookie 文件也能跑，只是风控概率更高。
 
 输出是**纯 ASCII**：本脚本会在 Git Bash / IDE / cmd 之间反复跑，三者 stdout 编码不一致。
+
+覆盖范围（按批）
+─────────────────────────────────────────────────────────────────────────
+| 段 | 内容 | 联网 |
+|---|---|---|
+| bootstrap | 取真实 bvid/aid/cid + live room（**失败则整表不可读**，会明确报警） | ✅ |
+| positive control | `popular` 必须 `code=0`，否则下面每行 `-352/-403` 都是"你的出口" | ✅ |
+| B1 | 匿名高频 11 项（其中 video stat 借 `view/detail` 顺带，0 额外请求） | ✅ |
+| B2 | 匿名中频 7 项（含 deflate 解压、集合长度） | ✅ |
+| **B4** | **边界批**：1 个可用（`article/viewinfo`）+ **6 个"做不动"留成可重跑复查**（**只打印**） | ✅ |
+| **B5** | **能力面补充**：`space/top/arc`（含 `mid` 误参反证）、`note/is_forbid`（含 `aid=1` 陷阱格） | ✅ |
+| **B5 算法** | **`bvid ⇄ aid` 纯算法交叉校验（第二实现 + 对照实现）** | ❌ **0 请求** |
+| credential layer | B3.5 那 6 项 + `space/upstat` / `playurl` 的 A/B 对照 | ✅ |
+
+⚠️ **B4 段的"死"是待观察状态，不是契约** ⇒ 该段**刻意不加断言**；上游修好了应由人看到表格后决定开工，
+不该让预检"变红"来报警。B5 段则相反 —— 它是**已交付能力**，那两格反证（`mid`、无参）是真断言级的信息。
 """
 import gzip
 import io
@@ -69,6 +85,11 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0")
 GAP_SECONDS = 0.6          # 端点之间最小间隔（与计划一致，避免触发风控）
 TIMEOUT = 12
+
+# ---- 各批固定样本（真机实测过的值，不是占位符）-------------------------------
+SAMPLE_VMID = 2            # B5 space/top/arc：实测该 UP 有置顶视频（38 键）
+SAMPLE_AID = 80433022      # B5 note/is_forbid：与 fixtures/note-isforbid.json 同一个样本
+SAMPLE_CV = 4538122        # B4 article/viewinfo：cv4538122，实测匿名 23 键
 
 # 常见「集合字段」名。命中就打印长度 —— 这是本脚本最重要的一个判据：
 # `code=0` + `items=[]` 与 `code=0` + `items=13` 在只看 code 时长得一样，
@@ -148,6 +169,52 @@ def count_collections(data):
                     return " %s.%s=%d" % (key, inner, len(val[inner]))
             return " %s=OBJ(keys=%d)" % (key, len(val))
     return ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# B5: bvid ⇄ aid 纯算法 —— 这里**故意再实现一份**（与 Java 的 `parse/BvCode` 同规格、不同语言）
+# ─────────────────────────────────────────────────────────────────────────────
+# 为什么要抄一份？因为 Java 那份**算错了不会抛异常**：只要输入"格式合法"，它就安静地返回一个
+# 内容错误的 aid，下游拿着它去请求，拿到的是空列表 —— 与"这东西真的没数据"完全同形。
+# 所以它的验法只有一个：**拿第二个独立实现去对真实数据**。下面的 cross-check 就是这么用的。
+# （同源道理见 skills/algorithm-port-verification：黄金向量 + 对照实现 + 外部权威源。）
+BV_ALPHABET = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
+BV_XOR = 23442827791579
+BV_MASK = (1 << 51) - 1
+BV_MAX_AID = 1 << 51
+BV_BASE = 58
+
+
+def bv_to_aid(bvid, do_swap=True):
+    """bvid -> aid。`do_swap=False` 是**故意写错的对照实现**，用来证明那两次交换真的在起作用。"""
+    if len(bvid) != 12 or not bvid.startswith("BV"):
+        raise ValueError("bad bvid: %s" % bvid)
+    c = list(bvid)
+    if do_swap:
+        c[3], c[9] = c[9], c[3]
+        c[4], c[7] = c[7], c[4]
+    tmp = 0
+    for ch in c[3:]:
+        idx = BV_ALPHABET.find(ch)
+        if idx < 0:
+            raise ValueError("illegal char %r in %s" % (ch, bvid))
+        tmp = tmp * BV_BASE + idx
+    return (tmp & BV_MASK) ^ BV_XOR
+
+
+def aid_to_bv(aid):
+    if aid <= 0 or aid >= BV_MAX_AID:
+        raise ValueError("aid out of range: %d" % aid)
+    arr = list("BV1" + "0" * 9)
+    tmp = (BV_MAX_AID | aid) ^ BV_XOR
+    i = 11
+    while tmp > 0:
+        arr[i] = BV_ALPHABET[tmp % BV_BASE]
+        tmp //= BV_BASE
+        i -= 1
+    arr[3], arr[9] = arr[9], arr[3]
+    arr[4], arr[7] = arr[7], arr[4]
+    return "".join(arr)
 
 
 def probe(label, url, referer="https://www.bilibili.com/", note=None, anon=False):
@@ -367,6 +434,111 @@ if __name__ == "__main__":
                   note="sub-replies; NOTE: replies[].replies is null here while the pinned one is []")
     else:
         print("           [skip] no aid from bootstrap -- the two reply probes need it")
+    print()
+
+    # ---- B4 + B5 ------------------------------------------------------------
+    # 2026-09-23 补：本节是 B5 交付时欠下的债 —— 本脚本当时承诺"每批开工前先跑"，
+    # 却一直没有这两批的行。**缺了它，下一批开工时就没有可复跑的依据。**
+    #
+    # B4 = 「能力边界」批：8 个候选只活 1 个。所以本节的重点**不是**"那 1 个能不能用"
+    #      （它显然能用），而是把那 6 个"做不动"的**留成可重跑的边界复查**：
+    #      上游哪天修好了，这里会先看出来。⚠️ 这类行**只打印、不当断言** ——
+    #      它们的"死"是待观察状态，不是契约（同 B4 冒烟第 ④ 段）。
+    # B5 = 「能力面补充」批：4 条动工项全部可做（2 新端点 + 1 纯算法 + 1 注释订正）。
+    print("=== B4: the boundary batch (8 candidates, ONE survived) ===")
+    print("    print-only rows. 'dead' here is an OBSERVATION, not a contract -- re-check, do not assert.")
+    probe("B4 article/viewinfo", api("x/article/viewinfo", id=SAMPLE_CV),
+          note="<- the ONE that survived B4. anonymous + credentialed both 23 keys")
+    # 6 个做不动的：URL 刻意写字面量。它们**不进 BilibiliEndpoint** —— 常量进了 src/main
+    # 就会让人误以为"本库已支持"。
+    probe("B4 stein/edgeinfo_v2 (no gv)", api("x/stein/edgeinfo_v2"),
+          note="expect -400: graph_version is MANDATORY, not optional")
+    probe("B4 stein/edgeinfo_v2 (gv=0)", api("x/stein/edgeinfo_v2", graph_version=0),
+          note="expect -400 too: gv=0 is not 'a real graph_version'")
+    probe("B4 pgc/web/timeline", api("pgc/web/timeline", types=1, before=6, after=6),
+          note="expect code=0 but NO 'data' key at all -- NOT an empty list, unsalvageable")
+    probe("B4 pgc/review/user", api("pgc/review/user"),
+          note="expect -400: needs a season_id, and there is no reachable entry to get one")
+    probe("B4 audio song/info", api("audio/music-service-c/web/song/info"),
+          note="expect a code (4511001) -- the PATH is alive, the blocker is 'no sid entry'")
+    probe("B4 note/info (cvid=1)", api("x/note/info", cvid=1),
+          note="expect -101: the path is alive, it just wants a real cvid we cannot obtain")
+    probe("B4 article/view (old path)", api("x/article/view", id=SAMPLE_CV),
+          note="expect != 0 (risk-control): -352 and -509 both seen for the SAME call on different "
+               "runs => do NOT hard-code the code value, assert 'code != 0' only")
+    print()
+
+    print("=== B5: capability top-up (4 items, all shipped) ===")
+    probe("B5 space/top/arc vmid=2", api("x/space/top/arc", vmid=SAMPLE_VMID),
+          note="expect code=0, 38 keys. This is the PINNED video of that UP")
+    probe("B5 space/top/arc vmid=1", api("x/space/top/arc", vmid=1),
+          note="expect 53016 'no pinned video' -- a BUSINESS code, NOT an error. "
+               "It must NOT go through ResponseParserSupport.unwrap (that throws on code != 0)")
+    wrong = probe("NEG top/arc?mid= (wrong name)", api("x/space/top/arc", mid=SAMPLE_VMID),
+                  note="expect -400. **THE single most valuable row in this section**: on 2026-09-22 "
+                       "the sweep script sent 'mid' here, got -400, and nearly declared this working "
+                       "endpoint dead. The parameter is 'vmid'.")
+    probe("B5 note/is_forbid aid=80433022", api("x/note/is_forbid", aid=SAMPLE_AID),
+          note="expect code=0; response body is just {forbid_note_entrance}")
+    probe("TRAP is_forbid?aid=1 (ghost aid)", api("x/note/is_forbid", aid=1),
+          note="expect code=0 EVEN THOUGH aid 1 does not exist => this endpoint does NOT validate the "
+               "aid; its success is NOT evidence that the video exists (contrast: view?aid=1 -> 62012)")
+    probe("NEG is_forbid (no aid)", api("x/note/is_forbid"),
+          note="expect -400 -- aid is required")
+    if wrong and wrong.get("code") != -400:
+        print("!!! WARNING: 'mid' no longer gives -400. Either the server renamed the parameter")
+        print("!!! (then BilibiliEndpoint#spaceTopArcUrl's caller must change) or the check stopped.")
+        print("!!! Re-verify by hand before shipping anything that depends on the parameter name.")
+    print()
+
+    # ---- B5 纯算法交叉校验（0 个请求）---------------------------------------
+    # 这是本脚本里唯一**不联网**的一段，也是 B5 交付物里最该被复跑的一段。
+    print("=== B5: bvid <-> aid pure algorithm (0 requests, second implementation) ===")
+    _samples = [
+        ("BV1L9Uoa9EUx", 111298867365120, "golden"),
+        ("BV1GJ411x7h7", 80433022, "real"),
+        ("BV17x411w7KC", 170001, "real + trap sample"),
+        ("BV1xx411c7DS", 349, "real"),
+    ]
+    if bvid and aid:
+        _samples.append((bvid, aid, "bootstrap"))
+    _bad = 0
+    for _bv, _aid, _kind in _samples:
+        try:
+            _got_aid = bv_to_aid(_bv)
+            _got_bv = aid_to_bv(_aid)
+        except ValueError as _e:
+            _bad += 1
+            print("  FAIL %-13s %s (%s)" % (_bv, _e, _kind))
+            continue
+        if _got_aid == _aid and _got_bv == _bv:
+            print("  OK   %-13s <-> %-16d (%s)" % (_bv, _aid, _kind))
+        else:
+            _bad += 1
+            print("  FAIL %-13s -> aid=%d (want %d) / aid=%d -> %s (want %s) (%s)"
+                  % (_bv, _got_aid, _aid, _aid, _got_bv, _bv, _kind))
+    # 对照实现：漏掉那两次字符交换会怎样。**只对"交换位字符不同"的样本才有意义** ——
+    # BV17x411w7KC 的第 3、9 位都是 '7'，交换没有任何效果，所以它检测不出漏掉 swap(3,9)。
+    for _bv in ("BV1L9Uoa9EUx", "BV1GJ411x7h7", "BV1xx411c7DS"):
+        try:
+            if bv_to_aid(_bv, do_swap=False) == bv_to_aid(_bv):
+                _bad += 1
+                print("  FAIL %s: the swap does NOT change the result -> this sample cannot" % _bv)
+                print("       prove the swap is implemented. Pick a sample with char[3] != char[9]")
+        except ValueError:
+            pass
+    if _samples and _samples[2][0]:
+        _t = _samples[2][0]
+        if len(_t) == 12 and _t[3] == _t[9]:
+            print("  note trap sample %s: char[3] == char[9] == %r -> it can NOT detect a missing"
+                  % (_t, _t[3]))
+            print("       swap(3,9); it only covers swap(4,7). That is exactly why the list above")
+            print("       keeps samples whose swap positions differ.")
+    print("  result: %s (%d sample(s))" % ("ALL OK" if _bad == 0 else "%d FAILURE(S)" % _bad, len(_samples)))
+    if _bad:
+        print("!!! The Java parse/BvCode and this implementation DISAGREE (or a sample is bad).")
+        print("!!! BvCode never throws on a legal-looking input -- it just returns a WRONG aid,")
+        print("!!! and the caller silently gets an empty list. Fix before shipping.")
     print()
 
     if AUTHENTICATED:

@@ -6,6 +6,7 @@ import com.esdllm.bilibiliApi.model.data.pojo.user.AccInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.user.ArchiveSearchResult;
 import com.esdllm.bilibiliApi.model.data.pojo.user.RelationStat;
 import com.esdllm.bilibiliApi.model.data.pojo.user.SeasonsArchives;
+import com.esdllm.bilibiliApi.model.data.pojo.video.VideoBrief;
 import com.esdllm.bilibiliApi.sign.WbiKeyStore;
 import org.junit.jupiter.api.*;
 
@@ -38,6 +39,8 @@ class UserSpaceTest {
     private static final String ACC_PATH = "/x/space/wbi/acc/info";
     private static final String ARC_PATH = "/x/space/wbi/arc/search";
     private static final String SEAS_PATH = "/x/polymer/web-space/seasons_archives_list";
+    /** B5 批：置顶视频（参数名是 {@code vmid}） */
+    private static final String TOP_ARC_PATH = "/x/space/top/arc?vmid=";
 
     private static final String NAV_BODY = "{\"code\":-101,\"data\":{\"wbi_img\":{"
             + "\"img_url\":\"https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png\","
@@ -248,6 +251,71 @@ class UserSpaceTest {
             assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(0, mock.hitCount(RELSTAT_PATH));
+            assertEquals(0, mock.hitCount(NAV_PATH), "本地校验失败时连密钥都不该去取");
+        }
+    }
+
+    // ================================================================
+    // B5 新增：置顶视频（2026-09-23）
+    //
+    // 本组要守的是**一个"看起来像失败、其实是正常"的返回值**：
+    // 该 UP 没设置置顶时，服务端回 code=53016，而本库把它翻成 `null`。
+    // 也就是说 `getTopArchive` 是**可能返回 null 的**（与 findSeasonId 同一档），
+    // 调用方必须显式判空 —— 不能因为它"是个查询"就假定非 null。
+    // 顺带把"参数名是 vmid 不是 mid"钉住（09-22 那次盘点就是栽在这里）。
+    // ================================================================
+
+    @Nested
+    @DisplayName("B5 新增：置顶视频（匿名可用，但可能返回 null）")
+    class TopArchiveTest {
+
+        @Test
+        @DisplayName("getTopArchive：拿到置顶视频，且【一次 nav 都不打】")
+        void topArchive() throws Exception {
+            mock.register(TOP_ARC_PATH, fixture("top-arc.json"));
+
+            VideoBrief data = space.getTopArchive(2L);
+
+            assertEquals("BV1xx411c7DS", data.getBvid());
+            assertEquals(349L, data.getAid());
+            assertEquals(2L, data.getOwner().getMid());
+
+            assertTrue(mock.requestUri(TOP_ARC_PATH).contains("vmid=2"),
+                    "实际：" + mock.requestUri(TOP_ARC_PATH));
+            assertEquals("https://space.bilibili.com/2",
+                    mock.requestHeader(TOP_ARC_PATH, "Referer"));
+            assertEquals(0, mock.hitCount(NAV_PATH),
+                    "★ 该端点免签名、免凭据 —— 与要签名的 acc/info、arc/search 不是一档");
+        }
+
+        @Test
+        @DisplayName("★ 没有置顶时返回 null（不抛异常）—— 与'UP 不存在'是两件事")
+        void noTopArchiveReturnsNull() throws Exception {
+            mock.register(TOP_ARC_PATH, "{\"code\":53016,\"message\":\"没有置顶视频\",\"ttl\":1}");
+
+            assertNull(space.getTopArchive(1L),
+                    "53016 是'成功但没有内容'。调用方要判空，而不是 catch 异常");
+        }
+
+        @Test
+        @DisplayName("★ UP 不存在（-404）反而抛 —— 所以 null 与异常各有所指")
+        void notFoundThrows() throws Exception {
+            mock.register(TOP_ARC_PATH, "{\"code\":-404,\"message\":\"啥都木有\",\"ttl\":1}");
+
+            IOException e = assertThrows(IOException.class, () -> space.getTopArchive(999999999999L));
+
+            assertEquals(-404, assertInstanceOf(BilibiliException.class, e.getCause()).getCode(),
+                    "★ 只有 53016 被翻成 null，别的非 0 码照常抛");
+        }
+
+        @Test
+        @DisplayName("vmid ≤ 0：包成 IOException，零出站")
+        void badVmid() {
+            IOException e = assertThrows(IOException.class, () -> space.getTopArchive(0L));
+
+            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertInstanceOf(BilibiliException.class, e.getCause());
+            assertEquals(0, mock.hitCount(TOP_ARC_PATH));
             assertEquals(0, mock.hitCount(NAV_PATH), "本地校验失败时连密钥都不该去取");
         }
     }

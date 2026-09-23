@@ -3,13 +3,20 @@ package com.esdllm.bilibiliApi.model.data.pojo.video;
 import lombok.Data;
 
 /**
- * <b>视频摘要条目</b> —— 视频列表类响应的元素，三个端点共用同一形状（B1 批 #3 / #11 / #12）：
+ * <b>视频摘要条目</b> —— 视频列表类响应的元素，<b>四个</b>端点共用同一形状（B1 批 #3 / #11 / #12，
+ * 🆕 B5 批补第 4 个）：
  * <ul>
  *   <li>{@code x/web-interface/view/detail} 的 {@code data.Related}（相关推荐，实测 40 条）</li>
  *   <li>{@code x/web-interface/ranking/v2} 的 {@code data.list}（排行榜，实测 95 条）</li>
  *   <li>{@code x/web-interface/popular} 的 {@code data.list}（热门视频，实测 20 条）</li>
+ *   <li>🆕 {@code x/space/top/arc} 的 {@code data}（UP 主置顶视频，<b>单个对象</b>而非列表，
+ *       实测 38 键）—— 2026-09-23 复核实测，它的键名与上面三个<b>同一代</b>
+ *       （{@code tidv2} / {@code pid_v2} / {@code short_link_v2} / {@code cover43} /
+ *       {@code current_state}），而与 {@code x/web-interface/view} 的
+ *       {@code tid_v2} / {@code tname_v2} <b>不是同一代</b> ⇒ 归到这里，
+ *       <b>不要</b>复用 {@code VideoInfo}</li>
  * </ul>
- * 三者字段高度重合，所以<b>刻意只做一个类</b> —— 拆三个类会让调用方为同一份数据写三套取值代码。
+ * 四者字段高度重合，所以<b>刻意只做一个类</b> —— 拆四个类会让调用方为同一份数据写四套取值代码。
  *
  * <p>字段按 2026-09-22 实测逐字映射。多数字段三个端点都有；个别字段是某个端点专有，
  * 见各字段注释（典型：{@link #score} 只有排行榜给，{@link #rcmd_reason} 热门/相关会给但排行榜不给）。
@@ -86,6 +93,18 @@ public class VideoBrief {
     /** 属性位（实测 4） */
     private Integer attribute_v3;
 
+    /**
+     * 属性位 —— <b>与 {@link #attribute_v3} 是"同一概念的两个键"</b>，两个都要留。
+     *
+     * <p>{@code ranking/v2} / {@code popular} 给 {@code attribute_v3}，
+     * 而 {@code x/space/top/arc} 给的是 {@code attribute}（实测 {@code 32768}）。
+     * fastjson2 只认精确同名 ⇒ 少写一个，那个端点就是静默 null。
+     *
+     * <p>⚠️ 并且 {@code space/top/arc} 在<b>带凭据</b>时干脆不给这个键（匿名 38 键 / 凭据 36 键）
+     * ⇒ 它为 {@code null} 是正常现象，别当数据损坏。
+     */
+    private Integer attribute;
+
     /** 当前状态（实测 0） */
     private Integer current_state;
 
@@ -115,6 +134,14 @@ public class VideoBrief {
 
     /** 是否启用互动视频（实测 0） */
     private Integer enable_vt;
+
+    /**
+     * 播放量<b>展示文案</b>（如 {@code "57.3万"}）—— 2026-09-23 为 {@code space/top/arc} 新增。
+     *
+     * <p>⚠️ 目前只有 {@code x/space/top/arc} 给这个键（上面三个列表端点不给，恒为 {@code null}）。
+     * 想要数字请用 {@link #stat} 的 {@code view}，这是给人看的那个。
+     */
+    private String vt_display;
 
     /**
      * 排行榜名次。

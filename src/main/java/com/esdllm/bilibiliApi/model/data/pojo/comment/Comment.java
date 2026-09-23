@@ -30,7 +30,9 @@ import java.util.List;
  * <b>要显示"共 N 条回复"用 {@link #count}</b>（{@code count=0} 表示没人回复）。
  *
  * <p>⚠️ {@link #replies} 是<b>预览</b>，不是全部楼中楼（实测主评论给 3 条）。
- * 要完整楼中楼需要另调 {@code x/v2/reply/reply}（那是 B2 批次的事，本批不做）。
+ * 要完整楼中楼需要另调 {@code x/v2/reply/reply}。
+ * 📌 原文写"（那是 B2 批次的事，<b>本批不做</b>）" —— <b>已过时</b>（2026-09-23 订正）：
+ * 它<b>已随 B2 批交付</b>，入口是 {@code Comment#getSubReplies(aid, root, pn, ps)}。
  *
  * @author 饿死的流浪猫
  */

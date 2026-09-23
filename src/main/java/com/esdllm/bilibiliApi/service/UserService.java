@@ -7,6 +7,7 @@ import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.BilibiliHttp;
 import com.esdllm.bilibiliApi.model.BilibiliCardResp;
 import com.esdllm.bilibiliApi.model.data.pojo.user.*;
+import com.esdllm.bilibiliApi.model.data.pojo.video.VideoBrief;
 import com.esdllm.bilibiliApi.parse.ResponseParserSupport;
 import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -368,6 +369,59 @@ public class UserService {
     /** 空间页 Referer（参数是 mid，形状见 {@code BilibiliEndpoint.spaceReferer}） */
     private static String spaceReferer(long mid) {
         return BilibiliEndpoint.spaceReferer.formatted(String.valueOf(mid));
+    }
+
+    // ------------------------------------------------------------------ 匿名域扩容（2026-09-23 B5 新增）
+
+    /**
+     * 「没有置顶视频」的业务码。
+     *
+     * <p>🔴 <b>它是正常结果，不是错误</b> —— 一个 UP 主没设置置顶时服务端就是这个码。
+     * 因此本服务把它<b>翻译成 {@code null}</b>，而不是让它冒成异常（见
+     * {@link #getTopArchive(long)}）。取值来自 2026-09-23 实测（{@code vmid=1} → {@code 53016}）。
+     */
+    private static final int CODE_NO_TOP_ARCHIVE = 53016;
+
+    /**
+     * <b>取 UP 主置顶视频</b>（{@code x/space/top/arc}，B5 批）。
+     *
+     * <p>✅ <b>匿名可用、不需签名、不需凭据</b>（2026-09-23 实测）。
+     *
+     * <p>🔴 <b>两种"没有"要分清</b>：本方法返回 {@code null} <b>只表示"这个 UP 主没有置顶视频"</b>
+     * （服务端 {@code code=53016}），<b>不表示</b>"UP 不存在"—— 后者是 {@code -404}，
+     * 会照常抛异常。别把 {@code null} 当成"查不到这个人"。
+     *
+     * <p>🔴 <b>它不能直接用 {@code requireData}</b>：那一层对 {@code code != 0} 一律抛异常，
+     * 而 {@code 53016} 是"成功但没有内容"。所以这里<b>特意 catch 回来</b>再翻译成 {@code null} ——
+     * 否则调用方会收到一个"异常"，误以为出了故障。
+     *
+     * <p>⚠️ <b>参数名是 {@code vmid}</b>，与 {@code is_forbid} 那类端点共用同一种命名，
+     * 但与本库多数端点的 {@code mid} 不同 —— 传错就是 {@code -400}（09-22 盘点正是栽在这里）。
+     *
+     * @param vmid 用户 mid（<b>任意用户都有效</b>，不像粉丝/关注名单只限本人）
+     * @return 置顶视频；该 UP 没有置顶时返回 {@code null}
+     * @throws BilibiliException {@code vmid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0（{@code 53016} 除外）、
+     *                           或 {@code code=0} 但 {@code data} 为空
+     */
+    public VideoBrief getTopArchive(long vmid) {
+        if (vmid <= 0) {
+            throw new BilibiliException("mid不能小于0");
+        }
+        HttpResponse<String> response = BilibiliHttp.get(
+                BilibiliEndpoint.spaceTopArcUrl + "?vmid=" + vmid,
+                BilibiliEndpoint.jsonAccept, spaceReferer(vmid));
+        try {
+            VideoBrief data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+            }, "获取UP主置顶视频");
+            log.info("置顶视频 vmid={}：bvid={}（{}）", vmid, data.getBvid(), data.getTitle());
+            return data;
+        } catch (BilibiliException e) {
+            if (e.getCode() == CODE_NO_TOP_ARCHIVE) {
+                log.info("UP {} 没有置顶视频（code={}，正常业务码，按 null 返回）", vmid, CODE_NO_TOP_ARCHIVE);
+                return null;
+            }
+            throw e;
+        }
     }
 
     private UserService() {}

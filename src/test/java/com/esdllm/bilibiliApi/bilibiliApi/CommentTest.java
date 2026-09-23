@@ -22,8 +22,15 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>但本文件额外守一条<b>本门面存在的理由</b>：
  * 端点要的是 {@code oid=aid}，而调用方手里常见的是 {@code bvid}；把 {@code BV…} 丢给端点
  * <b>不报错、只静默拿空列表</b>。所以门面提供了 {@code getRepliesByBvid} ——
- * 本文件用它<b>多花的那一次 {@code view}</b> 与<b>换算出来的 aid</b> 来证明这条路真的走通了
- * （{@code hitCount} 断言它打了几次、{@code requestUri} 断言 {@code oid} 不是 BV 号）。
+ * 本文件用<b>换算出来的 aid</b> 来证明这条路真的走通了
+ * （{@code requestUri} 断言 {@code oid} 不是 BV 号、也不是别的稿件的 aid）。
+ *
+ * <p>📌 <b>2026-09-23（B5 批）变化 —— 本文件里最容易漏掉的一处改动</b>：
+ * 这条重载<b>从前要多打一次 {@code x/web-interface/view}</b> 才换得到 {@code aid}，
+ * 现在改走纯算法（{@code parse.BvCode}）。⇒ {@code hitCount(VIEW_PATH)} 的期望值
+ * <b>从 {@code 1} 变成了 {@code 0}</b>。
+ * "测试仍然是绿的"<b>发现不了</b>这种改变（少打一次请求不会让旧断言失败），
+ * 所以这里把它写成了显式断言 —— 而不是留给下一个人去猜。
  *
  * <p>另外钉一条边界：本门面<b>没有写方法</b>（发表/删除/点赞评论都不在库里），
  * 这与 {@code Content} 的反向断言是同一类纪律。
@@ -50,8 +57,14 @@ class CommentTest {
 
     /** 与 {@code comment-replies.json} 的 {@code oid} 一致 */
     private static final long AID = 117284131638286L;
-    /** 与 {@code video-view.json} 的 {@code data.aid} 一致 —— 换算链路的两端必须对得上 */
-    private static final long AID_FROM_VIEW = 114065439463311L;
+    /**
+     * {@link #BVID} 换算出来的 aid。
+     *
+     * <p>2026-09-23（B5）起它由<b>纯算法</b>（{@code parse.BvCode}）给出，<b>不再来自 view 响应</b>；
+     * 但它与 {@code video-view.json} 的 {@code data.aid} <b>仍然一致</b> ——
+     * 算法漂了这条断言就会红，这正是本文件"换算链路"的最后一道网。
+     */
+    private static final long AID_FROM_ALGO = 114065439463311L;
     private static final String BVID = "BV1tgPie2E3w";
 
     /** 与 {@code sub-reply-page.json} 的 {@code data.root.rpid} / 每条 {@code replies[].root} 一致 */
@@ -112,26 +125,26 @@ class CommentTest {
         }
 
         @Test
-        @DisplayName("★ getRepliesByBvid：真的多打了一次 view，且 oid 用的是换算出来的 aid（不是 BV 号）")
+        @DisplayName("★ getRepliesByBvid：aid 由纯算法算出（0 次额外请求），且 oid 用的是它、不是 BV 号")
         void byBvidConvertsAid() throws Exception {
-            mock.register(VIEW_PATH, fixture("video-view.json"));
             mock.register(REPLY_PATH, fixture("comment-replies.json"));
 
             CommentPage data = comment.getRepliesByBvid(BVID, 1, 20);
 
             assertEquals(2, data.getReplies().size());
-            assertEquals(1, mock.hitCount(VIEW_PATH), "换算要先打一次 view —— 这是明说过的代价");
-            assertEquals(1, mock.hitCount(REPLY_PATH), "换算之后只打一次评论");
+            assertEquals(1, mock.hitCount(REPLY_PATH), "只打一次评论端点");
+            assertEquals(0, mock.hitCount(VIEW_PATH),
+                    "★ B5 起换成纯算法：<b>一次 view 都不打</b>（改动前这里期望是 1）");
+
             String uri = mock.requestUri(REPLY_PATH);
-            assertTrue(uri.contains("oid=" + AID_FROM_VIEW),
-                    "★ oid 必须是 view 返回的那个 aid。实际：" + uri);
+            assertTrue(uri.contains("oid=" + AID_FROM_ALGO),
+                    "★ oid 必须是算法算出的那个 aid。实际：" + uri);
             assertFalse(uri.contains("BV"), "★ query 里绝不能出现 BV 号 —— 那样只会静默拿到空列表。实际：" + uri);
         }
 
         @Test
         @DisplayName("两项都是普通 GET：一次 nav 都不打（文档标 Wbi，实测不需要）")
         void noSigning() throws Exception {
-            mock.register(VIEW_PATH, fixture("video-view.json"));
             mock.register(REPLY_PATH, fixture("comment-replies.json"));
 
             comment.getReplies(AID, 1, 5);
@@ -406,16 +419,21 @@ class CommentTest {
         }
 
         @Test
-        @DisplayName("★ 换算失败（view 没给 aid）：抛 IOException，而不是拿一个坏 aid 继续往下打")
+        @DisplayName("★ 换算失败（bvid 格式非法）：抛 IOException，而不是拿一个坏 aid 继续往下打")
         void conversionFailure() {
-            mock.register(VIEW_PATH, "{\"code\":0,\"message\":\"OK\",\"data\":"
-                    + "{\"bvid\":\"" + BVID + "\",\"title\":\"没有 aid 的响应\"}}");
-
-            IOException e = assertThrows(IOException.class, () -> comment.getRepliesByBvid(BVID, 1, 20));
+            // ★ B5 起这条路径不再依赖服务端：bvid 合不合法由纯算法当场判定，
+            // 所以这里连 view 都不需要注册 —— 出站数一定是 0。
+            IOException e = assertThrows(IOException.class,
+                    () -> comment.getRepliesByBvid("BV1tgPie2E3O", 1, 20));
 
             assertTrue(e.getMessage().contains("换算 aid 失败"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("O"),
+                    "★ 文案要指出是哪个字符非法，否则调用方只能靠猜。实际：" + e.getMessage());
+            assertInstanceOf(IllegalArgumentException.class, e.getCause(),
+                    "★ 内层是 IllegalArgumentException（纯算法的校验）—— 门面在边界上把它转成受检异常");
             assertEquals(0, mock.hitCount(REPLY_PATH),
                     "★ 换算不出来就不该继续打评论 —— 拿坏 aid 打过去只会得到空列表，比直接报错难查得多");
+            assertEquals(0, mock.hitCount(VIEW_PATH), "B5 起连 view 都不打");
         }
 
         @Test

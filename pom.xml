@@ -6,7 +6,7 @@
 
     <groupId>com.esdllm</groupId>
     <artifactId>bilibili-api</artifactId>
-    <version>0.9.30-beta</version>
+    <version>0.10.0-SNAPSHOT</version>
     <name>bilibili-api</name>
     <description>哔哩哔哩（Bilibili）常用数据接口的 Java 客户端：用户名片、视频、动态、直播间、短链解析、搜索、用户空间与 AI 视频摘要，并支持登录（扫码 / 密码 / 短信）与 WBI 签名。</description>
 
@@ -32,10 +32,10 @@
         <!-- Lombok 仅在编译期生成代码，运行期不需要，声明为 provided 避免传递给下游 -->
         <lombok.version>1.18.42</lombok.version>
         <!-- JSON 序列化：fastjson2（2026-09-22 从 1.2.83 迁来）。
-             🔴 坐标是 `com.alibaba.fastjson2:fastjson2`，与 1.x 的 `com.alibaba:fastjson`
+             坐标是 `com.alibaba.fastjson2:fastjson2`，与 1.x 的 `com.alibaba:fastjson`
              **不是同一个坐标** ⇒ 下游若还留着 1.x 也不会冲突（下游可共存）。
-             🔴 2.x 相对 1.x 最实际的一条收益：**autotype 默认关闭**（1.x 的反序列化漏洞面主要来自它）。
-             📌 本库实测**只用到 4 个符号**（JSONObject / JSON / TypeReference / JSONArray），
+             2.x 相对 1.x 最实际的一条收益：**autotype 默认关闭**（1.x 的反序列化漏洞面主要来自它）。
+             本库实测**只用到 4 个符号**（JSONObject / JSON / TypeReference / JSONArray），
              且**全库零 `@JSONField`** ⇒ 迁移不需改任何注解，行为差异只在个别强制转换上。 -->
         <fastjson2.version>2.0.56</fastjson2.version>
         <!-- HTTP 请求 -->
@@ -48,7 +48,7 @@
         <qrcode.version>3.3.3</qrcode.version>
 
         <!-- surefire 的 argLine 追加位：默认空，命令行可覆盖。
-             🔴 这里**必须留一个空定义**，否则未传参时 ${argLine} 会以字面量形式进入 JVM 参数。
+             这里**必须留一个空定义**，否则未传参时 ${argLine} 会以字面量形式进入 JVM 参数。
              存在的理由：`smoke/*` 测试全部靠 `-Dbili.smoke=true` 开关，而开关只能通过
              forked JVM 的系统属性传进去（见下面 surefire 的 argLine）。
              2026-09-22 之前 pom 把 argLine 写死成 `-Dfile.encoding=UTF-8`（**没有引用本属性**），

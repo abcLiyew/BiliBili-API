@@ -46,7 +46,8 @@ build/
 
 ### 工作区/AI 记忆与内部文档（不入库） ###
 /.workbuddy/
-/REFACTOR_PLAN.md
-/REFACTOR_PLAN_REVIEW.md
-/INTERFACE_PLAN.md
+/docs/REFACTOR_PLAN.md
+/docs/REFACTOR_PLAN_REVIEW.md
+/docs/INTERFACE_PLAN.md
 *.tmp.txt
+/docs/

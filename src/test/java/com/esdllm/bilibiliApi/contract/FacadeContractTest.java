@@ -435,6 +435,11 @@ class FacadeContractTest {
             // 且查任意用户都行；与上面的名单端点（-101、只限本人）同域、同参数名（vmid）、
             // 名字也像 —— 最容易被人"顺手合并"的一对，所以两处都单独钉住。
             assertSignature(UserSpace.class, "getRelationStat", RelationStat.class, long.class);
+
+            // 2026-09-23 B5：置顶视频。本门面**第二个免凭据**的方法（同 vmid 参数名），
+            // 但返回值形态不同 —— 它**可能返回 null**（该 UP 没设置置顶 = 业务码 53016）。
+            // 返回类型刻意是 VideoBrief 而非 VideoInfo：键名属于"列表那一代"。
+            assertSignature(UserSpace.class, "getTopArchive", VideoBrief.class, long.class);
         }
 
         @Test
@@ -451,6 +456,7 @@ class FacadeContractTest {
             assertDeclares(UserSpace.class, "getFollowers", IOException.class, long.class, int.class, int.class);
             assertDeclares(UserSpace.class, "getFollowings", IOException.class, long.class, int.class, int.class);
             assertDeclares(UserSpace.class, "getRelationStat", IOException.class, long.class);
+            assertDeclares(UserSpace.class, "getTopArchive", IOException.class, long.class);
         }
     }
 
@@ -477,10 +483,16 @@ class FacadeContractTest {
             // 在此之前它四项里三项都"可能失败"（签名/凭据/出口信誉），容易让人以为整个类都难用。
             assertSignature(VideoExtra.class, "getViewDetail", ViewDetail.class, String.class);
             assertSignature(VideoExtra.class, "getOnlineTotal", OnlineTotal.class, String.class, Long.class);
+
+            // 2026-09-23 B5：笔记入口禁令 + bvid⇄aid 纯算法。
+            // ⚠️ 后两个**不发请求**（本地换算），所以它们不是"网络方法" —— 见下面的反向断言。
+            assertSignature(VideoExtra.class, "isNoteForbidden", boolean.class, long.class);
+            assertSignature(VideoExtra.class, "toAid", long.class, String.class);
+            assertSignature(VideoExtra.class, "toBvid", String.class, long.class);
         }
 
         @Test
-        @DisplayName("六个方法（含 B1 新增的两个）都必须声明 throws IOException")
+        @DisplayName("联网方法必须声明 throws IOException；两个纯算法方法刻意不声明")
         void declares() {
             assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class);
             assertDeclares(VideoExtra.class, "getAiSummary", IOException.class, String.class, Long.class);
@@ -489,6 +501,17 @@ class FacadeContractTest {
                     String.class, Long.class, Integer.class, Integer.class);
             assertDeclares(VideoExtra.class, "getViewDetail", IOException.class, String.class);
             assertDeclares(VideoExtra.class, "getOnlineTotal", IOException.class, String.class, Long.class);
+            assertDeclares(VideoExtra.class, "isNoteForbidden", IOException.class, long.class);
+
+            // toAid / toBvid 是**纯函数、零出站**，与 Wbi#signQuery 的离线重载同一档：
+            // 逼调用方 catch 一个永不抛出的受检异常纯属噪音。所以反向断言它们**不该**声明。
+            for (String name : List.of("toAid", "toBvid")) {
+                Class<?> param = name.equals("toAid") ? String.class : long.class;
+                Method m = locate(VideoExtra.class, name, param);
+                assertFalse(Arrays.asList(m.getExceptionTypes()).contains(IOException.class),
+                        name + " 不发请求（纯算法换算），不应声明 IOException —— "
+                                + "否则调用方必须为一个永不抛出的异常写 try/catch");
+            }
         }
     }
 
