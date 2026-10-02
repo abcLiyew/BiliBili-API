@@ -123,6 +123,44 @@ public class SearchService {
         return data;
     }
 
+    // ------------------------------------------------------------------ C2 批（2026-10-02）
+
+    /**
+     * <b>取默认搜索词</b>（{@code x/web-interface/search/default}，C2 批）。
+     *
+     * <p>就是搜索框"还没输入时"显示的那个词。<b>无参数</b>。
+     *
+     * <p>✅ <b>完全不需要凭据、也不需要签名</b>（2026-10-02 匿名 / 凭据两格实测均 {@code code=0}）。
+     * 所以它<b>不走</b> {@link BilibiliHttp#getSigned} —— 与 {@link #getHotSearch(int)} 同理：
+     * 给它签名只是白算一次。
+     *
+     * <p>🔴 <b>{@code seid} 是 19~20 位随机数字串，必须用 {@code String} 接</b> ——
+     * 实测<b>大多数时候</b>超出 {@code Long.MAX_VALUE}（约 9.22e18；最长 {@code 16451640188548591644}）、
+     * <b>偶尔不超</b>（2026-10-02 六连跑里就有 {@code 5124564570609599509} 这类 19 位值）。
+     * ⇒ <b>不能用"parseLong 成功"反推类型</b>；见 {@link DefaultSearchWord} 的类注释，别做数值运算。
+     *
+     * @return 默认搜索词，不可为 null
+     * @throws BilibiliException 网络失败、HTTP 非 2xx、业务码非 0，
+     *                           或 {@code code=0} 但 {@code name} 为空
+     */
+    public DefaultSearchWord getDefaultSearchWord() {
+        HttpResponse<String> response = BilibiliHttp.get(BilibiliEndpoint.searchDefaultUrl,
+                BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
+        DefaultSearchWord data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取默认搜索词");
+        if (data.getName() == null || data.getName().isBlank()) {
+            // 本端点无参数、匿名可用 ⇒ 空词不会是"参数没传对"，只能是形状变了或被风控。
+            // 与 getHotSearch 的空榜单守卫同理。
+            throw new BilibiliException(0,
+                    "获取默认搜索词失败：服务端返回 code=0，但 name 为空",
+                    "该端点无参数且匿名可用，空词只可能是响应形状变了或命中风控");
+        }
+        // seid 是每次请求都变的随机会话 id（2026-10-02 三连跑三个值）⇒ 打进 info 只会让每行都不同、
+        // 对日志聚合零价值。要排查响应形状时用 debug 打开即可。
+        log.debug("默认搜索词：{}（seid={}）", data.getName(), data.getSeid());
+        return data;
+    }
+
     /**
      * <b>综合搜索</b>：一次拿到 12 个分组的混合结果。
      *

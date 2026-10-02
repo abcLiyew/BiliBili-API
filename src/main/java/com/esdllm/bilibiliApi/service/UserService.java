@@ -424,5 +424,60 @@ public class UserService {
         }
     }
 
+    // ------------------------------------------------------------------ C2 批（2026-10-02）
+
+    /**
+     * <b>取 UP 主内容概览</b>（{@code x/space/navnum}，C2 批）。
+     *
+     * <p>给一个 {@code mid}，拿到该 UP 主<b>各内容类型各自的投稿数</b>（视频 / 专栏 / 音频 /
+     * 番剧 / 影视 / 课程 / 相册 / opus / 标签 / 合集…实测 13 个键）。
+     *
+     * <p>✅ <b>不需要凭据</b>（2026-10-02 匿名 / 凭据两格均 {@code code=0}），查<b>任意</b> mid 都有效。
+     *
+     * <p>🔴 <b>别与 {@code CardInfo#getCard} 搞混</b>：{@code card} 给"粉丝数 / 总投稿数 / 获赞数"，
+     * 本方法给"按内容类型的分布"。两者<b>不重叠</b>，但也<b>谁都不是"唯一真相"</b>
+     * —— 要粉丝数别来这里，要各类型投稿数别去名片（见 {@link NavNum} 的类注释）。
+     *
+     * <p>⚠️ <b>参数名是 {@code mid}</b>（吃 {@code ?mid=}）—— 与同门面的
+     * {@link #getTopArchive(long)} 用的 {@code vmid} <b>不是同一个</b>，两个端点各写各的。
+     *
+     * <p>🔴 <b>本端点不校验 mid 是否存在</b>（2026-10-02 六格实测）：
+     * 五个数字 mid（真值 {@code 2} / 不存在的 {@code 99999999999999}、{@code 123456789} /
+     * 超出 {@code int32} 的 {@code 4294967296} / 早期账号 {@code 1}）<b>全部返回
+     * {@code code=0} + 13 键齐备</b>，而不存在的那些是<b>全 0</b>；
+     * 只有非数字 mid（{@code abc}）才给 {@code -400}（那是<b>类型</b>校验，不是存在性校验）。
+     * ⇒ <b>"查无此人"与"这个账号真的一无所有"在返回值上同形，本端点不提供任何区分信号</b>。
+     * ⚠️ 因此<b>不能</b>用"全 0"反推"用户不存在" —— 一个从未投稿的真实账号同样是全 0。
+     *
+     * @param mid 用户 mid（<b>任意数字 mid 都得到 {@code code=0}</b>，含不存在的）
+     * @return 内容概览，不可为 null
+     * @throws BilibiliException {@code mid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0，
+     *                           或 {@code code=0} 但 {@code data} 是<b>空对象</b>。
+     *                           ⚠️ 后者是<b>形状级防御</b>：该形态在本端点上<b>未实测到</b>
+     *                           （上游恒返回 13 键，见上），此处只为堵住
+     *                           {@link ResponseParserSupport#unwrap} "只在 {@code data == null} 时抛"
+     *                           这个缺口，与同文件的 {@link #getUpStat(long)} 保持一致
+     */
+    public NavNum getNavNum(long mid) {
+        if (mid <= 0) {
+            throw new BilibiliException("mid不能小于0");
+        }
+        HttpResponse<String> response = BilibiliHttp.get(
+                BilibiliEndpoint.spaceNavNumUrl + "?mid=" + mid,
+                BilibiliEndpoint.jsonAccept, spaceReferer(mid));
+        NavNum data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取UP主内容概览");
+        if (data.getVideo() == null && data.getArticle() == null && data.getAlbum() == null) {
+            throw new BilibiliException(0,
+                    "获取UP主内容概览失败：服务端返回 code=0，但 data 是空对象 —— "
+                            + "这不是'投稿数为 0'（那是 13 个键都在、值为 0），而是一个键都没给",
+                    "该端点在 2026-10-02 的实测里恒返回 13 键，所以出现空对象大概率是响应形状变了"
+                            + "或命中风控；不会是传错 mid —— 本端点不校验 mid 是否存在");
+        }
+        log.info("内容概览 mid={}：视频 {} / 专栏 {} / 相册 {} / 动态 {}", mid,
+                data.getVideo(), data.getArticle(), data.getAlbum(), data.getOpus());
+        return data;
+    }
+
     private UserService() {}
 }

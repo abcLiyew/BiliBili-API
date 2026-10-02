@@ -1060,6 +1060,125 @@ public class BilibiliEndpoint {
      */
     public static final String playerVideoShotUrl = "https://api.bilibili.com/x/player/videoshot";
 
+    // ------------------------------------------------------------------ C2 批（2026-10-02）
+    //
+    // 本批的来由：C1 把候选池从 42 份文档扩到上游全集后，还剩约 15 个"实测可做"的端点。
+    // 2026-10-02（距上次实测 9 天）复验这一批，**三个原定候选被实测推翻**：
+    //   · `x/v2/search/trending/ranking` —— 与既有的 `search/square`（{@link #searchSquareUrl}）
+    //     **高度重叠**：两者都返回 `list + top_list`，旧的还多一个 `heat_score`。
+    //     新端点的净增量只剩 `position`（数组下标即可推出）⇒ 不做。
+    //   · `x/web-interface/index/top/rcmd` —— 同趟连跑 4 次，**3 次拿到 5671 B HTML 错误页**、
+    //     只有 1 次 `code=0` ⇒ 间歇性拒绝，做进库会让调用方时好时坏 ⇒ 不做。
+    //   · `x/web-interface/zone`（IP 归属地）—— 四格实测（无参 / `?ip=` / `X-Forwarded-For` /
+    //     `X-Real-IP`）返回的 `addr`、`city` **逐字完全相同** ⇒ 它只回答"本次请求从哪儿发出"，
+    //     是**关于调用方自己的出口元数据**，不是 B 站内容；入库等于把调用方 IP 送给第三方
+    //     ⇒ 不做（想查任意 IP 归属地要内置 GeoIP 库，属另一回事）。
+    //
+    // 以下 3 个是本批留下的，**全部匿名可用**，不需要签名与凭据。
+
+    /**
+     * {@code x/web-interface/search/default} —— <b>默认搜索词</b>（C2 批）。
+     *
+     * <p>就是搜索框"还没输入时"显示的那个词（实测样本为 {@code 边狱巴士}）。<b>无参数</b>。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用、不需签名、不需凭据（2026-10-02 匿名/凭据两格实测均 {@code code=0}）。
+     *
+     * <p>⚠️ <b>{@code seid} 是 19~20 位随机数字串，必须用 {@code String} 接</b> ——
+     * 实测<b>大多数时候超出 {@code long} 范围</b>（最长 {@code 16451640188548591644} ≈ 1.65e19），
+     * 但<b>偶尔会落在范围内</b>（2026-10-02 同一份代码两次运行各遇到一次）。
+     * ⇒ 与 {@link #searchSquareUrl} 的 {@code trackid} 是同一类坑（本库第二次遇到）；
+     * 因为"值时大时小"，<b>不能靠"能不能 parseLong"来判断该用什么类型</b>，也别写进断言。
+     *
+     * <p>⚠️ <b>{@code seid} 每次请求都不同</b>（2026-10-02 三连跑三个值）—— 它是<b>搜索会话 id</b>，
+     * 不是"这个词的稳定 id"⇒ 不可缓存、不可跨请求复用。而 {@code name} / {@code id} / {@code url}
+     * 描述的是<b>当下</b>的默认（热门）词，隔一段时间就换。
+     */
+    public static final String searchDefaultUrl = "https://api.bilibili.com/x/web-interface/search/default";
+
+    /**
+     * {@code x/space/navnum} —— <b>UP 主内容概览</b>（C2 批）。
+     *
+     * <p>给一个 {@code mid}，返回该 UP 主<b>各内容类型各自的投稿数</b>：视频 / 专栏 / 音频 /
+     * 番剧 / 影视 / 课程 / 相册 / opus / 标签 / 合集…实测 <b>13 个键</b>
+     * （样本 {@code mid=2}：{@code video=43}、{@code album=127}、{@code article=0}…）。
+     *
+     * <p>🔴 <b>别与 {@code CardInfo#getCard} 混为一谈</b>：{@code card} 给的是
+     * <b>粉丝数 / 总投稿数 / 获赞数</b>，本端点给的是<b>按内容类型的分布</b>。
+     * 两者不重叠，但<b>哪一个都不是"唯一真相"</b> —— 要数量就用对应的那个。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用（2026-10-02 匿名/凭据两格均 {@code code=0}）。
+     * ⚠️ 本次实测的 {@code Referer} 是 {@code space.bilibili.com/<mid>}；站根是否也行<b>未单独验证</b>。
+     *
+     * <p>🔴 <b>它不校验 {@code mid} 是否存在</b>（2026-10-02 六格实测）：
+     * <table border="1">
+     *   <caption>{@code mid} 取值 → 响应</caption>
+     *   <tr><th>{@code mid}</th><th>结果</th></tr>
+     *   <tr><td>{@code 2}（B 站官方号）</td><td>{@code code=0}，13 键，{@code video=43}</td></tr>
+     *   <tr><td>{@code 1}</td><td>{@code code=0}，13 键，{@code video=2}</td></tr>
+     *   <tr><td>{@code 123456789}（疑似不存在）</td><td>{@code code=0}，13 键<b>全 0</b></td></tr>
+     *   <tr><td>{@code 99999999999999}（不存在）</td><td>{@code code=0}，13 键<b>全 0</b></td></tr>
+     *   <tr><td>{@code 4294967296}（超 {@code int32}）</td><td>{@code code=0}，13 键<b>全 0</b></td></tr>
+     *   <tr><td>{@code abc}（非数字）</td><td><b>{@code -400} 请求错误</b>，且响应<b>无 {@code data} 键</b></td></tr>
+     * </table>
+     * ⇒ <b>"查无此人" = 全 0</b>，而"这个账号真的一无所有"同样是全 0 ⇒ <b>同形、无区分信号</b>。
+     * ⚠️ 别写"全 0 ⇒ 用户不存在"的判据；{@code -400} 只证明<b>类型</b>不合法，不证明存在性。
+     *
+     * <p>🔴 <b>参数名是 {@code mid}，不是 {@code vmid}</b> —— 同域的 {@link #spaceTopArcUrl}
+     * 用的是 {@code vmid}，两者一字之差。2026-10-02 复验：{@code ?mid=} → {@code code=0}，
+     * {@code ?vmid=} → {@code -400}。（B5 那次盘点正是栽在传错这个参数上，拿到 {@code -400}
+     * 差点把能用的端点判死。）
+     *
+     * <p>⚠️ {@code channel} 与 {@code favourite} 是<b>嵌套对象</b> {@code {guest, master}}，
+     * <b>不是数字</b> ⇒ POJO 要用内嵌类接；直接声明成 {@code Long} 会<b>静默变 null</b>。
+     */
+    public static final String spaceNavNumUrl = "https://api.bilibili.com/x/space/navnum";
+
+    /**
+     * {@code x/web-interface/online} —— <b>全站各分区在线人数</b>（C2 批，旧版端点）。
+     *
+     * <p>🔴 <b>无参数</b>（2026-10-02 六格实测，逐字节相同）：
+     * <table border="1">
+     *   <caption>本端点不吃任何输入</caption>
+     *   <tr><th>请求</th><th>结果</th></tr>
+     *   <tr><td><b>无参</b> / {@code ?bvid=BV1BqhB6nEdN} / {@code ?bvid=BV1xx411c7mD}</td>
+     *       <td rowspan="2">{@code code=0}、26 个分区、合计 <b>379006</b> —— <b>四~六格完全相同</b></td></tr>
+     *   <tr><td>{@code ?bvid=garbage} / {@code ?bvid=} / {@code ?aid=1}</td></tr>
+     * </table>
+     * ⇒ 它是<b>全站统计</b>，任何"指定目标"的参数都被<b>静默忽略</b>。
+     * 🔴 <b>所以库内不给它加参数</b>（{@code VideoService#getRegionOnlineCount()} 是无参的）——
+     * 加一个被忽略的参数，一方面让人以为"这是某个视频的数据"，另一方面若再做"非空校验"，
+     * 那校验就是<b>假校验</b>（传 {@code "garbage"} 照样通过）。
+     * 📌 判据的反面同样成立：<b>正是"参数被忽略"让我们剔除了 {@code web-interface/zone}</b>
+     * ——同一条判据要对称使用（见 skill {@code api-endpoint-preflight} 判据三）。
+     *
+     * <p>🔴 <b>它与 {@link #onlineTotalUrl} 不是一回事，别被"online"这个词骗了</b>
+     * （2026-10-02 实测，两个端点在<b>同一分钟</b>各跑一格）：
+     * <table border="1">
+     *   <caption>两个"在线"端点对照</caption>
+     *   <tr><th></th><th>{@code player/online/total}</th><th>本端点</th></tr>
+     *   <tr><td>问的是</td><td><b>某一个视频</b>此刻多少人在看</td>
+     *       <td><b>全站各分区</b>此刻多少人在看</td></tr>
+     *   <tr><td>入参</td><td>{@code bvid} + {@code cid}</td><td><b>无</b></td></tr>
+     *   <tr><td>形状</td><td>{@code {total, count, show_switch, abtest}}</td>
+     *       <td>{@code {region_count: {分区id → 人数}}}</td></tr>
+     *   <tr><td>量级（实测）</td><td>{@code total=690}（同视频另一次 {@code 56}）</td>
+     *       <td>26 个分区合计 {@code 349420}（另一次 {@code 379006}）</td></tr>
+     * </table>
+     * ⇒ 两个方法名相似、<b>量级差约三个数量级（实测相差 500~7000 倍）</b>。
+     * 混用会得出"这个视频有 34 万人在看"这种结论。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用（2026-10-02 匿名/凭据两格均 {@code code=0}）。
+     * <b>{@code Referer} 只校验"域"</b>（2026-10-02 五格实测）：不带 / 站根 / 视频页 / 空间页
+     * 全部 {@code code=0}，而 <b>外域 {@code Referer}（{@code evil.example}）直接 HTTP 403</b>
+     * ⇒ 库内用<b>站根</b> {@link #referer}。⚠️ 这与 {@link #rankingUrl} 的"页级敏感"正好相反
+     * —— <b>Referer 的严格程度必须逐端点实测，不能从邻居外推</b>（三格字节完全相同也照样可能是陷阱）。
+     *
+     * <p>⚠️ {@code region_count} 的键是<b>字符串形式的数字</b>（分区 rid，如 {@code "1"} / {@code "160"}），
+     * 值是 {@code long} ⇒ POJO 用 {@code Map<String, Long>}。
+     * ⚠️ 这套分区编号与 {@code ranking/v2} 的 {@code rid}、直播分区的 id <b>不是同一套</b>，别互相套用。
+     */
+    public static final String webInterfaceOnlineUrl = "https://api.bilibili.com/x/web-interface/online";
+
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**
      * @deprecated 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线

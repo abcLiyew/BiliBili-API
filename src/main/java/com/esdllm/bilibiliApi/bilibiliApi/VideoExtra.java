@@ -1,12 +1,7 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
 import com.esdllm.bilibiliApi.exception.BilibiliException;
-import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
-import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
-import com.esdllm.bilibiliApi.model.data.pojo.video.Pages;
-import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
-import com.esdllm.bilibiliApi.model.data.pojo.video.VideoShot;
-import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
+import com.esdllm.bilibiliApi.model.data.pojo.video.*;
 import com.esdllm.bilibiliApi.parse.BvCode;
 import com.esdllm.bilibiliApi.service.VideoService;
 
@@ -360,6 +355,46 @@ public class VideoExtra {
     public VideoShot getVideoShot(String bvid) throws IOException {
         try {
             return VideoService.INSTANCE.getVideoShot(bvid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    // ------------------------------------------------------------------ C2 批（2026-10-02）
+
+    /**
+     * <b>取全站各分区在线人数</b>（{@code x/web-interface/online}，C2 批）。
+     *
+     * <p>✅ <b>匿名可用</b>（2026-10-02 两格实测 {@code code=0}）。🔴 <b>无参数</b> ——
+     * 该端点<b>不接受任何输入</b>（实测六格：无参 / 各种 {@code bvid} / {@code garbage} /
+     * 空串 / {@code aid} 全部逐字节相同）⇒ 它回答的是"B 站全站此刻的分布"，
+     * 与"某个视频"无关，所以本方法<b>刻意不带 {@code bvid}</b>。
+     *
+     * <p>🔴 <b>与同门面的 {@link #getOnlineTotal(String, Long)} 不是一回事 —— 别混用</b>
+     * （两个端点在<b>同一分钟</b>各跑一格的实测对照）：
+     * <table border="1">
+     *   <caption>两个"在线"端点</caption>
+     *   <tr><th></th><th>{@code getOnlineTotal}</th><th>本方法</th></tr>
+     *   <tr><td>问的是</td><td><b>某一个视频</b>此刻多少人在看</td>
+     *       <td><b>全站各分区</b>此刻多少人在看</td></tr>
+     *   <tr><td>入参</td><td>{@code bvid} + {@code cid}</td><td><b>无</b></td></tr>
+     *   <tr><td>量级（实测）</td><td>{@code total=690}（同视频另一次 {@code 56}）</td>
+     *       <td>26 个分区合计 {@code 349420}（另一次 {@code 379006}）</td></tr>
+     * </table>
+     * ⇒ 两个名字像、<b>量级差约三个数量级（实测相差 500~7000 倍）</b>。混用会得出
+     * "这个视频有 34 万人在看"，且<b>不会报错</b>。判断"现在哪个区最热"用本方法，
+     * "这个视频热不热"用 {@link #getOnlineTotal(String, Long)}。
+     *
+     * <p>⚠️ 返回 {@code 分区id → 人数}，键是<b>字符串</b>（如 {@code "1"} / {@code "160"}）；
+     * 这套编号与 {@code ranking/v2} 的 {@code rid} <b>不是同一套</b>（见 {@link RegionOnline}）。
+     *
+     * @return 分区在线分布，不可为 null
+     * @throws IOException 网络失败、HTTP 非 2xx、业务码非 0、
+     *                     {@code data} 为空，或 {@code region_count} 为空
+     */
+    public RegionOnline getRegionOnlineCount() throws IOException {
+        try {
+            return VideoService.INSTANCE.getRegionOnlineCount();
         } catch (BilibiliException e) {
             throw new IOException(e.getMessage(), e);
         }

@@ -151,4 +151,32 @@ public class Search {
     public HotSearch getHotSearch() throws IOException {
         return getHotSearch(SearchService.DEFAULT_HOT_LIMIT);
     }
+
+    // ------------------------------------------------------------------ C2 批（2026-10-02）
+
+    /**
+     * <b>取默认搜索词</b>（{@code x/web-interface/search/default}，C2 批）。
+     *
+     * <p>就是搜索框"还没输入时"显示的那个词。✅ <b>零门槛</b>：不需要凭据，也不需要 WBI 签名
+     * （2026-10-02 两格实测均 {@code code=0}）—— 所以它和 {@link #getHotSearch()} 一样
+     * <b>不走签名出口</b>。
+     *
+     * <p>典型用途："搜索框的占位/兜底词"、"给你一个当下平台推荐搜的词"。
+     *
+     * <p>🔴 <b>{@link DefaultSearchWord#getSeid()} 必须用 {@code String} 接</b> —— 它是 19~20 位随机数字串，
+     * 实测<b>大多数时候</b>超出 {@code long} 范围（最长 {@code 16451640188548591644}）、<b>偶尔不超</b>
+     * （2026-10-02 观测到 {@code 5124564570609599509}）。
+     * ⇒ <b>不能用"parseLong 成功"反推类型</b>；与 {@code HotSearch.Trending#getTrackid()}
+     * 是同一类坑，<b>别对它做数值运算</b>。
+     *
+     * @return 默认搜索词，不可为 null
+     * @throws IOException 网络失败、HTTP 非 2xx、业务码非 0，或 {@code code=0} 但词为空
+     */
+    public DefaultSearchWord getDefaultSearchWord() throws IOException {
+        try {
+            return SearchService.INSTANCE.getDefaultSearchWord();
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
 }

@@ -17,10 +17,7 @@ import com.esdllm.bilibiliApi.model.data.pojo.danmaku.DanmakuXml;
 import com.esdllm.bilibiliApi.model.data.pojo.live.LiveStream;
 import com.esdllm.bilibiliApi.model.data.pojo.live.MasterInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.login.*;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchAllResult;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchTypeResult;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchUser;
-import com.esdllm.bilibiliApi.model.data.pojo.search.SearchVideo;
+import com.esdllm.bilibiliApi.model.data.pojo.search.*;
 import com.esdllm.bilibiliApi.model.data.pojo.user.*;
 import com.esdllm.bilibiliApi.model.data.pojo.video.*;
 import org.junit.jupiter.api.DisplayName;
@@ -379,14 +376,21 @@ class FacadeContractTest {
                     SearchTypeResult.class, String.class, int.class);
             assertSignature(Search.class, "searchUsers",
                     SearchTypeResult.class, String.class, int.class);
+
+            // 2026-10-02 C2：默认搜索词。本门面**第四个**方法，也是**唯一零参数、匿名即通**的一个。
+            // ⚠️ 返回的 DefaultSearchWord#seid 实测 16451640188548591644 超出 Long 范围 ——
+            //    它以 String 承载，别改成 Long（改了下游解析会静默失真）。
+            assertSignature(Search.class, "getDefaultSearchWord", DefaultSearchWord.class);
         }
 
         @Test
-        @DisplayName("三个搜索方法都必须声明 throws IOException（门面边界统一口径）")
+        @DisplayName("Search 门面所有网络方法都必须声明 throws IOException（门面边界统一口径）")
         void declares() {
             assertDeclares(Search.class, "searchAll", IOException.class, String.class, int.class);
             assertDeclares(Search.class, "searchVideos", IOException.class, String.class, int.class);
             assertDeclares(Search.class, "searchUsers", IOException.class, String.class, int.class);
+            // C2：零参数也要声明 —— 它走网络，边界同样转 IOException，不为"无参"开特例。
+            assertDeclares(Search.class, "getDefaultSearchWord", IOException.class);
         }
 
         /**
@@ -442,6 +446,10 @@ class FacadeContractTest {
             // 但返回值形态不同 —— 它**可能返回 null**（该 UP 没设置置顶 = 业务码 53016）。
             // 返回类型刻意是 VideoBrief 而非 VideoInfo：键名属于"列表那一代"。
             assertSignature(UserSpace.class, "getTopArchive", VideoBrief.class, long.class);
+
+            // 2026-10-02 C2：内容概览。参数名是 **mid 而不是 vmid** —— 与上面几个同域方法
+            // 最易混的一处（其余都用 vmid）。返回值是 11 个计数 + 2 个嵌套对象。
+            assertSignature(UserSpace.class, "getNavNum", NavNum.class, long.class);
         }
 
         @Test
@@ -459,6 +467,8 @@ class FacadeContractTest {
             assertDeclares(UserSpace.class, "getFollowings", IOException.class, long.class, int.class, int.class);
             assertDeclares(UserSpace.class, "getRelationStat", IOException.class, long.class);
             assertDeclares(UserSpace.class, "getTopArchive", IOException.class, long.class);
+            // C2：getNavNum 用 mid（long），同样声明 IOException。
+            assertDeclares(UserSpace.class, "getNavNum", IOException.class, long.class);
         }
     }
 
@@ -498,6 +508,15 @@ class FacadeContractTest {
             //    "参数个数"，防止后人"顺手把 index 加回来"。
             assertListOf(VideoExtra.class, "getParts", Pages.class, String.class);
             assertSignature(VideoExtra.class, "getVideoShot", VideoShot.class, String.class);
+
+            // 2026-10-02 C2：分区在线分布。⚠️ 别与 getOnlineTotal 混 ——
+            //   前者是**单视频**的实时在线人数，本项是**全站 26 个分区**的在线分布（不同端点、
+            //   不同维度）。返回类型 RegionOnline 只有 region_count 一个字段，
+            //   **刻意不含 total/count**（那是 getOnlineTotal 的形状），下面的反向断言钉住这点。
+            // 🔴 它**没有参数**，且这条必须钉住：实测六格（无参 / 各种 bvid / garbage / aid）
+            //   逐字节相同 ⇒ 端点根本不看参数。⚠️ 交付时它曾是 `getRegionOnlineCount(String bvid)`，
+            //   review 时被这组 A/B 打回 —— 别再把 bvid 加回来（那会让调用方以为数据是某个视频的）。
+            assertSignature(VideoExtra.class, "getRegionOnlineCount", RegionOnline.class);
         }
 
         @Test
@@ -513,6 +532,8 @@ class FacadeContractTest {
             assertDeclares(VideoExtra.class, "isNoteForbidden", IOException.class, long.class);
             assertDeclares(VideoExtra.class, "getParts", IOException.class, String.class);
             assertDeclares(VideoExtra.class, "getVideoShot", IOException.class, String.class);
+            // C2：分区在线分布，联网方法，同样声明 IOException（**无参数**）。
+            assertDeclares(VideoExtra.class, "getRegionOnlineCount", IOException.class);
 
             // toAid / toBvid 是**纯函数、零出站**，与 Wbi#signQuery 的离线重载同一档：
             // 逼调用方 catch 一个永不抛出的受检异常纯属噪音。所以反向断言它们**不该**声明。

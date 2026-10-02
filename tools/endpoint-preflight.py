@@ -79,10 +79,18 @@ Cookie 自动发现顺序：`.workbuddy/bili-anon-cookie.txt` → `.workbuddy/bi
 | **B4** | **边界批**：1 个可用（`article/viewinfo`）+ **6 个"做不动"留成可重跑复查**（**只打印**） | ✅ |
 | **B5** | **能力面补充**：`space/top/arc`（含 `mid` 误参反证）、`note/is_forbid`（含 `aid=1` 陷阱格） | ✅ |
 | **B5 算法** | **`bvid ⇄ aid` 纯算法交叉校验（第二实现 + 对照实现）** | ❌ **0 请求** |
+| **C1** | **换源后第一批 5 端点（全匿名）**：`player/pagelist`、`player/videoshot`（`index` 陷阱格）、`popular/precious`（分页无效格）、`v2/reply/count`、`v2/reply/main`（`mode=4` 反证格，**唯一可断言项**） | ✅ |
+| **C2** | **换源后第二批 3 端点（全匿名）**：`search/default`（`seid` 会话 id）、`space/navnum`（含 `vmid` 误参反证）、`web-interface/online`（**无参**，含 `bvid` 被忽略的对照格 + `online/total` 量级对照格） | ✅ |
 | credential layer | B3.5 那 6 项 + `space/upstat` / `playurl` 的 A/B 对照 | ✅ |
 
 ⚠️ **B4 段的"死"是待观察状态，不是契约** ⇒ 该段**刻意不加断言**；上游修好了应由人看到表格后决定开工，
-不该让预检"变红"来报警。B5 段则相反 —— 它是**已交付能力**，那两格反证（`mid`、无参）是真断言级的信息。
+不该让预检"变红"来报警。B5 / C1 / C2 段则相反 —— 它们是**已交付能力**，其中的反证格
+（`mid` vs `vmid`、`mode=4`）是真断言级的信息。
+
+🔴 **C2 段附赠一条通用纪律**（2026-10-02 踩出来的）：**"该用什么类型"的判据不能来自运行时的值**。
+`search/default` 的 `seid` 是 19~20 位随机数字串，**大多数时候超出 `long`、偶尔不超**
+（同一份冒烟代码两次运行各遇到一次）⇒ 按"它超 long"去写 `assertThrows(NumberFormatException)`
+会得到一条**时而绿时而红**的检查。正解：断言只钉**字段类型**，值的量级只**打印 + WARNING**。
 """
 import gzip
 import io
@@ -107,6 +115,8 @@ TIMEOUT = 12
 SAMPLE_VMID = 2            # B5 space/top/arc：实测该 UP 有置顶视频（38 键）
 SAMPLE_AID = 80433022      # B5 note/is_forbid：与 fixtures/note-isforbid.json 同一个样本
 SAMPLE_CV = 4538122        # B4 article/viewinfo：cv4538122，实测匿名 23 键
+SAMPLE_MID = 2             # C2 space/navnum：B 站官方账号，13 个键
+SAMPLE_MULTI_BVID = "BV1BqhB6nEdN"   # C1：4 个分P 的视频（pagelist / videoshot 共用）
 
 # 常见「集合字段」名。命中就打印长度 —— 这是本脚本最重要的一个判据：
 # `code=0` + `items=[]` 与 `code=0` + `items=13` 在只看 code 时长得一样，
@@ -557,6 +567,74 @@ if __name__ == "__main__":
         print("!!! The Java parse/BvCode and this implementation DISAGREE (or a sample is bad).")
         print("!!! BvCode never throws on a legal-looking input -- it just returns a WRONG aid,")
         print("!!! and the caller silently gets an empty list. Fix before shipping.")
+    print()
+
+    # ---- C1 + C2 ------------------------------------------------------------
+    # 2026-10-02 补：与上面 B4/B5 那一段同源 —— 这两批交付时也没往本脚本里加行。
+    # 本脚本承诺"每批开工前先跑"，可**行没加就等于没有可复跑的依据**；补上即还债。
+    #
+    # C1 = 候选池换源后的第一批（5 个端点）；C2 = 第二批（3 个端点）。
+    # 两批**全部匿名可用**（不需要签名、不需要凭据）⇒ 本节放在 AUTHENTICATED 之外。
+    print("=== C1: pool re-sourced, batch 1 (5 anonymous endpoints, all shipped) ===")
+    probe("C1 player/pagelist", api("x/player/pagelist", bvid=SAMPLE_MULTI_BVID),
+          referer="https://www.bilibili.com/video/" + SAMPLE_MULTI_BVID,
+          note="data is a BARE ARRAY (not an object). p1.cid MUST equal view.cid -- the library's "
+               "smoke cross-checks exactly that")
+    probe("C1 player/videoshot", api("x/player/videoshot", bvid=SAMPLE_MULTI_BVID),
+          referer="https://www.bilibili.com/video/" + SAMPLE_MULTI_BVID,
+          note="index is a TRAP: 2/3/99 SILENTLY return P1's sprite sheet (byte-identical URLs) plus "
+               "an empty index[] => the library does NOT expose index (pinned to 1)")
+    probe("C1 popular/precious", "https://api.bilibili.com/x/web-interface/popular/precious",
+          note="pagination is COMPLETELY ignored (5 configs -> identical 98 items, anon == cred) "
+               "=> the library sends NO parameters at all")
+    if aid:
+        probe("C1 v2/reply/count", api("x/v2/reply/count", type=1, oid=aid),
+              note="anonymous AND credentialed both code=0 => NOT credential-gated. (API_FACTS 2.20 "
+                   "had classified it as 'needs login' -- that list is second-hand, re-check raw output)")
+        probe("C1 v2/reply/main", api("x/v2/reply/main", type=1, oid=aid, mode=3, next=0, ps=20),
+              note="with an anonymous fingerprint it returns only 3 replies YET sets cursor.is_end=true "
+                   "(all_count says 11062) -- a self-contradicting payload. /wbi/main needs a signature "
+                   "(-403 without), so the library uses this unsigned path")
+        probe("NEG v2/reply/main mode=4", api("x/v2/reply/main", type=1, oid=aid, mode=4, next=0, ps=20),
+              note="expect -400 invalid mode -- PROTOCOL-level parameter validation, i.e. the one row "
+                   "here that is safe to assert (the library's smoke test does assert it)")
+    else:
+        print("           [skip] no aid from bootstrap -- the two reply probes need it")
+    print()
+
+    print("=== C2: pool re-sourced, batch 2 (3 anonymous endpoints, all shipped) ===")
+    probe("C2 search/default", "https://api.bilibili.com/x/web-interface/search/default",
+          note="NO parameters at all. seid is a SESSION id -- different on EVERY request -- and 19-20 "
+               "digits, so it USUALLY exceeds Long.MAX_VALUE but SOMETIMES does not. => 'parseLong "
+               "succeeds' must NEVER be used to infer the field type (it is always String)")
+    probe("C2 space/navnum ?mid=2", api("x/space/navnum", mid=SAMPLE_MID),
+          referer="https://space.bilibili.com/%d" % SAMPLE_MID,
+          note="13 keys; channel/favourite are NESTED OBJECTS {guest,master} -- declaring them as "
+               "numbers yields SILENT nulls")
+    wrong2 = probe("NEG space/navnum ?vmid=2", api("x/space/navnum", vmid=SAMPLE_MID),
+                   referer="https://space.bilibili.com/%d" % SAMPLE_MID,
+                   note="expect -400: THIS endpoint wants 'mid' while its neighbour space/top/arc wants "
+                        "'vmid'. One character apart -- and -400 looks a lot like 'the endpoint is dead'")
+    probe("C2 web-interface/online (NO params)",
+          "https://api.bilibili.com/x/web-interface/online",
+          note="WHOLE-SITE region_count (26 regions, ~3.8e5 total). NOT the same thing as "
+               "player/online/total (ONE video) -- the two differ by ~3 orders of magnitude. "
+               "The library deliberately exposes NO parameter here (see the next row)")
+    # 🔴 判据三（参数是否真的被消费）的现场：这一行就是当初打回
+    #    `getRegionOnlineCount(String bvid)` 的证据 —— 同一条"参数被忽略"的判据
+    #    我们拿来剔除了 web-interface/zone，却给这个端点强加了一个参数。
+    probe("CTRL online ?bvid=garbage", api("x/web-interface/online", bvid="garbage"),
+          note="a GARBAGE bvid returns the SAME complete distribution => the parameter is IGNORED "
+               "(six cells: no-param / two real bvids / garbage / => '' / aid -- byte-identical). "
+               "Never expose it as a parameter: it misleads AND makes any non-blank check fake")
+    if bvid and cid:
+        probe("CTRL player/online/total", api("x/player/online/total", bvid=bvid, cid=cid),
+              note="<- the magnitude contrast row: ONE video, tens~hundreds. Compare magnitudes with "
+                   "the rows above, and never mix the two 'online' numbers")
+    if wrong2 and wrong2.get("code") != -400:
+        print("!!! WARNING: 'vmid' is no longer rejected by x/space/navnum. The library still sends")
+        print("!!! 'mid' (still correct), but the 'the parameter is mid, NOT vmid' wording in")
+        print("!!! BilibiliEndpoint#spaceNavNumUrl may be relaxed.")
     print()
 
     if AUTHENTICATED:

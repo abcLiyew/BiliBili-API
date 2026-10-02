@@ -540,6 +540,65 @@ public class VideoService {
         return data;
     }
 
+    // ------------------------------------------------------------------ C2 批（2026-10-02）
+
+    /**
+     * <b>取全站各分区在线人数</b>（{@code x/web-interface/online}，C2 批）。
+     *
+     * <p>🔴 <b>无参数</b> —— 该端点<b>不接受任何输入</b>，它回答的是"B 站全站此刻的分布"。
+     * 实测（2026-10-02 六格，逐字节相同）：无参 / `?bvid=BV1BqhB6nEdN` / `?bvid=BV1xx411c7mD` /
+     * `?bvid=garbage` / `?bvid=` / `?aid=1` —— 全部返回同一份 26 分区数据。
+     * ⇒ <b>所以本方法刻意没有 {@code bvid} 参数</b>：给它加一个被忽略的参数，
+     * 会让人以为"这是某个视频的数据"，也会逼调用方凭空编一个 BV 号。
+     *
+     * <p>🔴 <b>别与 {@link #getOnlineTotal(String, Long)} 混用 —— 这是本方法最该被记住的一点</b>
+     * （2026-10-02 两个端点在<b>同一分钟</b>各跑一格）：
+     * <table border="1">
+     *   <caption>两个"在线"端点</caption>
+     *   <tr><th></th><th>{@code getOnlineTotal}</th><th>本方法</th></tr>
+     *   <tr><td>问的是</td><td><b>某一个视频</b>此刻多少人在看</td>
+     *       <td><b>全站各分区</b>此刻多少人在看</td></tr>
+     *   <tr><td>入参</td><td>{@code bvid} + {@code cid}</td><td><b>无</b></td></tr>
+     *   <tr><td>量级（实测）</td><td>{@code total=690}（同视频另一次 {@code 56}）</td>
+     *       <td>26 个分区合计 {@code 349420}（另一次 {@code 379006}）</td></tr>
+     * </table>
+     * ⇒ 两个名字像、<b>量级差约三个数量级（实测相差 500~7000 倍）</b>。混用会得出
+     * "这个视频有 34 万人在看"，且<b>不会抛任何异常</b>。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用（2026-10-02 匿名 / 凭据两格均 {@code code=0}）。
+     * <b>{@code Referer} 只校验"域"</b>：2026-10-02 五格实测 —— 不带 / 站根 / 视频页 / 空间页
+     * 全部 {@code code=0}，而<b>外域 Referer（{@code evil.example}）直接 HTTP 403</b>
+     * ⇒ 库内用<b>站根</b>（该端点与具体视频无关，不该借某个视频页的 Referer）。
+     *
+     * <p>⚠️ 返回 {@code 分区id → 人数} 的映射，<b>键是字符串</b>（如 {@code "1"} / {@code "160"}）；
+     * 这套分区编号与 {@code ranking/v2} 的 {@code rid} <b>不是同一套</b>，别互相套用
+     * （见 {@link RegionOnline} 的类注释）。
+     *
+     * @return 分区在线分布，不可为 null
+     * @throws BilibiliException 网络失败、HTTP 非 2xx、业务码非 0、
+     *                           {@code data} 为空，或 {@code region_count} 为空
+     */
+    public RegionOnline getRegionOnlineCount() {
+        HttpResponse<String> response = BilibiliHttp.get(BilibiliEndpoint.webInterfaceOnlineUrl,
+                BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
+        RegionOnline data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取全站分区在线人数");
+        if (data.getRegion_count() == null || data.getRegion_count().isEmpty()) {
+            // code=0 但一个分区都没有：与 getVideoShot 的"没给图"同一类，必须显式失败
+            throw new BilibiliException(0,
+                    "获取全站分区在线人数失败：服务端返回 code=0，但 region_count 为空",
+                    "本端点匿名可用，空分布只可能是响应形状变了或命中风控");
+        }
+        long total = 0L;
+        for (Long v : data.getRegion_count().values()) {
+            if (v != null) {
+                total += v;
+            }
+        }
+        log.info("全站分区在线：{} 个分区，合计 {}", data.getRegion_count().size(), total);
+        return data;
+    }
+
     /** 按插入顺序拼 query（值不做 URL 编码：本批参数全是数字与 {@code BV…} 这类安全串） */
     private static String queryOf(Map<String, String> params) {
         StringBuilder sb = new StringBuilder();

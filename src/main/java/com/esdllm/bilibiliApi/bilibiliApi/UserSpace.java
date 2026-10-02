@@ -298,4 +298,35 @@ public class UserSpace {
             throw new IOException(e.getMessage(), e);
         }
     }
+
+    // ------------------------------------------------------------------ C2 批（2026-10-02）
+
+    /**
+     * <b>取 UP 主内容概览</b>（{@code x/space/navnum}，C2 批）。
+     *
+     * <p>给一个 {@code mid}，拿到该 UP 主<b>各内容类型各自的投稿数</b>：视频 / 专栏 / 音频 /
+     * 番剧 / 影视 / 课程 / 相册 / opus / 标签 / 合集（实测 13 个键）。
+     *
+     * <p>✅ <b>匿名可用</b>（2026-10-02 两格实测 {@code code=0}）—— 与
+     * {@link #getRelationStat(long)} / {@link #getTopArchive(long)} 同属本门面的"免凭据"一档，
+     * 而<b>不像</b> {@link #getArchives} / {@link #getAccInfo} 那样必须登录。
+     *
+     * <p>🔴 <b>它与 {@code CardInfo#getCard} 不重叠，别为同一件事打两次</b>：
+     * {@code card} 给"粉丝数 / 总投稿数 / 获赞数"，本方法给"按内容类型的分布"。
+     * 要粉丝数走名片，要"视频 43 个、相册 127 个"这种分布走这里（见 {@link NavNum} 的类注释）。
+     *
+     * <p>⚠️ 参数名是 {@code mid} —— 与同门面的 {@link #getTopArchive(long)} 用的 {@code vmid}
+     * <b>不是同一个</b>，两个端点各写各的，别互相套。
+     *
+     * @param mid 用户 mid（<b>任意用户都有效</b>）
+     * @return 内容概览，不可为 null
+     * @throws IOException {@code mid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public NavNum getNavNum(long mid) throws IOException {
+        try {
+            return UserService.INSTANCE.getNavNum(mid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
 }
