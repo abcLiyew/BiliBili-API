@@ -13,6 +13,7 @@ import kong.unirest.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,6 +31,13 @@ import java.util.Map;
  * <p><b>2026-09-21 扩容（WBI 批）</b>：新增 {@link #getAiSummary(String, Long)} /
  * {@link #getAiSummary(String)}（AI 摘要，<b>签名 + 登录</b>都要）。
  * 两个既有 {@code getVideoInfo} 重载一行未改。
+ *
+ * <p><b>2026-09-24 扩容（C1 批）</b>：新增 {@link #getParts(String)}（分P列表）/
+ * {@link #getPrecious()}（入站必刷）/ {@link #getVideoShot(String)}（缩略图），
+ * 三项<b>全部匿名可用</b>。本批有两条"参数陷阱"值得先读再改：
+ * {@code reply/main} 的假 {@code is_end}（在 {@code CommentService}）与
+ * {@code videoshot} 的假缩略图（本类 {@link #getVideoShot(String)} 已把 {@code index} 钉死）。
+ * 既有方法一行未改。
  *
  * @author 饿死的流浪猫
  */
@@ -412,6 +420,124 @@ public class VideoService {
         boolean forbidden = Boolean.TRUE.equals(data.getForbid_note_entrance());
         log.info("笔记入口 aid={}：{}", aid, forbidden ? "已禁" : "可用");
         return forbidden;
+    }
+
+    // ------------------------------------------------------------------ C1 批（2026-09-24）
+
+    /**
+     * <b>取分P列表</b>（{@code x/player/pagelist}，C1 批）。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用、不需签名（2026-09-24 同一趟 A/B：匿名与带凭据都是
+     * {@code code=0}、{@code list=4}）。
+     *
+     * <p>📌 <b>与 {@code VideoService#getVideoInfo} 的 {@code pages} 重叠</b> ——
+     * 只要分P时本方法更轻（不必拉回 {@code view} 那 49 个键），并且多给
+     * {@code first_frame}（该分P首帧图）与 {@code ctime}。
+     * 已经拿过 {@code VideoInfo} 的调用方<b>直接用它的 {@code getPages()} 即可</b>，别重复请求。
+     *
+     * <p>⚠️ 响应里的 {@code data} 是<b>裸数组</b>（不是 {@code data.list}）——
+     * 与 {@code LiveService#getLiveAreas} 同一种形状。
+     *
+     * <p>⚠️ <b>空列表当失败抛</b>：任何稿件都至少有一个分P，所以"一个分P都没有"
+     * 只可能是响应形状变了，不是"这个视频没有分P"。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @return 分P列表（按 {@code page} 升序），不可为 null
+     * @throws BilibiliException {@code bvid} 为空、网络失败、HTTP 非 2xx、业务码非 0、
+     *                           {@code data} 为空，或 {@code data} 是空数组
+     */
+    public List<Pages> getParts(String bvid) {
+        if (bvid == null || bvid.isBlank()) {
+            throw new BilibiliException("BV号不能为空");
+        }
+        String url = BilibiliEndpoint.playerPageListUrl + "?bvid=" + bvid;
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.videoReferer.formatted(bvid));
+        List<Pages> data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取分P列表");
+        if (data.isEmpty()) {
+            throw new BilibiliException(0,
+                    "获取分P列表失败：服务端返回 code=0，但分P列表为空",
+                    "该端点匿名可用，空数组只可能是响应形状变了（任何稿件都至少有一个分P）");
+        }
+        log.info("分P列表 bvid={}：{} 个分P（首个 cid={} part={}）", bvid, data.size(),
+                data.get(0).getCid(), data.get(0).getPart());
+        return data;
+    }
+
+    /**
+     * <b>取"入站必刷"</b>（{@code x/web-interface/popular/precious}，C1 批）。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用；匿名与带凭据<b>都是 98 条</b>（2026-09-24 交叉复核）。
+     *
+     * <p>🔴 <b>本方法没有分页参数，因为端点不吃它们</b>（2026-09-24 五格实测：
+     * 不带参数 / {@code page=1&page_size=20} / {@code page_size=5} / {@code page=2&page_size=20} /
+     * {@code page_size=1} —— 长度与首条 aid <b>全部相同</b>，都是 98 条）。
+     * 详情见 {@code BilibiliEndpoint#popularPreciousUrl} 的实测表。
+     *
+     * <p>⚠️ <b>别把它当"另一个热门视频"</b>：{@code popular} 是按热度动态排的流（带 {@code no_more}），
+     * 而本项是一份<b>固定序的策划单</b>（{@code title="入站必刷"}、{@code explain=…98个宝藏视频…}）。
+     * 因此返回类型 {@link PreciousList} 与 {@code PopularList} <b>刻意不共用</b>。
+     *
+     * @return 入站必刷专题，不可为 null
+     * @throws BilibiliException 网络失败、HTTP 非 2xx、业务码非 0、{@code data} 为空，
+     *                           或 {@code list} 为空（"必刷"专题不会没有内容）
+     */
+    public PreciousList getPrecious() {
+        HttpResponse<String> response = BilibiliHttp.get(BilibiliEndpoint.popularPreciousUrl,
+                BilibiliEndpoint.jsonAccept, BilibiliEndpoint.referer);
+        PreciousList data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取入站必刷");
+        if (data.getList() == null || data.getList().isEmpty()) {
+            throw new BilibiliException(0,
+                    "获取入站必刷失败：服务端返回 code=0，但 list 为空",
+                    "该端点匿名可用且不随参数变化（实测恒 98 条），空列表只可能是响应形状变了");
+        }
+        log.info("入站必刷『{}』：{} 条（media_id={}）", data.getTitle(), data.getList().size(),
+                data.getMedia_id());
+        return data;
+    }
+
+    /**
+     * <b>取视频缩略图（进度条预览图）</b>（{@code x/player/videoshot}，C1 批）。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用、不需签名（2026-09-24 实测；带凭据形状相同）。
+     *
+     * <p>拿到的是<b>一张雪碧图 + 一张坐标表</b>，不是一串图 —— 拼图方法见 {@link VideoShot} 的类注释。
+     *
+     * <p>🔴 <b>本方法刻意没有 {@code index} 参数</b>（端点的 {@code index} 实测是个陷阱）：
+     * 2026-09-24 在一个 <b>4 分P</b> 的视频上试 {@code index=1/2/3/99}，结果 {@code 2} / {@code 3} /
+     * {@code 99} <b>全都静默返回 P1 的那张雪碧图</b>（地址逐字相同）配一份<b>空的</b> {@code index} 数组
+     * —— 不报错、不回空。若把 {@code index} 暴露出去，调用方会以为拿到了 P2 的缩略图。
+     * ⇒ 库内固定传 {@code index=1}；<b>哪天服务端修好这个参数，再开放</b>
+     * （实测表见 {@code BilibiliEndpoint#playerVideoShotUrl}）。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @return 缩略图信息，不可为 null
+     * @throws BilibiliException {@code bvid} 为空、网络失败、HTTP 非 2xx、业务码非 0、
+     *                           {@code data} 为空，或 {@code image} 为空（拿不到图就没有意义）
+     */
+    public VideoShot getVideoShot(String bvid) {
+        if (bvid == null || bvid.isBlank()) {
+            throw new BilibiliException("BV号不能为空");
+        }
+        // index 固定 1 —— 不是默认值，是**唯一**能拿到数据的取值（原因见方法注释）
+        String url = BilibiliEndpoint.playerVideoShotUrl + "?bvid=" + bvid + "&index=1";
+        HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
+                BilibiliEndpoint.videoReferer.formatted(bvid));
+        VideoShot data = ResponseParserSupport.requireData(response, new TypeReference<>() {
+        }, "获取视频缩略图");
+        if (data.getImage() == null || data.getImage().isEmpty()) {
+            // code=0 但没给图：与"取播放地址时既没 durl 也没 dash"同一类，必须显式失败
+            throw new BilibiliException(0,
+                    "获取视频缩略图失败：服务端返回 code=0，但没有给出 image 地址",
+                    "本端点匿名可用，没有图只可能是响应形状变了");
+        }
+        log.info("视频缩略图 bvid={}：雪碧图 {} 张（{}×{} 网格，单格 {}×{}），坐标表 {} 个",
+                bvid, data.getImage().size(), data.getImg_x_len(), data.getImg_y_len(),
+                data.getImg_x_size(), data.getImg_y_size(),
+                data.getIndex() == null ? 0 : data.getIndex().size());
+        return data;
     }
 
     /** 按插入顺序拼 query（值不做 URL 编码：本批参数全是数字与 {@code BV…} 这类安全串） */

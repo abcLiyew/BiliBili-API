@@ -3,6 +3,8 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.comment.CommentPage;
 import com.esdllm.bilibiliApi.model.data.pojo.comment.EmotePanel;
+import com.esdllm.bilibiliApi.model.data.pojo.comment.MainReplyPage;
+import com.esdllm.bilibiliApi.model.data.pojo.comment.ReplyCount;
 import com.esdllm.bilibiliApi.model.data.pojo.comment.SubReplyPage;
 import com.esdllm.bilibiliApi.parse.BvCode;
 import com.esdllm.bilibiliApi.service.CommentService;
@@ -19,15 +21,20 @@ import java.io.IOException;
  * <p>🆕 <b>B2 批（2026-09-22）已补齐本域剩下两项</b>：{@link #getSubReplies}（楼中楼）
  * 与 {@link #getEmotePanel}（表情包）。<b>它们的门槛不一样，别按同一句记</b>：
  * <table border="1">
- *   <caption>本门面三个端点的门槛</caption>
+ *   <caption>本门面各端点的门槛（🆕 C1 批补后两行）</caption>
  *   <tr><th>方法 / 端点</th><th>门槛</th><th>实测证据</th></tr>
- *   <tr><td>{@code x/v2/reply}（评论列表）</td><td>✅ 匿名</td><td>{@code code=0}</td></tr>
+ *   <tr><td>{@code x/v2/reply}（评论列表，旧版）</td><td>✅ 匿名</td><td>{@code code=0}</td></tr>
  *   <tr><td>{@code x/v2/reply/reply}（楼中楼）</td><td>✅ 匿名</td><td>{@code code=0}，16 条</td></tr>
  *   <tr><td>{@code x/emote/user/panel/web}（表情包）</td><td>🔴 <b>需凭据</b></td>
  *       <td>匿名 {@code code=0} 但 {@code packages=null}；带凭据 68 个包</td></tr>
+ *   <tr><td>{@code x/v2/reply/main}（新版评论列表）</td><td>⚠️ <b>匿名只给 3 条，实质需凭据</b></td>
+ *       <td>匿名 {@code replies=3} + <b>{@code is_end} 谎报 {@code true}</b>；凭据 {@code 20} / {@code false}</td></tr>
+ *   <tr><td>{@code x/v2/reply/count}（评论总数）</td><td>✅ 匿名（且取值与凭据相同）</td>
+ *       <td>两格都是 {@code code=0}，同一个 {@code count}</td></tr>
  * </table>
- * ⇒ 表情包放在本门面是因为"评论表情"的语义最近，<b>但它是本批唯一需要凭据的一项</b>，
- * 与"B2 = 匿名中频"这个批次名有出入（已记进计划文档）。
+ * ⇒ 表情包放在本门面是因为"评论表情"的语义最近，<b>但它是 B2 批唯一需要凭据的一项</b>；
+ * C1 批的 {@code reply/main} 则属于"<b>匿名能拿到东西、但拿到的是残的</b>"这一类
+ * —— 它比"完全拿不到"更难发现，所以两个方法都单独写了警告。
  *
  * <p><b>🔴 本门面唯一需要读懂的地方：{@code oid} 要的是 {@code aid}，不是 {@code bvid}。</b>
  * 把 {@code BV…} 丢给端点<b>不会报错</b>，只会得到一个空的 {@code replies} ——
@@ -229,5 +236,105 @@ public class Comment {
      */
     public EmotePanel getEmotePanel() throws IOException {
         return getEmotePanel(CommentService.EMOTE_BUSINESS_REPLY);
+    }
+
+    // ------------------------------------------------------------------ C1 批（2026-09-24 新增）
+
+    /**
+     * <b>取新版主评论列表</b>（{@code x/v2/reply/main}，默认按热度取第一页）。
+     *
+     * <p>它对应的是<b>现行网页端</b>评论区那条链路（本门面原有的
+     * {@link #getReplies(long, int, int)} 是旧版端点）。两者的取舍：
+     * <table border="1">
+     *   <caption>三条评论链路（2026-09-24 实测）</caption>
+     *   <tr><th>方法</th><th>翻页方式</th><th>匿名能拿到什么</th></tr>
+     *   <tr><td>{@link #getReplies(long, int, int)}（旧版）</td><td>{@code pn} 页码</td>
+     *       <td>✅ 完整一页</td></tr>
+     *   <tr><td>{@link #getSubReplies}</td><td>{@code pn} 页码</td><td>✅ 完整一页</td></tr>
+     *   <tr><td><b>本方法</b>（新版）</td><td>{@code cursor.next} <b>游标</b></td>
+     *       <td>🔴 <b>带指纹只有 3 条且谎报 {@code is_end}</b>（零 Cookie 反而完整）</td></tr>
+     * </table>
+     * ⇒ <b>只想匿名读评论，用旧版那条（{@link #getReplies(long, int, int)}）；
+     * 要用现行网页端的链路，请先注入凭据</b> —— 否则你会拿到"看起来只有 3 条评论"的结果。
+     *
+     * <p>🔴 <b>本方法最该记住的一条：匿名指纹档的终止信号是假的</b>（2026-09-24 三轮复现
+     * + 同日下午变量分离）。带匿名指纹时 {@code replies} 只有 <b>3</b> 条、
+     * {@code cursor.is_end} 却是 <code>true</code>，而同一响应的 {@code cursor.all_count} 是
+     * <b>11062</b>；同一时刻<b>零 Cookie 反而能拿到完整 20 条</b> —— 截断的触发器是<b>指纹</b>，
+     * 不是"缺凭据"（本库匿名出站默认自动领指纹，所以"库的匿名"恰好是被截的那一档）。
+     * ⇒ 判"到底了没有"<b>不能只看 {@code is_end}</b>；
+     * 要问总数请用 {@link #getReplyCount(long)}（它不受匿名影响）。
+     *
+     * @param aid 稿件 avid（<b>不是 bvid</b>）
+     * @return 评论页，不可为 null
+     * @throws IOException {@code aid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、
+     *                     {@code data} 为空，或 {@code all_count > 0} 却一条评论都不给
+     */
+    public MainReplyPage getMainReplies(long aid) throws IOException {
+        try {
+            return CommentService.INSTANCE.getMainReplies(aid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取新版主评论列表</b>（可指定排序与游标）。
+     *
+     * <p>🔴 <b>翻页靠回传 {@code cursor.next}，不是页码</b>：
+     * <pre>{@code
+     * MainReplyPage p1 = comment.getMainReplies(aid, CommentService.MAIN_MODE_HOT, 0, 20);
+     * int next = p1.getCursor().getNext();
+     * MainReplyPage p2 = comment.getMainReplies(aid, CommentService.MAIN_MODE_HOT, next, 20);
+     * }</pre>
+     * ⇒ <b>但匿名指纹档翻第二页会直接抛异常</b>（服务端回 {@code replies=null}
+     * —— {@code all_count} 可能说有多条、也可能一并消失 ⇒ 两种都判为"服务端自相矛盾"
+     * 并显式失败）。
+     * 这是<b>刻意</b>的：否则 {@code null} 会被读成"没有评论"。
+     *
+     * <p>⚠️ {@code mode} 只用 {@link CommentService#MAIN_MODE_HOT} /
+     * {@link CommentService#MAIN_MODE_HOT_AND_TIME} / {@link CommentService#MAIN_MODE_TIME}；
+     * 传别的值（<b>包括 0</b>）会回落到热度，不原样发给服务端
+     * —— 实测 {@code mode=4} 会换来 {@code -400 invalid mode}，而 {@code 0} 被服务端归一成 3。
+     *
+     * @param aid  稿件 avid（<b>不是 bvid</b>）
+     * @param mode 排序；非法值按 {@code MAIN_MODE_HOT}
+     * @param next 游标：第一页传 {@code 0}，其后回传上一页的 {@code cursor.next}
+     * @param ps   每页条数（上游定义域 1–30）；{@code ≤0} 时按 20
+     * @return 评论页，不可为 null
+     * @throws IOException 参数非法、网络失败、HTTP 非 2xx、业务码非 0、{@code data} 为空，
+     *                     或<b>服务端说有评论却一条不给</b>（匿名翻页的固定形态，
+     *                     见 {@link CommentService#getMainReplies(long, int, int, int)}）
+     */
+    public MainReplyPage getMainReplies(long aid, int mode, int next, int ps) throws IOException {
+        try {
+            return CommentService.INSTANCE.getMainReplies(aid, mode, next, ps);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取评论总数</b>（{@code x/v2/reply/count}）。
+     *
+     * <p>✅ <b>匿名可用、不需签名</b>，且<b>匿名与带凭据取值相同</b>（2026-09-24 实测）。
+     *
+     * <p>📌 <b>它是判断"评论有没有被静默截断"的唯一可靠依据</b>：
+     * {@link #getMainReplies(long)} 带匿名指纹时只回 3 条并谎称"到底了"，
+     * 而本方法给出的总数（该样本 <b>11062</b>）<b>不受匿名影响</b>。
+     * ⇒ <b>"这条稿件有多少条评论"问这里，不要数 {@code replies}</b>。
+     *
+     * <p>⚠️ 它只给"有多少条"，<b>不给内容</b> —— 要内容仍须走上面两条列表链路。
+     *
+     * @param aid 稿件 avid（<b>不是 bvid</b>）
+     * @return 评论总数，不可为 null
+     * @throws IOException {@code aid} ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
+     */
+    public ReplyCount getReplyCount(long aid) throws IOException {
+        try {
+            return CommentService.INSTANCE.getReplyCount(aid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
     }
 }

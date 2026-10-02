@@ -60,6 +60,15 @@ public class Comment {
     /** 会话 id（B 站内部用） */
     private Long dialog;
 
+    /**
+     * {@link #dialog} 的字符串形态。
+     *
+     * <p>📌 <b>2026-09-24（C1 批）为 {@code x/v2/reply/main} 补</b>：新版评论列表的每个元素
+     * 都带这个键，而旧版 {@code x/v2/reply} 不带 —— 缺了它不影响业务，但会让"逐字映射实测形状"
+     * 这件事出现一个说不清的缺口（为什么有 {@code rpid_str} 却没有 {@code dialog_str}）。
+     */
+    private String dialog_str;
+
     /** <b>总回复数</b>口径（实测 22；{@code 0} 表示无人回复） */
     private Integer count;
 
@@ -125,6 +134,15 @@ public class Comment {
 
     /** 折叠信息（结构简单，低频，保留原始 JSON） */
     private JSONObject folder;
+
+    /**
+     * 关联动态 id（<b>数值形态</b>；实测 {@code x/v2/reply/main} 的<b>主评论</b>才有这个键，
+     * 楼中楼只有 {@link #dynamic_id_str}）。
+     *
+     * <p>📌 2026-09-24（C1 批）补。⚠️ 与 {@link #dynamic_id_str} 是同一个概念的两个键，
+     * 且两个都可能缺 —— <b>别假设它们成对出现</b>。
+     */
+    private Long dynamic_id;
 
     /** 关联动态 id（字符串形态，实测 {@code "0"}） */
     private String dynamic_id_str;

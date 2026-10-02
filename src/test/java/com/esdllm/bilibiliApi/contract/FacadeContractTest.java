@@ -6,6 +6,8 @@ import com.esdllm.bilibiliApi.model.BilibiliDynamicResp;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.LiveRoom;
 import com.esdllm.bilibiliApi.model.data.pojo.comment.CommentPage;
+import com.esdllm.bilibiliApi.model.data.pojo.comment.MainReplyPage;
+import com.esdllm.bilibiliApi.model.data.pojo.comment.ReplyCount;
 import com.esdllm.bilibiliApi.model.data.pojo.content.ArticleInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.content.FavFolderList;
 import com.esdllm.bilibiliApi.model.data.pojo.content.HistoryCursor;
@@ -489,6 +491,13 @@ class FacadeContractTest {
             assertSignature(VideoExtra.class, "isNoteForbidden", boolean.class, long.class);
             assertSignature(VideoExtra.class, "toAid", long.class, String.class);
             assertSignature(VideoExtra.class, "toBvid", String.class, long.class);
+
+            // 2026-09-24 C1：分P列表 + 缩略图。两项都是**匿名可用**（本类的门槛表已补这两行）。
+            // 🔴 getVideoShot **刻意没有 index 参数** —— 端点的 index 传 2/3/99 会静默返回
+            //    P1 的雪碧图（实测），所以库内把它钉死成 1 而不是暴露出去。这条断言同时钉住
+            //    "参数个数"，防止后人"顺手把 index 加回来"。
+            assertListOf(VideoExtra.class, "getParts", Pages.class, String.class);
+            assertSignature(VideoExtra.class, "getVideoShot", VideoShot.class, String.class);
         }
 
         @Test
@@ -502,6 +511,8 @@ class FacadeContractTest {
             assertDeclares(VideoExtra.class, "getViewDetail", IOException.class, String.class);
             assertDeclares(VideoExtra.class, "getOnlineTotal", IOException.class, String.class, Long.class);
             assertDeclares(VideoExtra.class, "isNoteForbidden", IOException.class, long.class);
+            assertDeclares(VideoExtra.class, "getParts", IOException.class, String.class);
+            assertDeclares(VideoExtra.class, "getVideoShot", IOException.class, String.class);
 
             // toAid / toBvid 是**纯函数、零出站**，与 Wbi#signQuery 的离线重载同一档：
             // 逼调用方 catch 一个永不抛出的受检异常纯属噪音。所以反向断言它们**不该**声明。
@@ -655,16 +666,29 @@ class FacadeContractTest {
             // 收 bvid 的一条：内部先打一次 view 换 aid（多花一次请求，但不会静默拿空列表）
             assertSignature(Comment.class, "getRepliesByBvid", CommentPage.class,
                     String.class, int.class, int.class);
+
+            // 2026-09-24 C1：新版评论列表（游标翻页）+ 评论总数。
+            // 🔴 这两条与上面三条**门槛不同**：reply/main 匿名只给 3 条且 is_end 谎报 true
+            //    （实质需凭据），reply/count 却是匿名即可、且取值与凭据相同。
+            //    三条链路的分工见 CommentService 的类注释。
+            assertSignature(Comment.class, "getMainReplies", MainReplyPage.class, long.class);
+            assertSignature(Comment.class, "getMainReplies", MainReplyPage.class,
+                    long.class, int.class, int.class, int.class);
+            assertSignature(Comment.class, "getReplyCount", ReplyCount.class, long.class);
         }
 
         @Test
-        @DisplayName("三个方法都必须声明 throws IOException")
+        @DisplayName("六个方法都必须声明 throws IOException")
         void declares() {
             assertDeclares(Comment.class, "getReplies", IOException.class, long.class, int.class, int.class);
             assertDeclares(Comment.class, "getReplies", IOException.class,
                     long.class, int.class, int.class, int.class);
             assertDeclares(Comment.class, "getRepliesByBvid", IOException.class,
                     String.class, int.class, int.class);
+            assertDeclares(Comment.class, "getMainReplies", IOException.class, long.class);
+            assertDeclares(Comment.class, "getMainReplies", IOException.class,
+                    long.class, int.class, int.class, int.class);
+            assertDeclares(Comment.class, "getReplyCount", IOException.class, long.class);
         }
 
         /**
@@ -740,27 +764,36 @@ class FacadeContractTest {
             assertSignature(Ranking.class, "getRanking", RankingList.class, int.class);
             assertSignature(Ranking.class, "getRanking", RankingList.class, int.class, String.class);
             assertSignature(Ranking.class, "getPopular", PopularList.class, int.class, int.class);
+            // 2026-09-24 C1：入站必刷。**没有分页参数** —— 端点实测完全不吃
+            // page/page_size（五格同一结果），所以刻意不开这两个参数。
+            assertSignature(Ranking.class, "getPrecious", PreciousList.class);
         }
 
         @Test
-        @DisplayName("三个方法都必须声明 throws IOException")
+        @DisplayName("四个方法都必须声明 throws IOException")
         void declares() {
             assertDeclares(Ranking.class, "getRanking", IOException.class, int.class);
             assertDeclares(Ranking.class, "getRanking", IOException.class, int.class, String.class);
             assertDeclares(Ranking.class, "getPopular", IOException.class, int.class, int.class);
+            assertDeclares(Ranking.class, "getPrecious", IOException.class);
         }
 
         /**
          * 榜单与热门<b>返回类型不同</b>（外层容器不一样：一个多 {@code note}、一个多 {@code no_more}），
          * 元素形状虽然都是 {@code VideoBrief}，但不能互相接收。
-         * 这条断言把两个外层类型钉住，避免有人为了"统一"把它们合并成一个类。
+         * 🆕 C1 批加的 {@code PreciousList} 是<b>第三个</b>容器，同样不能与它们合并
+         * （它多 {@code title} / {@code explain} / {@code media_id}，且<b>没有分页语义</b>）。
+         * 这条断言把三个外层类型钉住，避免有人为了"统一"把它们合并成一个类。
          */
         @Test
-        @DisplayName("★ 榜单与热门的返回类型必须分开：RankingList / PopularList 不能合并")
-        void twoContainerTypes() {
+        @DisplayName("★ 三个外层容器必须分开：RankingList / PopularList / PreciousList 不能合并")
+        void threeContainerTypes() {
             assertSignature(Ranking.class, "getRanking", RankingList.class, int.class);
             assertSignature(Ranking.class, "getPopular", PopularList.class, int.class, int.class);
+            assertSignature(Ranking.class, "getPrecious", PreciousList.class);
             assertNotEquals(RankingList.class, PopularList.class);
+            assertNotEquals(RankingList.class, PreciousList.class);
+            assertNotEquals(PopularList.class, PreciousList.class);
         }
     }
 
@@ -931,5 +964,23 @@ class FacadeContractTest {
             assertClassInFacadePackage(facade);
         }
         assertEquals(15, facades.stream().filter(Objects::nonNull).count(), "门面数量不应变化");
+    }
+
+    /**
+     * 🆕 <b>2026-09-24（C1 批）刻意没有新增门面</b>：本批 5 项能力全部落在既有门面上
+     * （{@code VideoExtra} 2 项 / {@code Comment} 2 项 / {@code Ranking} 1 项）。
+     * 这条断言把"加方法不加类"从一个口头约定变成一条会红的检查 ——
+     * 门面数量一旦变成 16，就说明有人新建了类，那时必须先确认这不是在偷偷改
+     * XatiiBot 依赖的公开面。
+     */
+    @Test
+    @DisplayName("★ C1 批是'加方法不加类'：门面数量必须仍然是 15")
+    void noNewFacadeInC1() {
+        List<Class<?>> facades = List.of(Dynamic.class, Live.class, CardInfo.class,
+                BilibiliClient.class, ShortChain.class, Login.class,
+                Search.class, UserSpace.class, VideoExtra.class, Wbi.class, Content.class,
+                Comment.class, LiveExtra.class, Ranking.class, Danmaku.class);
+        assertEquals(15, facades.size(),
+                "门面数量变了：新能力要么落在既有门面上（本库的规矩），要么必须走一次完整评审");
     }
 }

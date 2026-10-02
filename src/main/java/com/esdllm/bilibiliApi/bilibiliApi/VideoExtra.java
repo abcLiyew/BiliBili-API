@@ -3,15 +3,18 @@ package com.esdllm.bilibiliApi.bilibiliApi;
 import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.model.data.pojo.video.AiSummary;
 import com.esdllm.bilibiliApi.model.data.pojo.video.OnlineTotal;
+import com.esdllm.bilibiliApi.model.data.pojo.video.Pages;
 import com.esdllm.bilibiliApi.model.data.pojo.video.PlayUrl;
+import com.esdllm.bilibiliApi.model.data.pojo.video.VideoShot;
 import com.esdllm.bilibiliApi.model.data.pojo.video.ViewDetail;
 import com.esdllm.bilibiliApi.parse.BvCode;
 import com.esdllm.bilibiliApi.service.VideoService;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
- * 视频附加信息门面：<b>AI 摘要 / 播放地址 / 一站式详情 / 在线观看数</b>。
+ * 视频附加信息门面：<b>AI 摘要 / 播放地址 / 一站式详情 / 在线观看数 / 分P列表 / 缩略图</b>。
  *
  * <p>本门面各项能力的门槛<b>各不相同，且分布很散</b> —— 这是它最需要注意的地方：
  * <table border="1">
@@ -25,6 +28,10 @@ import java.io.IOException;
  *   <tr><td>{@link #getOnlineTotal(String, Long)}</td><td>不要</td><td>不要</td><td>匿名即通</td></tr>
  *   <tr><td>{@link #isNoteForbidden(long)}</td><td>不要</td><td>不要</td>
  *       <td>匿名即通；⚠️ 但它<b>不校验 aid 是否存在</b>，见方法注释（B5 批）</td></tr>
+ *   <tr><td>{@link #getParts(String)}</td><td>不要</td><td>不要</td>
+ *       <td>匿名即通；📌 与 {@code VideoInfo#getPages()} 重叠（C1 批）</td></tr>
+ *   <tr><td>{@link #getVideoShot(String)}</td><td>不要</td><td>不要</td>
+ *       <td>匿名即通；🔴 <b>刻意没有 {@code index} 参数</b>（它是陷阱，见方法注释，C1 批）</td></tr>
  *   <tr><td>{@link #toAid(String)} / {@link #toBvid(long)}</td>
  *       <td colspan="2"><b>不发请求</b></td>
  *       <td>纯算法换算、零出站 ⇒ 因此刻意<b>不声明</b> {@code throws IOException}（B5 批）</td></tr>
@@ -289,5 +296,72 @@ public class VideoExtra {
      */
     public String toBvid(long aid) {
         return BvCode.toBvid(aid);
+    }
+
+    // ------------------------------------------------------------------ C1 批（2026-09-24 新增）
+
+    /**
+     * <b>取分P列表</b>（{@code x/player/pagelist}）。
+     *
+     * <p>✅ <b>匿名可用、不需签名</b>（2026-09-24 实测：匿名与带凭据都是 {@code code=0}、4 个分P）。
+     *
+     * <p>📌 <b>它与 {@code BilibiliClient#getVideoInfo} 的 {@code getPages()} 重叠，选哪个看你要什么</b>：
+     * <table border="1">
+     *   <caption>两个来源的取舍</caption>
+     *   <tr><th></th><th>本方法</th><th>{@code BilibiliClient#getVideoInfo}</th></tr>
+     *   <tr><td>出站</td><td>1 次（响应小）</td><td>1 次（49 个键的整份详情）</td></tr>
+     *   <tr><td>多给什么</td>
+     *       <td><b>{@code first_frame}（分P首帧图，可当缩略图）与 {@code ctime}</b></td>
+     *       <td>标题 / 简介 / 统计 / UP 主…</td></tr>
+     * </table>
+     * ⇒ <b>只要分P时用本方法</b>；已经拿过 {@code VideoInfo} 的<b>直接读它的 {@code getPages()}</b>，
+     * 别为了同一份数据再打一次请求。
+     *
+     * <p>⚠️ 返回的每个分P里 {@code cid} 是<b>取弹幕、取播放地址</b>要用的那个 id
+     * （与 {@code bvid} / {@code aid} 是三套不同口径）。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @return 分P列表（按 {@code page} 升序），不可为 null、不会为空
+     * @throws IOException {@code bvid} 为空、网络失败、HTTP 非 2xx、业务码非 0、
+     *                     {@code data} 为空，或 {@code data} 是空数组
+     */
+    public List<Pages> getParts(String bvid) throws IOException {
+        try {
+            return VideoService.INSTANCE.getParts(bvid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * <b>取视频缩略图（进度条预览图）</b>（{@code x/player/videoshot}）。
+     *
+     * <p>✅ <b>匿名可用、不需签名</b>（2026-09-24 实测）。
+     *
+     * <p>拿到的是<b>一张雪碧图 + 一张坐标表</b>，不是一串图 ——
+     * 拼出"第 n 个时间点的预览小图"的方法写在 {@link VideoShot} 的类注释里。
+     * 一次请求就能给整条进度条的预览，比按时间点逐张取省得多。
+     *
+     * <p>🔴 <b>本方法没有 {@code index} 参数 —— 这是刻意去掉的</b>（2026-09-24 实测，
+     * 样本是一个 <b>4 分P</b> 的视频）：端点的 {@code index} 传 {@code 2}/{@code 3}/{@code 99}
+     * <b>全都静默返回 P1 的雪碧图</b>（地址逐字相同）配一份<b>空的</b> {@code index} 数组 ——
+     * 不报错、不回空。若把它暴露出去，调用方会以为"index=2 拿到的是 P2 的缩略图"，
+     * 而实际上拿到的是 P1 的图 ⇒ <b>这个错误没有任何异常提示，比报错难查得多</b>。
+     * 库内固定传 {@code index=1}；实测表见 {@code BilibiliEndpoint#playerVideoShotUrl}。
+     *
+     * <p>⚠️ 返回的 {@code image} 是<b>协议相对地址</b>（{@code //bimp.hdslb.com/...}），
+     * 直接当 URL 用会失败，记得补 {@code https:}。
+     *
+     * @param bvid BV 号（{@code BV1xxx...}）
+     * @return 缩略图信息，不可为 null
+     * @throws IOException {@code bvid} 为空、网络失败、HTTP 非 2xx、业务码非 0、
+     *                     {@code data} 为空，或没给出 {@code image} 地址
+     */
+    public VideoShot getVideoShot(String bvid) throws IOException {
+        try {
+            return VideoService.INSTANCE.getVideoShot(bvid);
+        } catch (BilibiliException e) {
+            throw new IOException(e.getMessage(), e);
+        }
     }
 }

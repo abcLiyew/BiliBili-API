@@ -888,6 +888,178 @@ public class BilibiliEndpoint {
      */
     public static final String noteIsForbidUrl = "https://api.bilibili.com/x/note/is_forbid";
 
+    // ------------------------------------------------------------------ C1 批（2026-09-24）
+    //
+    // 本批的来由：先把"候选池"从 42 份文档扩到上游全集（153 份），再做差集 ——
+    // 于是冒出一批"实测能做、本库没做"的端点。以下 5 个是其中第一批。
+    //
+    // 🔴 本批**全部匿名可用**，不需要签名与凭据。但其中两条有很重的"静默陷阱"，
+    // 都写在各常量自己的注释里（reply/main 的假 is_end、videoshot 的假缩略图）。
+
+    /**
+     * {@code x/player/pagelist?bvid=} —— <b>分P列表</b>（C1 批）。
+     *
+     * <p>📌 <b>它与既有的 {@code x/web-interface/view} 的 {@code pages[]} 高度重叠</b>
+     * （2026-09-24 逐键对比：{@code view.pages[]} 的 6 个键是本端点元素 10 个键的<b>子集</b>）。
+     * 所以它的价值不是"新能力"，而是<b>"只要分P时更轻"</b> —— 只取分P不必拉回
+     * {@code view} 那 49 个键的整份详情；并且<b>多给两个键</b>：
+     * {@code first_frame}（该分P的首帧图，可当缩略图用）与 {@code ctime}。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用、不需签名（2026-09-24 同一趟 A/B：匿名与带凭据都是
+     * {@code code=0}、{@code list=4}）。
+     *
+     * <p>⚠️ <b>{@code data} 是"裸数组"，不是 {@code data.list}</b> ——
+     * 与 {@code liveAreaListUrl} 同一种形状。按 {@code data.list} 取会拿到 {@code null}。
+     *
+     * <p>参数：{@code bvid}（也支持 {@code aid} + {@code cid} 那一组，本库只用 {@code bvid}）。
+     */
+    public static final String playerPageListUrl = "https://api.bilibili.com/x/player/pagelist";
+
+    /**
+     * {@code x/v2/reply/main} —— <b>新版主评论列表</b>（C1 批）。
+     *
+     * <p>它是 B 站<b>现行网页端</b>评论区用的端点（旧版 {@link #replyUrl} 仍在、本库也仍可用）。
+     * 两者最大的差别是<b>翻页方式</b>：这里是 {@code cursor.next} 游标，而旧版是 {@code pn} 页码。
+     * 游标在响应里，所以 {@code data.cursor} <b>必须映射成 POJO</b>，否则调用方翻不了页。
+     *
+     * <p>🔴🔴 <b>本端点有一个比 {@code x/space/upstat} 那个"静默空"更危险的形态：
+     * 匿名不仅少给数据，还会给一个"假的终止信号"</b>（2026-09-24 实测，见下表）。
+     * 它的危险在于 <b>两个数字互相矛盾</b>（说总共 1.1 万条，却只给 3 条并说"到底了"），
+     * 而调用方若按 {@code is_end} 决定要不要翻页，会<b>当成"这个视频只有 3 条评论"</b>——
+     * 不报错、不缺数据、看上去完全正常。
+     *
+     * <table border="1">
+     *   <caption>2026-09-24 实测（样本 aid=117308542555694，与测试夹具同源；同一 UA、只换 Cookie；
+     *   {@code mode=3&next=0&ps=20}）</caption>
+     *   <tr><th>请求</th><th>{@code replies}</th><th>{@code cursor.is_end}</th>
+     *       <th>{@code cursor.all_count}</th><th>{@code cursor.next}</th></tr>
+     *   <tr><td>带匿名指纹（buvid3/4）第 1 页</td><td><b>{@code 3}</b></td><td><b>{@code true}</b>（谎报！）</td>
+     *       <td>{@code 11062}</td><td>{@code 2}</td></tr>
+     *   <tr><td>带匿名指纹 第 2 页（回传 {@code next}）</td><td><b>{@code null}</b></td>
+     *       <td>{@code true}</td><td><b>也消失（{@code null}）</b></td><td>{@code 0}</td></tr>
+     *   <tr><td><b>零 Cookie</b> 第 1 页</td><td><b>{@code 20}</b></td><td>{@code false}</td>
+     *       <td>{@code 11062}</td><td>{@code 2}</td></tr>
+     *   <tr><td>凭据 第 1 页</td><td><b>{@code 20}</b></td><td>{@code false}</td>
+     *       <td>{@code 11062}</td><td>{@code 2}</td></tr>
+     *   <tr><td>凭据 第 2 页（回传 {@code next}）</td><td><b>{@code 20}</b></td>
+     *       <td>{@code false}</td><td>—</td><td>{@code 3}</td></tr>
+     * </table>
+     * ⇒ <b>本端点只有在带凭据（或零 Cookie 身份）时才是一条完整的评论链路</b>。
+     * 🔴 <b>变量分离结论（2026-09-24 下午，三趟复验）</b>：截断的触发器是<b>匿名指纹</b>，
+     * 不是"缺凭据" —— 同一时刻<b>零 Cookie 拿到完整 20 条</b>，带上 {@code buvid3/4} 立刻被截到 3 条
+     * 并谎报 {@code is_end}。本库的匿名出站默认自动领指纹，所以"库的匿名"恰好就是被截的那一档。
+     * 带指纹档的三个症状要一起记：
+     * ① 条数被静默截到 3（这正是红线里的"第四形态 D"，<b>打长度也拦不住</b>，
+     * 因为 3 条看起来很正常）；② {@code is_end} 直接被写成 {@code true}；
+     * ③ 真去翻第二页会拿到 {@code replies=null}<b>，且 {@code all_count} 一并消失</b>
+     * （所以"用 {@code all_count>0} 当守卫"会漏掉这一格 —— 库内的判据是
+     * "{@code replies==null} 且 {@code all_count} 不明确为 0"）。
+     *
+     * <p><b>{@code mode} 的合法取值只有 1/2/3</b>（实测）：{@code 4} 直接
+     * {@code -400 invalid mode}；{@code 0} 被服务端<b>归一成 3</b>（回显的
+     * {@code cursor.mode} 是 3，不是 0）—— 所以别把 0 当"按时间"传，本库不接受 0。
+     * 语义（上游文档口径，本批未逐格验证）：
+     * <b>3</b>=仅按热度（<b>默认</b>）、<b>1</b>=按热度+按时间、<b>2</b>=仅按时间。
+     * ⚠️ 实测 {@code cursor.mode_text} 是<b>空串</b>，{@code support_mode} 在不同稿件上还不一样
+     * （本批样本给 {@code [2,3]}，文档示例给 {@code [1,2,3]}）⇒ <b>别拿这两项判可达性</b>。
+     *
+     * <p>参数：{@code type=1}（视频）/ {@code oid}（<b>aid</b>，不是 bvid）/ {@code mode} /
+     * {@code next}（第一页传 0，其后回传上一页的 {@code cursor.next}）/ {@code ps}。
+     *
+     * <p>📌 <b>关于"文档说这条路径已被取代"</b>：上游文档把本路径<b>划掉</b>，
+     * 指向 {@code x/v2/reply/wbi/main}，并标注需要 Wbi 签名 + Cookie。
+     * 2026-09-24 实测了两条路（同一 aid、同一分钟、同一批参数）：
+     * <table border="1">
+     *   <caption>两条路径对照</caption>
+     *   <tr><th>路径</th><th>匿名</th><th>凭据</th></tr>
+     *   <tr><td>{@code x/v2/reply/main}（<b>本常量</b>）</td>
+     *       <td>{@code code=0}，{@code replies=3}</td><td>{@code code=0}，{@code replies=20}</td></tr>
+     *   <tr><td>{@code x/v2/reply/wbi/main}（文档指向的那条，<b>本格不签名</b>）</td>
+     *       <td><b>{@code -403}</b></td><td><b>{@code -403}</b></td></tr>
+     * </table>
+     * ⇒ 本库<b>走免签名的这条</b>（与 {@code playurl} 那次"绕开 {@code /wbi/}"同一取舍）。
+     * ⚠️ 那个 {@code -403} 属于<b>"缺签名"</b>那一成因，不是资源权限不足 ——
+     * <b>本批没有测过"签名 + 凭据"下的 {@code wbi/main}</b>（没跑过就不写结论）。
+     * 📌 因此留一句后路：<b>若哪天本路径开始失败</b>，第一条备选就是改走
+     * {@code wbi/main} + {@link com.esdllm.bilibiliApi.http.BilibiliHttp#getSigned} + 凭据。
+     */
+    public static final String replyMainUrl = "https://api.bilibili.com/x/v2/reply/main";
+
+    /**
+     * {@code x/v2/reply/count?type=1&oid=} —— <b>评论总数</b>（C1 批）。
+     *
+     * <p>响应只有一项：{@code data.count}（实测 {@code 11062}）。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用、不需签名；且<b>匿名与带凭据取值相同</b>
+     * （2026-09-24 同一趟 A/B：两格都是 {@code code=0}、{@code keys=1}）。
+     * ⇒ 这是本批唯一一个"免费拿总数"的端点，也是判断
+     * {@link #replyMainUrl} 有没有静默截断的<b>那把尺子</b>
+     * （带匿名指纹时它给 11062，而 {@code reply/main} 只回 3 条）。
+     *
+     * <p>⚠️ {@code oid} 是 <b>{@code aid}</b> —— 与 {@link #replyUrl} / {@link #replyMainUrl} 同口径。
+     */
+    public static final String replyCountUrl = "https://api.bilibili.com/x/v2/reply/count";
+
+    /**
+     * {@code x/web-interface/popular/precious} —— <b>入站必刷</b>（C1 批）。
+     *
+     * <p>"入站必刷"是 B 站官方策展的一个专题（实测 {@code title="入站必刷"}、
+     * {@code explain="我不允许还有人没看过这98个宝藏视频！"}、{@code media_id=496307088}）。
+     * 它返回的是一份<b>策划单</b>，不是按热度动态排的流。
+     *
+     * <p>🔴 <b>它完全不吃分页参数 —— 这是实测出来的，别照着"热门那套"给它加 {@code pn}/{@code ps}</b>：
+     * <table border="1">
+     *   <caption>2026-09-24 实测，五种入参</caption>
+     *   <tr><th>入参</th><th>{@code list} 长度</th><th>首条 aid</th></tr>
+     *   <tr><td>不带参数</td><td>{@code 98}</td><td>{@code 898762590}</td></tr>
+     *   <tr><td>{@code ?page=1&page_size=20}</td><td>{@code 98}</td><td>{@code 898762590}</td></tr>
+     *   <tr><td>{@code ?page=1&page_size=5}</td><td>{@code 98}</td><td>{@code 898762590}</td></tr>
+     *   <tr><td>{@code ?page=2&page_size=20}</td><td>{@code 98}</td><td>{@code 898762590}</td></tr>
+     *   <tr><td>{@code ?page_size=1}</td><td>{@code 98}</td><td>{@code 898762590}</td></tr>
+     * </table>
+     * ⇒ 五格<b>长度与首条全同</b>，连 {@code page=2} 都不换内容。所以本库<b>不暴露分页参数</b>
+     * —— 暴露一个"填什么都不会变"的旋钮，只会让调用方以为自己在翻页。
+     *
+     * <p><b>门槛</b>：✅ 匿名可用；匿名与带凭据<b>都是 98 条</b>（2026-09-24 交叉复核）。
+     *
+     * <p>⚠️ {@code data} 的 4 个键是 {@code title} / {@code media_id} / {@code explain} / {@code list}；
+     * 元素形状与热门/排行榜<b>同一代</b>（复用 {@code VideoBrief}，实测元素 38 键，
+     * 多出 {@code achievement} / {@code ai_rcmd} / {@code ogv_info} 三个未映射键）。
+     */
+    public static final String popularPreciousUrl = "https://api.bilibili.com/x/web-interface/popular/precious";
+
+    /**
+     * {@code x/player/videoshot?bvid=&index=} —— <b>视频缩略图（进度条预览图）</b>（C1 批）。
+     *
+     * <p>返回的是一张<b>雪碧图</b>（sprite sheet）加一条"每帧在雪碧图里的位置"表：
+     * {@code img_x_len × img_y_len} 是网格（实测 10×10）、{@code img_x_size × img_y_size}
+     * 是单格像素（实测 480×270）、{@code image[]} 是雪碧图地址、
+     * {@code index[]} 是"第 n 个时间点对应网格第几格"（实测 27 个值）。
+     * 进度条拖动时的预览小图就是这么拼出来的。
+     *
+     * <p>🔴🔴 <b>{@code index} 参数是个陷阱，本库因此<u>不暴露</u>它</b>
+     * （2026-09-24 实测，样本是一个 <b>4 分P</b> 的视频）：
+     * <table border="1">
+     *   <caption>同一 bvid、只改 index</caption>
+     *   <tr><th>{@code index}</th><th>{@code image[]}</th><th>{@code index[]}</th><th>拿到的图</th></tr>
+     *   <tr><td>{@code 1}</td><td>1</td><td><b>{@code 27}</b></td><td>{@code …-0001.jpg}</td></tr>
+     *   <tr><td>{@code 2}</td><td>1</td><td>{@code 0}</td><td><b>同一张 {@code …-0001.jpg}</b></td></tr>
+     *   <tr><td>{@code 3}</td><td>1</td><td>{@code 0}</td><td><b>同一张</b></td></tr>
+     *   <tr><td>{@code 99}</td><td>1</td><td>{@code 0}</td><td><b>同一张</b></td></tr>
+     * </table>
+     * ⇒ 传 {@code index=2} <b>不会报错、也不会回空</b>，而是安静地把 <b>P1 的雪碧图</b>连同一份
+     * <b>空的</b> {@code index[]} 交给你。调用方若以为"这就是 P2 的缩略图"，会拿到一张
+     * 看似合法、内容属于另一个分P的图 —— 这比报错难查得多。
+     * 既然 {@code index ≠ 1} 在任何样本上都拿不到东西，本库<b>固定 {@code index=1}</b>
+     * 且不把它做成参数。<b>哪天服务端把它修好了，再考虑开放这个参数。</b>
+     *
+     * <p><b>门槛</b>：✅ 匿名可用、不需签名（2026-09-24 实测；带凭据形状相同）。
+     *
+     * <p>⚠️ {@code video_shots} / {@code indexs} 在实测样本里都是<b>空对象</b>
+     * —— 它们是官方客户端用的另一套布局，本库只原样透出，不做解释。
+     */
+    public static final String playerVideoShotUrl = "https://api.bilibili.com/x/player/videoshot";
+
     // 旧端点：保留为 @Deprecated 常量供历史引用方继续可解析
     /**
      * @deprecated 旧端点所在的 {@code api.vc.bilibili.com/dynamic_svr} 已整站下线

@@ -17,10 +17,27 @@ B 站端点变动频繁，官方文档经常过时。本仓库已经踩过 5 次
 ─────────────────────────────────────────────────────────────────────────
 | 形态 | 含义 | 处置 |
 |---|---|---|
-| HTTP 404 且 body 是 HTML | **端点已下线** | 整项降级，别硬做 |
+| HTTP 404 且 body 是 HTML | **本次未放行**（**不是**"已下线"） | 🔴 单趟 404 判不了死：须多趟复验 + 同期阳性对照 |
 | HTTP 200、`code` 是业务错误码 | 端点活着，是**参数/权限**问题 | 换真实 id；`-101` 才是真需登录 |
 | HTTP 200、`code=0` 但 `data` 是空对象/空数组 | **静默风控** 或 **需登录**（最难查） | 见下条，两步都要做 |
 | HTTP 200 但 body 不是 JSON | 多半是**压缩**（deflate/gzip） | 本脚本会自动解压后再判断 |
+
+🔴 第一条（404）的判据已于 2026-09-23 修正 —— 旧判据「404 + HTML ⇒ 已下线」是错的
+─────────────────────────────────────────────────────────────────────────
+B 站的错误页是一张**固定的 5671 字节静态 HTML**：「路径不存在」与「这次不放行」返回**同一张页**，
+body 里没有任何能区分二者的东西。现场（2026-09-23）：
+
+  - 同一台机器、同一小时内，`xlive/web-room/v2/index/getRoomPlayInfo` 先 `code=0`（keys=23）；
+  - 一小时后**同 URL 连试 3 次全部 404**；同域 `room/v1/Room/get_info` 也是 404；
+  - 而**同期跨域阳性对照 `popular` 正常 `code=0`**。
+
+若按旧判据，就要写"直播域所有端点集体下线" —— 这显然不可能。真正的解释是**直播域被临时整域拒绝**。
+
+    单趟 404 + HTML   ->  只能写「本次未放行」
+    判「已下线」       ->  必须多趟（至少两趟，最好隔天）稳定复现，且同期阳性对照正常
+
+仅凭一趟 404 就写"已下线"，与"只跑一次就下结论 / 只做一步就归因"是同一个错误。
+⚠️ 这条修正**同时**适用于下面 `probe()` 打印出的 `HTML/EOF` 行：它只说明"这次拿到的不是 JSON"。
 
 🔴 第三条必须走两步，只做第一步就会误判（2026-09-21 真实教训）
 ─────────────────────────────────────────────────────────────────────────
@@ -413,7 +430,8 @@ if __name__ == "__main__":
     else:
         print("B2-1 dm/list.so            [skip] no cid from bootstrap -- oid=None would give HTTP 400")
     probe("B2-2 search/suggest", api("x/web-interface/search/suggest", term="bilibili"),
-          note="2026-09-21: HTTP 404 -> retired, moved to B4")
+          note="2026-09-21: HTTP 404 -- per the corrected rule this means 'not served then', "
+               "NOT proof of death. Moved to B4 regardless.")
     probe("B2-3 search/square", api("x/web-interface/search/square", limit=10),
           note="hot-search board; look for the 'trending' collection length")
     probe("B2-4 fav/folder/info", api("x/v3/fav/folder/info", media_id=1),
@@ -606,11 +624,14 @@ if __name__ == "__main__":
     probe("archive/stat (expect 404)", api("x/web-interface/archive/stat", bvid=bvid))
     probe("seasons/list (expect 404)", api("x/polymer/web-space/seasons/list", mid=2,
                                            page_num=1, page_size=20),
-          note="2026-09-21: retired; the collection chain needs a new season_id source "
-               "(now: arc/search -> vlist[].season_id)")
+          note="2026-09-21: HTTP 404 (see the corrected 404 rule above). The collection chain "
+               "needs a new season_id source (now: arc/search -> vlist[].season_id)")
     print()
     print("done. Reminder:")
-    print("  404 + HTML          = endpoint retired")
+    print("  404 + HTML          = NOT retired -- it only means 'not served this time'. One 404")
+    print("                        proves nothing: re-run (ideally on another day) AND check the")
+    print("                        positive control. Whole-domain 404 with a healthy control =")
+    print("                        temporary domain-level refusal, NOT 'every endpoint is gone'.")
     print("  code=0 + empty data = silent risk-control OR needs-login (check the A/B rows above)")
     print("  collection field    = ALWAYS read its LENGTH (items=N), never just the key name")
     print("  POSITIVE control    = popular code=0, else every -352/-403 is your exit, not the endpoint")

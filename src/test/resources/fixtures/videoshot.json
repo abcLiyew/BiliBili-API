@@ -1,0 +1,46 @@
+{
+ "code": 0,
+ "message": "OK",
+ "ttl": 1,
+ "data": {
+  "pvdata": "//boss.hdslb.com/videoshotpvhdboss/42082042159_dgzayb.bin",
+  "img_x_len": 10,
+  "img_y_len": 10,
+  "img_x_size": 480,
+  "img_y_size": 270,
+  "image": [
+   "//bimp.hdslb.com/videoshotpvhdboss/42082042159_dgzayb-0001.jpg"
+  ],
+  "index": [
+   0,
+   0,
+   6,
+   13,
+   18,
+   25,
+   31,
+   38,
+   45,
+   50,
+   55,
+   61,
+   72,
+   79,
+   84,
+   89,
+   95,
+   101,
+   111,
+   116,
+   123,
+   131,
+   137,
+   144,
+   150,
+   156,
+   167
+  ],
+  "video_shots": {},
+  "indexs": {}
+ }
+}
