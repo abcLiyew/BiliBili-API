@@ -46,11 +46,16 @@ public class LiveService {
      *
      * @param roomId 直播间房间号
      * @return 不可为 null
-     * @throws BilibiliException {@code roomId == null}、网络异常、JSON 解析失败、业务码非 0、{@code data} 为空
+     * @throws BilibiliException {@code roomId} 为空或 ≤ 0、网络异常、JSON 解析失败、业务码非 0、{@code data} 为空
      */
     public LiveRoom load(Long roomId) {
         if (roomId == null) {
-            throw new BilibiliException("获取直播间信息失败\n房间号：null");
+            throw new BilibiliException("房间号不能为空");
+        }
+        if (roomId <= 0) {
+            // roomId 是直接拼进 URL 的（{@code liveBaseUrl + roomId}）⇒ 不拦的话 0 / 负数会真的发出去。
+            // 同参数的 {@link #getLiveStream(Long, Integer)} 早已拒 ≤ 0，这里曾经只拒 null ⇒ 同一实体两套门槛。
+            throw new BilibiliException("房间号必须大于0");
         }
         String url = BilibiliEndpoint.liveBaseUrl + roomId;
         HttpResponse<String> response = BilibiliHttp.get(url);

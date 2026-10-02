@@ -444,7 +444,10 @@ class ContentServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> ArticleService.INSTANCE.getArticleInfo(0L));
 
-            assertTrue(e.getMessage().contains("专栏号"), "实际：" + e.getMessage());
+            // 词干与家族对齐（不是"必须为正数"），且把收到的值带出来 —— 后者是本家族的加分项，别再抹平
+            assertTrue(e.getMessage().contains("专栏号必须大于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("收到：0"),
+                    "带值比只报条件更好排查，别把它删掉。实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(ARTICLE_PATH), "参数不合法时不该出站");
         }
 

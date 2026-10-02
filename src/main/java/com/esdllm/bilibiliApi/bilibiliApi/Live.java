@@ -37,6 +37,8 @@ public class Live {
      *
      * @param roomId 直播间房间号
      * @return 不可为 null
+     * @throws BilibiliException {@code roomId} 为空或 ≤ 0（本地校验，零出站；方法未声明
+     *         {@code throws IOException}，故按本类约定透传 runtime）
      */
     public LiveRoom getLiveRoom(Long roomId) {
         return LiveService.INSTANCE.load(roomId);

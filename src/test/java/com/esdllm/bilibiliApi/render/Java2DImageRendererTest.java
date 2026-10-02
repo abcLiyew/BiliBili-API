@@ -1,5 +1,6 @@
 package com.esdllm.bilibiliApi.render;
 
+import com.esdllm.bilibiliApi.exception.BilibiliException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -187,11 +188,11 @@ class Java2DImageRendererTest {
     }
 
     @Test
-    @DisplayName("null 模型 → 抛 NullPointerException（显式判空，而不是靠内部 getBlocks() 崩）")
+    @DisplayName("null 模型 → 抛 BilibiliException（库内唯一约定类型，不是裸 NPE）")
     void nullModel() {
-        // 🔴 收窄到 NPE 并断言文案：以前只写 Exception，实际靠 `model.getBlocks()` 内部抛 NPE ——
-        // 那既是实现细节，排查时也分不清"调用方传错"还是"渲染器炸了"。
-        NullPointerException e = assertThrows(NullPointerException.class,
+        // 🔴 收窄到 BilibiliException 并断言文案：以前只写 Exception，实际靠 `model.getBlocks()` 内部抛 NPE ——
+        // 那既是实现细节，也让调用方在库外多记一种 catch。契约见 DynamicImageRenderer#render。
+        BilibiliException e = assertThrows(BilibiliException.class,
                 () -> new Java2DImageRenderer().render(null));
 
         assertTrue(e.getMessage().contains("model"), "实际：" + e.getMessage());

@@ -160,12 +160,15 @@ class UserSpaceTest {
 
         @Test
         @DisplayName("seasonId ≤ 0：同样包成 IOException（合集那条是本地校验，一个出站都不发）")
-        void invalidSeasonId() {
+        void invalidSeasonId() throws Exception {
+            // 同 UserSpaceServiceTest：路由不注册时 hitCount 恒 0，那条"零出站"就是恒真的。
+            mock.register(SEAS_PATH, fixture("seasons-archives.json"));
+
             IOException e = assertThrows(IOException.class,
                     () -> space.getSeasonArchives(MID, 0L, 1, 5));
 
-            assertTrue(e.getMessage().contains("season_id 必须是真实 id"), "实际：" + e.getMessage());
-            assertEquals(0, mock.hitCount(SEAS_PATH));
+            assertTrue(e.getMessage().contains("season_id 必须大于0"), "实际：" + e.getMessage());
+            assertEquals(0, mock.hitCount(SEAS_PATH), "参数校验必须发生在发请求之前");
         }
 
         @Test

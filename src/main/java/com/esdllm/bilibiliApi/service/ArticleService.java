@@ -55,7 +55,10 @@ public class ArticleService {
      */
     public ArticleInfo getArticleInfo(long id) {
         if (id <= 0) {
-            throw new BilibiliException("专栏号必须为正数，收到：" + id);
+            // 词干统一成"必须大于0"（与 `x <= 0` 这个条件逐字对齐，家族里任何
+            // contains("必须大于0") 的匹配都能命中）；"收到：<值>" 保留 —— 带值比只报条件更好排查，
+            // 但**不**在存量 20+ 处强制推广（那是行为变更，收益低于风险）。
+            throw new BilibiliException("专栏号必须大于0，收到：" + id);
         }
         String url = BilibiliEndpoint.articleViewInfoUrl + "?id=" + id;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,

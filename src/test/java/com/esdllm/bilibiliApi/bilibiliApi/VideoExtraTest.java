@@ -361,6 +361,11 @@ class VideoExtraTest {
         @Test
         @DisplayName("★ toAid / toBvid：纯函数、零出站，真机样本双向都对")
         void pureConversion() {
+            // 路由先注册（body 随意，反正断言的是"一次都不命中"）：
+            // 不注册时 hitCount 恒 0，下面那两条"零出站"就退化成恒真的保险带。
+            mock.register(NAV_PATH, "{\"code\":0,\"message\":\"0\",\"data\":{}}");
+            mock.register(CONC_PATH, "{\"code\":0,\"message\":\"0\",\"data\":{}}");
+
             assertEquals(80433022L, videoExtra.toAid("BV1GJ411x7h7"));
             assertEquals(170001L, videoExtra.toAid("BV17x411w7KC"));
             assertEquals(349L, videoExtra.toAid("BV1xx411c7DS"));

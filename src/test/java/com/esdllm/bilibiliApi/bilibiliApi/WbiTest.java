@@ -92,6 +92,10 @@ class WbiTest {
         @Test
         @DisplayName("离线重载：结果与在线一致，且一次 nav 都不打")
         void offlineOverload() throws Exception {
+            // 路由先注册：不注册时 hitCount 恒 0，那条"一次 nav 都不打"就是恒真的。
+            // 注册之后它才真的能测到"有没有人偷偷去取密钥"。
+            mock.register(NAV_PATH, "{\"code\":0,\"message\":\"0\",\"data\":{}}");
+
             String offline = wbi.signQuery(goldenParams(), IMG_KEY, SUB_KEY, GOLDEN_WTS);
 
             assertEquals(GOLDEN_QUERY, offline);

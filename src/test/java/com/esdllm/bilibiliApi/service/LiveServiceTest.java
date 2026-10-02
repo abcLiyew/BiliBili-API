@@ -58,12 +58,30 @@ class LiveServiceTest {
     }
 
     @Test
-    @DisplayName("roomId 为 null → 抛 BilibiliException，且消息带动作与入参上下文")
+    @DisplayName("roomId 为 null → '房间号不能为空'（与 ≤ 0 的文案分开）")
     void roomIdIsNull() {
         BilibiliException e = assertThrows(BilibiliException.class,
                 () -> LiveService.INSTANCE.load(null));
-        assertTrue(e.getMessage().contains("房间号"), "实际：" + e.getMessage());
-        assertTrue(e.getMessage().contains("null"), "应把入参原样带出便于排障");
+        assertTrue(e.getMessage().contains("房间号不能为空"), "实际：" + e.getMessage());
+    }
+
+    @Test
+    @DisplayName("roomId 为 0 / 负数 → '房间号必须大于0'，且一个出站都不发")
+    void roomIdNotPositive() {
+        // 🔴 路由必须真注册（它按 path+query 前缀匹配，room_id= 任意值都能命中）——
+        //    路由不存在时 hitCount 恒 0，那条"零出站"断言就成了恒真。
+        mock.register(LIVE_PATH + "?room_id=", "{\"code\":0,\"message\":\"0\",\"data\":{}}");
+
+        BilibiliException zero = assertThrows(BilibiliException.class,
+                () -> LiveService.INSTANCE.load(0L));
+        assertTrue(zero.getMessage().contains("房间号必须大于0"), "实际：" + zero.getMessage());
+
+        BilibiliException neg = assertThrows(BilibiliException.class,
+                () -> LiveService.INSTANCE.load(-1L));
+        assertTrue(neg.getMessage().contains("房间号必须大于0"), "实际：" + neg.getMessage());
+
+        assertEquals(0, mock.hitCount(LIVE_PATH + "?room_id="),
+                "本地校验必须发生在出站之前 —— 否则 ?room_id=0 会真的发出去");
     }
 
     @Test
@@ -197,16 +215,24 @@ class LiveServiceTest {
         }
 
         @Test
-        @DisplayName("roomId 为 null 或 ≤ 0：本地校验，零出站")
+        @DisplayName("roomId 为 null 或 ≤ 0：两种文案分开，都零出站")
         void badRoomId() {
-            BilibiliException e = assertThrows(BilibiliException.class,
+            // 路由必须先注册：@BeforeEach 只起服务、不注册任何路由，
+            // 而 hitCount 是按注册 key 查计数 ⇒ 不注册时下面的"零出站"恒真。
+            mock.register(STREAM_PATH, "{\"code\":0,\"message\":\"OK\",\"data\":{}}");
+
+            BilibiliException zero = assertThrows(BilibiliException.class,
                     () -> LiveService.INSTANCE.getLiveStream(0L, null));
+            assertTrue(zero.getMessage().contains("房间号必须大于0"), "实际：" + zero.getMessage());
 
-            assertTrue(e.getMessage().contains("房间号必须大于0"), "实际：" + e.getMessage());
-            assertEquals(0, mock.hitCount(STREAM_PATH));
+            // 🔴 拆开的两条分支必须**两条都断文案**：只 assertThrows 的话，
+            //    null 那半边的文案被改坏也没人知道（同文件 getMasterInfo 已按此写法）。
+            BilibiliException nul = assertThrows(BilibiliException.class,
+                    () -> LiveService.INSTANCE.getLiveStream(null, null));
+            assertTrue(nul.getMessage().contains("房间号不能为空"), "实际：" + nul.getMessage());
 
-            assertThrows(BilibiliException.class, () -> LiveService.INSTANCE.getLiveStream(null, null));
-            assertEquals(0, mock.hitCount(STREAM_PATH));
+            assertEquals(0, mock.hitCount(STREAM_PATH),
+                    "两条分支都在出站之前被拦下（路由已注册，命中就会被计数）");
         }
     }
 
@@ -278,8 +304,11 @@ class LiveServiceTest {
         }
 
         @Test
-        @DisplayName("uid 为 null 或 ≤ 0：本地校验，零出站")
+        @DisplayName("uid 为 null 或 ≤ 0：两种文案分开，都零出站")
         void badUid() {
+            // 同 badRoomId：路由不注册时 hitCount 恒 0，那条"零出站"就是恒真的。
+            mock.register(MASTER_PATH, "{\"code\":0,\"message\":\"OK\",\"data\":{}}");
+
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> LiveService.INSTANCE.getMasterInfo(0L));
 
@@ -289,7 +318,8 @@ class LiveServiceTest {
             BilibiliException nul = assertThrows(BilibiliException.class,
                     () -> LiveService.INSTANCE.getMasterInfo(null));
             assertTrue(nul.getMessage().contains("uid不能为空"), "实际：" + nul.getMessage());
-            assertEquals(0, mock.hitCount(MASTER_PATH));
+            assertEquals(0, mock.hitCount(MASTER_PATH),
+                    "两条分支都在出站之前被拦下（路由已注册，命中就会被计数）");
         }
 
         @Test

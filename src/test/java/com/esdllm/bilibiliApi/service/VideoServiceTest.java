@@ -18,8 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@link VideoService} 直接单测。
  *
  * <p>覆盖两个入口（bvid / aid）各自的参数校验、正常映射与失败路径。
- * 注意 {@code getVideoInfo(Long)} 的校验条件与 {@code String} 版不同：
- * 数值版要求 {@code > 0}，字符串版只要求非 null。
+ * 两个版本的校验条件不同：数值版要求 {@code > 0}（且 null 单独报），
+ * 字符串版要求 <b>非 null 且非空白</b>（空串会被拼进 URL，等同无效）。
  */
 class VideoServiceTest {
 
@@ -66,11 +66,23 @@ class VideoServiceTest {
     }
 
     @Test
-    @DisplayName("bvid 为 null → 抛 BilibiliException('BV号不能为空')")
-    void bvidIsNull() {
-        BilibiliException e = assertThrows(BilibiliException.class,
-                () -> VideoService.INSTANCE.getVideoInfo((String) null));
-        assertTrue(e.getMessage().contains("BV号不能为空"), "实际：" + e.getMessage());
+    @DisplayName("bvid 为 null / 空串 / 纯空白 → 都抛 'BV号不能为空'，且一个出站都不发")
+    void bvidIsNullOrBlank() throws IOException {
+        // 🔴 只判 null 是漏的："" 会被拼成 videoBaseUrl + "" 直接发出去。
+        //    本文件其余三个收 bvid 的方法（getAiSummary / getPlayUrl / getOnlineTotal）一直是
+        //    null || isBlank()，这里必须对齐。
+        mock.register(VIEW_PATH + "?bvid=", Files.readString(Path.of(FIXTURE)));
+
+        for (String bad : new String[]{null, "", "  ", "\t"}) {
+            String shown = bad == null ? "null" : "\"" + bad + "\"";
+            BilibiliException e = assertThrows(BilibiliException.class,
+                    () -> VideoService.INSTANCE.getVideoInfo(bad), "入参：" + shown);
+            assertTrue(e.getMessage().contains("BV号不能为空"),
+                    "入参 " + shown + " 的实际消息：" + e.getMessage());
+        }
+
+        assertEquals(0, mock.hitCount(VIEW_PATH + "?bvid="),
+                "非法 bvid 必须在出站之前就被拦下（路由已注册，命中就会被计数）");
     }
 
     @Test

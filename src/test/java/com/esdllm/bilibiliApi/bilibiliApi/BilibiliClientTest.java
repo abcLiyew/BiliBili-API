@@ -219,6 +219,18 @@ class BilibiliClientTest {
     }
 
     @Test
+    void getVideoInfo_blankBvid_throws() {
+        // 空串 / 纯空白与 null 同一档 —— 它们会被拼成 videoBaseUrl + "" 发出去。
+        // 门面 resolve(String) 与 VideoService#getVideoInfo(String) 用同一口径，两处都要守。
+        for (String blank : new String[]{"", "  "}) {
+            IOException e = assertThrows(IOException.class, () -> client.getVideoInfo(blank),
+                    "入参：\"" + blank + "\"");
+            assertTrue(e.getMessage().contains("BV号不能为空"), "实际：" + e.getMessage());
+            assertInstanceOf(BilibiliException.class, e.getCause());
+        }
+    }
+
+    @Test
     void getVideoInfo_invalidAid_throws() {
         // aid<=0 应抛；⚠️ 文案与 null 那条**不同**（0 不是"空"，是"不合法"）
         IOException zero = assertThrows(IOException.class, () -> client.getVideoInfo(0L));

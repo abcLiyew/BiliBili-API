@@ -52,10 +52,12 @@ public class VideoService {
      *
      * @param bvid BV 号（{@code BV1xxx...}）
      * @return 不可为 null
-     * @throws BilibiliException {@code bvid} 为空、网络异常、JSON 解析失败、业务码非 0
+     * @throws BilibiliException {@code bvid} 为空或纯空白、网络异常、JSON 解析失败、业务码非 0
      */
     public VideoInfo getVideoInfo(String bvid) {
-        if (bvid == null) {
+        if (bvid == null || bvid.isBlank()) {
+            // 只判 null 的话空串会一路拼进 URL 发出去；本文件其余三个收 bvid 的方法
+            // （getAiSummary / getPlayUrl / getOnlineTotal）一律是 null || isBlank()，口径必须一致。
             throw new BilibiliException("BV号不能为空");
         }
         String url = BilibiliEndpoint.videoBaseUrl + bvid;

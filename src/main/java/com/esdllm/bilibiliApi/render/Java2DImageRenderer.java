@@ -1,5 +1,6 @@
 package com.esdllm.bilibiliApi.render;
 
+import com.esdllm.bilibiliApi.exception.BilibiliException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.awt.*;
@@ -63,9 +64,12 @@ public class Java2DImageRenderer implements DynamicImageRenderer {
     @Override
     public BufferedImage render(RenderModel model) {
         if (model == null) {
-            // 显式契约：以前靠 `model.getBlocks()` 内部抛 NPE —— 那异常类型是**实现细节**不是契约，
-            // 而且排查时看不出是"调用方传错了"还是"渲染器内部炸了"。
-            throw new NullPointerException("model 不能为 null");
+            // 🔴 抛 BilibiliException（库内唯一约定类型），**不抛裸 NPE**：
+            //    本库对"入参非法"一律 BilibiliException（20+ 处，含 LiveService.load(null)、
+            //    UserService.getCard(null)），抛 NPE 等于让调用方在库外多记第四种 catch。
+            //    以前这里靠 `model.getBlocks()` 内部抛 NPE —— 那既不是契约，也分不清
+            //    "调用方传错了"还是"渲染器内部炸了"。契约的归属见 DynamicImageRenderer#render。
+            throw new BilibiliException("model 不能为 null");
         }
         int width = CONTENT_WIDTH + PADDING * 2;
         List<Cmd> cmds = new ArrayList<>();

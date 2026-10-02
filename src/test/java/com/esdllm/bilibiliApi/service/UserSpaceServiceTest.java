@@ -275,12 +275,21 @@ class UserSpaceServiceTest {
         }
 
         @Test
-        @DisplayName("🔴 season_id ≤ 0 → 抛带人话的异常（传 1 会得到 -404 啥都木有）")
-        void invalidSeasonId() {
+        @DisplayName("🔴 season_id ≤ 0 → 文案讲的是'必须大于0'，不是'传 1 会得到 -404'")
+        void invalidSeasonId() throws Exception {
+            // 路由必须先注册：hitCount 是按注册 key 查计数，**不注册时恒 0** ⇒
+            // 不注册就写"零出站"等于写了一个恒真的反证格。
+            mock.register(SEAS_PATH, fixture("seasons-archives.json"));
+
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> UserService.INSTANCE.getSeasonArchives(MID, 0L, 1, 5));
-            assertTrue(e.getMessage().contains("season_id 必须是真实 id"), "实际：" + e.getMessage());
-            assertEquals(0, mock.hitCount(SEAS_PATH), "参数校验在发请求之前");
+
+            assertTrue(e.getMessage().contains("season_id 必须大于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("真实合集 id"),
+                    "★ 但'它必须是真实 id'这个事实要留着 —— 那是调用方真正的下一步");
+            assertFalse(e.getMessage().contains("传 1"),
+                    "≤0 这条分支不该讲'传 1 会得到 -404'：1 > 0，根本进不到这里，传 0 的人会被带偏");
+            assertEquals(0, mock.hitCount(SEAS_PATH), "参数校验必须发生在发请求之前");
         }
 
         @Test

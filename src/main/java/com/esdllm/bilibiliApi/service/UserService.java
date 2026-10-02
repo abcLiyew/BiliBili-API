@@ -175,7 +175,10 @@ public class UserService {
      */
     public SeasonsArchives getSeasonArchives(long mid, long seasonId, int pageNum, int pageSize) {
         if (seasonId <= 0) {
-            throw new BilibiliException("合集内容获取失败：season_id 必须是真实 id（传 1 会得到 -404 啥都木有）");
+            // 🔴 文案必须描述**被违反的那个条件**（seasonId ≤ 0），而不是另一个错误值的行为：
+            //    "传 1 会得到 -404" 讲的是 1（1 > 0，根本进不到这条分支），传 0 的人看到它会找错方向。
+            //    那条事实本身没错、也有用 —— 它留在 javadoc 与后面那句括号里。
+            throw new BilibiliException("season_id 必须大于0（它必须是真实合集 id，不知道时先用 findSeasonId(mid) 取一个）");
         }
         String url = BilibiliEndpoint.seasonsArchivesUrl
                 + "?mid=" + mid

@@ -352,7 +352,7 @@ class ContentTest {
         void badCv() {
             IOException e = assertThrows(IOException.class, () -> content.getArticleInfo(0L));
 
-            assertTrue(e.getMessage().contains("专栏号"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("专栏号必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause(),
                     "门面边界要把库内的 BilibiliException 包成 IOException，并保留内层");
             assertEquals(0, mock.hitCount(ARTICLE_PATH), "参数不合法时不该出站");

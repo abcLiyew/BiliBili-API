@@ -74,7 +74,9 @@ public class BilibiliClient {
      * 单槽缓存 + 委托 VideoService 取一次的统一入口。
      */
     private VideoInfo resolve(String bvid) {
-        if (bvid == null) {
+        if (bvid == null || bvid.isBlank()) {
+            // 与 VideoService#getVideoInfo(String) 保持同一口径：空串/纯空白不是"合法的 BV 号"，
+            // 放过去只会拼出一个必然失败的 URL。
             throw new BilibiliException("BV号不能为空");
         }
         if (isCached(bvid)) {
