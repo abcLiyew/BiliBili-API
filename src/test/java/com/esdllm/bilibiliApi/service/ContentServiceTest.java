@@ -297,7 +297,7 @@ class ContentServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> FavoriteService.INSTANCE.getCreatedFolders(0L));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("up_mid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(FAV_PATH));
         }
     }

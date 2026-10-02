@@ -105,7 +105,7 @@ class FavoriteFolderServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> FavoriteService.INSTANCE.getFolderInfo(0L));
 
-            assertTrue(e.getMessage().contains("media_id不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("media_id必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(INFO_PATH));
         }
     }
@@ -203,7 +203,7 @@ class FavoriteFolderServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> FavoriteService.INSTANCE.getResources(-1L, 1, 20));
 
-            assertTrue(e.getMessage().contains("media_id不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("media_id必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(LIST_PATH));
         }
     }

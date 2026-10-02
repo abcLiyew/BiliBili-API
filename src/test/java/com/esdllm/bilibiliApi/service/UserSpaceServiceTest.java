@@ -108,7 +108,7 @@ class UserSpaceServiceTest {
         void invalidMid() {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> UserService.INSTANCE.getAccInfo(0L));
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("mid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(ACC_PATH));
         }
 
@@ -182,7 +182,7 @@ class UserSpaceServiceTest {
         void invalidMid() {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> UserService.INSTANCE.getArchives(-1L, 1, 5));
-            assertTrue(e.getMessage().contains("mid不能小于0"));
+            assertTrue(e.getMessage().contains("mid必须大于0"));
             assertEquals(0, mock.hitCount(ARC_PATH));
         }
     }
@@ -388,7 +388,7 @@ class UserSpaceServiceTest {
         void invalidVmid() {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> UserService.INSTANCE.getTopArchive(0L));
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("vmid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(TOP_ARC_PATH));
         }
 

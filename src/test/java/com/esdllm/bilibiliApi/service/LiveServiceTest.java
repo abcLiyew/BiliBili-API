@@ -202,7 +202,7 @@ class LiveServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> LiveService.INSTANCE.getLiveStream(0L, null));
 
-            assertTrue(e.getMessage().contains("房间号不能为空"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("房间号必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(STREAM_PATH));
 
             assertThrows(BilibiliException.class, () -> LiveService.INSTANCE.getLiveStream(null, null));
@@ -283,10 +283,12 @@ class LiveServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> LiveService.INSTANCE.getMasterInfo(0L));
 
-            assertTrue(e.getMessage().contains("uid不能为空"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("uid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(MASTER_PATH));
 
-            assertThrows(BilibiliException.class, () -> LiveService.INSTANCE.getMasterInfo(null));
+            BilibiliException nul = assertThrows(BilibiliException.class,
+                    () -> LiveService.INSTANCE.getMasterInfo(null));
+            assertTrue(nul.getMessage().contains("uid不能为空"), "实际：" + nul.getMessage());
             assertEquals(0, mock.hitCount(MASTER_PATH));
         }
 

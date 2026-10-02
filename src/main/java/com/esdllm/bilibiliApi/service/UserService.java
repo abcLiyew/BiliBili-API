@@ -54,7 +54,7 @@ public class UserService {
             throw new BilibiliException("uid不能为空");
         }
         if (uid <= 0) {
-            throw new BilibiliException("uid不能小于0");
+            throw new BilibiliException("uid必须大于0");
         }
         String url = BilibiliEndpoint.cardBaseUrl + uid;
         HttpResponse<String> response = BilibiliHttp.get(url);
@@ -93,7 +93,7 @@ public class UserService {
      */
     public AccInfo getAccInfo(long mid) {
         if (mid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("mid必须大于0");
         }
         Map<String, String> params = new LinkedHashMap<>();
         params.put("mid", String.valueOf(mid));
@@ -137,7 +137,7 @@ public class UserService {
      */
     public ArchiveSearchResult getArchives(long mid, int pn, int ps, String order) {
         if (mid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("mid必须大于0");
         }
         Map<String, String> params = new LinkedHashMap<>();
         params.put("mid", String.valueOf(mid));
@@ -248,7 +248,7 @@ public class UserService {
      */
     public UpStat getUpStat(long mid) {
         if (mid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("mid必须大于0");
         }
         HttpResponse<String> response = BilibiliHttp.get(BilibiliEndpoint.upstatUrl + mid,
                 BilibiliEndpoint.jsonAccept, spaceReferer(mid));
@@ -331,7 +331,7 @@ public class UserService {
      */
     public RelationStat getRelationStat(long vmid) {
         if (vmid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("vmid必须大于0");
         }
         HttpResponse<String> response = BilibiliHttp.get(
                 BilibiliEndpoint.relationStatUrl + "?vmid=" + vmid,
@@ -352,7 +352,7 @@ public class UserService {
     private RelationList getRelations(String endpoint, long vmid, int pn, int ps,
                                      String refererTemplate, String action) {
         if (vmid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("vmid必须大于0");
         }
         String url = endpoint + "?vmid=" + vmid
                 + "&pn=" + Math.max(1, pn)
@@ -405,7 +405,7 @@ public class UserService {
      */
     public VideoBrief getTopArchive(long vmid) {
         if (vmid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("vmid必须大于0");
         }
         HttpResponse<String> response = BilibiliHttp.get(
                 BilibiliEndpoint.spaceTopArcUrl + "?vmid=" + vmid,
@@ -460,7 +460,7 @@ public class UserService {
      */
     public NavNum getNavNum(long mid) {
         if (mid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("mid必须大于0");
         }
         HttpResponse<String> response = BilibiliHttp.get(
                 BilibiliEndpoint.spaceNavNumUrl + "?mid=" + mid,

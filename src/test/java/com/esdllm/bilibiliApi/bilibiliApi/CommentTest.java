@@ -401,7 +401,7 @@ class CommentTest {
         void badAid() {
             IOException e = assertThrows(IOException.class, () -> comment.getReplies(0L, 1, 5));
 
-            assertTrue(e.getMessage().contains("aid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("aid必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(0, mock.hitCount(REPLY_PATH));
         }
@@ -453,7 +453,7 @@ class CommentTest {
             IOException e = assertThrows(IOException.class,
                     () -> comment.getSubReplies(AID, 0L, 1, 20));
 
-            assertTrue(e.getMessage().contains("root不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("root必须大于0"), "实际：" + e.getMessage());
             assertTrue(e.getMessage().contains("rpid"),
                     "★ 文案要把'它是一级评论的 rpid'讲出来 —— "
                             + "否则调用方容易以为该传 aid。实际：" + e.getMessage());

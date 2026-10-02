@@ -74,17 +74,19 @@ class VideoServiceTest {
     }
 
     @Test
-    @DisplayName("aid 为 null / 0 / 负数 → 抛 BilibiliException('AV号不能为空')")
+    @DisplayName("aid 为 null → 'AV号不能为空'；aid 为 0 / 负数 → 'AV号必须大于0'（两种文案必须分开）")
     void aidInvalid() {
         assertTrue(assertThrows(BilibiliException.class,
                 () -> VideoService.INSTANCE.getVideoInfo((Long) null))
                 .getMessage().contains("AV号不能为空"));
+        // 🔴 null 与 <=0 分开报，别合并成一句"不能为空"：传 0 的人会去查"我哪儿传了 null"，
+        //   而真正的问题是这个 0。与 UserService#getCard(Long uid) 同一条口径。
         assertTrue(assertThrows(BilibiliException.class,
                 () -> VideoService.INSTANCE.getVideoInfo(0L))
-                .getMessage().contains("AV号不能为空"));
+                .getMessage().contains("AV号必须大于0"));
         assertTrue(assertThrows(BilibiliException.class,
                 () -> VideoService.INSTANCE.getVideoInfo(-5L))
-                .getMessage().contains("AV号不能为空"));
+                .getMessage().contains("AV号必须大于0"));
     }
 
     @Test

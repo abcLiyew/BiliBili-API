@@ -204,11 +204,11 @@ class SubReplyServiceTest {
         void badIds() {
             BilibiliException e1 = assertThrows(BilibiliException.class,
                     () -> CommentService.INSTANCE.getSubReplies(0L, ROOT_RPID, 1, 20));
-            assertTrue(e1.getMessage().contains("aid不能小于0"), "实际：" + e1.getMessage());
+            assertTrue(e1.getMessage().contains("aid必须大于0"), "实际：" + e1.getMessage());
 
             BilibiliException e2 = assertThrows(BilibiliException.class,
                     () -> CommentService.INSTANCE.getSubReplies(AID, 0L, 1, 20));
-            assertTrue(e2.getMessage().contains("root不能小于0"), "实际：" + e2.getMessage());
+            assertTrue(e2.getMessage().contains("root必须大于0"), "实际：" + e2.getMessage());
             assertTrue(e2.getMessage().contains("rpid"),
                     "★ 文案里必须点出 root 是什么，否则调用方只会看到'root 不能小于 0'而不知该填什么");
 

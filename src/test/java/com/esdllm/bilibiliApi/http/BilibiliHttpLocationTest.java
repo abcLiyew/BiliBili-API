@@ -1,5 +1,6 @@
 package com.esdllm.bilibiliApi.http;
 
+import com.esdllm.bilibiliApi.exception.BilibiliException;
 import org.apache.http.Header;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,9 +83,16 @@ class BilibiliHttpLocationTest {
     }
 
     @Test
-    @DisplayName("getNoRedirect：入参 null 时抛异常（调用方编程错误应显式暴露）")
+    @DisplayName("getNoRedirect：入参 null 时抛 BilibiliException（调用方编程错误应显式暴露）")
     void nullArgument() {
-        assertThrows(Exception.class, () -> BilibiliHttp.getNoRedirect(null));
+        // 🔴 断言必须精确到 BilibiliException：以前这里只写 Exception，而它靠的是
+        // `new HttpGet(null)` 在 JDK/HttpClient 内部抛 NPE —— 那是**第三方实现细节、不是本库契约**，
+        // 换个 httpclient 版本就可能变成 IllegalArgumentException，测试会为"非回归"变红。
+        // 现在库内显式判空（文案 "url 不能为空"，与 WBI 那条同口径），契约由本库自己钉。
+        BilibiliException e = assertThrows(BilibiliException.class,
+                () -> BilibiliHttp.getNoRedirect(null));
+
+        assertTrue(e.getMessage().contains("url 不能为空"), "实际：" + e.getMessage());
     }
 
     @Test

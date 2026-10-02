@@ -187,9 +187,14 @@ class Java2DImageRendererTest {
     }
 
     @Test
-    @DisplayName("null 模型 → 抛异常（调用方编程错误应显式暴露，而不是产出空白图）")
+    @DisplayName("null 模型 → 抛 NullPointerException（显式判空，而不是靠内部 getBlocks() 崩）")
     void nullModel() {
-        assertThrows(Exception.class, () -> new Java2DImageRenderer().render(null));
+        // 🔴 收窄到 NPE 并断言文案：以前只写 Exception，实际靠 `model.getBlocks()` 内部抛 NPE ——
+        // 那既是实现细节，排查时也分不清"调用方传错"还是"渲染器炸了"。
+        NullPointerException e = assertThrows(NullPointerException.class,
+                () -> new Java2DImageRenderer().render(null));
+
+        assertTrue(e.getMessage().contains("model"), "实际：" + e.getMessage());
     }
 
     @Test

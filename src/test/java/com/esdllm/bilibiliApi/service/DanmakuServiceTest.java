@@ -169,7 +169,7 @@ class DanmakuServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> DanmakuService.INSTANCE.getDanmaku(0L));
 
-            assertTrue(e.getMessage().contains("cid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("cid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(DM_PATH));
         }
 

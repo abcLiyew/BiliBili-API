@@ -1,5 +1,6 @@
 package com.esdllm.bilibiliApi.bilibiliApi;
 
+import com.esdllm.bilibiliApi.exception.BilibiliException;
 import com.esdllm.bilibiliApi.http.MockBiliServer;
 import com.esdllm.bilibiliApi.model.data.VideoInfo;
 import com.esdllm.bilibiliApi.model.data.pojo.video.Staff;
@@ -209,14 +210,29 @@ class BilibiliClientTest {
 
     @Test
     void getVideoInfo_nullBvid_throws() {
-        assertThrows(Exception.class, () -> client.getVideoInfo((String) null));
+        // 🔴 收窄到 IOException（**不是 BilibiliException**）：BilibiliClient 是**门面**，
+        //   边界会把库内的 BilibiliException 统一包成 IOException —— 门面契约就是 IOException。
+        //   写成 Exception 的话，库内任何 NPE 也会让这条"通过"。
+        IOException e = assertThrows(IOException.class, () -> client.getVideoInfo((String) null));
+        assertTrue(e.getMessage().contains("BV号不能为空"), "实际：" + e.getMessage());
+        assertInstanceOf(BilibiliException.class, e.getCause(), "内层原因要保住，别只剩一句文案");
     }
 
     @Test
     void getVideoInfo_invalidAid_throws() {
-        // aid<=0 应抛（BilibiliException）
-        assertThrows(Exception.class, () -> client.getVideoInfo(0L));
-        assertThrows(Exception.class, () -> client.getVideoInfo(-1L));
+        // aid<=0 应抛；⚠️ 文案与 null 那条**不同**（0 不是"空"，是"不合法"）
+        IOException zero = assertThrows(IOException.class, () -> client.getVideoInfo(0L));
+        assertTrue(zero.getMessage().contains("AV号必须大于0"), "实际：" + zero.getMessage());
+
+        IOException neg = assertThrows(IOException.class, () -> client.getVideoInfo(-1L));
+        assertTrue(neg.getMessage().contains("AV号必须大于0"), "实际：" + neg.getMessage());
+    }
+
+    @Test
+    void getVideoInfo_nullAid_throws() {
+        // null 与 <=0 是两种不同的错误，文案必须分开（否则传 0 的人会去查"我哪儿传了 null"）
+        IOException e = assertThrows(IOException.class, () -> client.getVideoInfo((Long) null));
+        assertTrue(e.getMessage().contains("AV号不能为空"), "实际：" + e.getMessage());
     }
 
     @Test

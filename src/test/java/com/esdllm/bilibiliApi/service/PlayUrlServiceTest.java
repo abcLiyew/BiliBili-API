@@ -203,15 +203,20 @@ class PlayUrlServiceTest {
         }
 
         @Test
-        @DisplayName("bvid 为空 / cid ≤ 0：本地校验先失败，一个出站都不发")
+        @DisplayName("bvid 为空 / cid 为 null / cid ≤ 0：本地校验先失败，一个出站都不发")
         void localValidation() {
             IOException blank = assertThrows(IOException.class,
                     () -> new com.esdllm.bilibiliApi.bilibiliApi.VideoExtra().getPlayUrl("  ", CID));
             assertTrue(blank.getMessage().contains("BV号不能为空"), "实际：" + blank.getMessage());
 
+            // 🔴 null 与 ≤0 是两条分支、两种文案，都要测 —— 否则拆开的那半边是"守卫存在但零覆盖"
+            IOException nulCid = assertThrows(IOException.class,
+                    () -> new com.esdllm.bilibiliApi.bilibiliApi.VideoExtra().getPlayUrl(BVID, null));
+            assertTrue(nulCid.getMessage().contains("cid不能为空"), "实际：" + nulCid.getMessage());
+
             IOException badCid = assertThrows(IOException.class,
                     () -> new com.esdllm.bilibiliApi.bilibiliApi.VideoExtra().getPlayUrl(BVID, 0L));
-            assertTrue(badCid.getMessage().contains("cid不能为空"), "实际：" + badCid.getMessage());
+            assertTrue(badCid.getMessage().contains("cid必须大于0"), "实际：" + badCid.getMessage());
 
             assertEquals(0, mock.hitCount(PLAY_PATH));
             assertEquals(0, mock.hitCount(NAV_PATH));

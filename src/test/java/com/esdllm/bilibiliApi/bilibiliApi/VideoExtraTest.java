@@ -153,12 +153,18 @@ class VideoExtraTest {
         }
 
         @Test
-        @DisplayName("cid ≤ 0：也包成 IOException（两个参数先后校验，别只测前一个）")
+        @DisplayName("cid 为 null / ≤ 0：都包成 IOException（两个参数先后校验，别只测前一个）")
         void badCid() {
             IOException e = assertThrows(IOException.class, () -> videoExtra.getAiSummary(BVID, 0L));
 
-            assertTrue(e.getMessage().contains("cid不能为空"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("cid必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
+            assertEquals(0, mock.hitCount(CONC_PATH));
+
+            // 🔴 另一条分支必须单独测：null → "不能为空"，0 → "必须大于0"，两者不能合并成一句文案
+            IOException nul = assertThrows(IOException.class, () -> videoExtra.getAiSummary(BVID, null));
+            assertTrue(nul.getMessage().contains("cid不能为空"), "实际：" + nul.getMessage());
+            assertInstanceOf(BilibiliException.class, nul.getCause());
             assertEquals(0, mock.hitCount(CONC_PATH));
         }
 
@@ -342,7 +348,7 @@ class VideoExtraTest {
         void noteForbiddenBadAid() {
             IOException e = assertThrows(IOException.class, () -> videoExtra.isNoteForbidden(0L));
 
-            assertTrue(e.getMessage().contains("aid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("aid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(NOTE_PATH));
         }
 

@@ -295,7 +295,7 @@ class CommentServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> CommentService.INSTANCE.getReplies(0L, 1, 5));
 
-            assertTrue(e.getMessage().contains("aid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("aid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(REPLY_PATH));
         }
 

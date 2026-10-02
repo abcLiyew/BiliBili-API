@@ -602,6 +602,11 @@ public final class BilibiliHttp {
      * @return Apache HttpClient 的响应（调用方自取 header）；网络失败抛 {@link IOException}
      */
     public static org.apache.http.HttpResponse getNoRedirect(String url) throws IOException {
+        if (url == null || url.isBlank()) {
+            // 显式契约：以前这里会把 null 一路带到 `new HttpGet(null)`，靠 JDK/HttpClient 内部抛 NPE ——
+            // 那个异常类型**不是本库的契约**（换 httpclient 版本就可能变），所以在这里钉死。
+            throw new BilibiliException("url 不能为空");
+        }
         url = applyTestBaseUrl(url);
         HttpGet request = new HttpGet(url);
         request.setHeader("User-Agent", HttpPolicy.userAgentFor(AnonymousSession.userAgent()));

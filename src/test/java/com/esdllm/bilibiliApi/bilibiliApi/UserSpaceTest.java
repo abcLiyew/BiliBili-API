@@ -152,7 +152,7 @@ class UserSpaceTest {
         void invalidMid() {
             IOException e = assertThrows(IOException.class, () -> space.getAccInfo(0L));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("mid必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(0, mock.hitCount(ACC_PATH));
             assertEquals(0, mock.hitCount(NAV_PATH), "本地校验失败时连密钥都不该去取");
@@ -248,7 +248,7 @@ class UserSpaceTest {
         void badVmid() {
             IOException e = assertThrows(IOException.class, () -> space.getRelationStat(0L));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("vmid必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(0, mock.hitCount(RELSTAT_PATH));
             assertEquals(0, mock.hitCount(NAV_PATH), "本地校验失败时连密钥都不该去取");
@@ -313,7 +313,7 @@ class UserSpaceTest {
         void badVmid() {
             IOException e = assertThrows(IOException.class, () -> space.getTopArchive(0L));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("vmid必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(0, mock.hitCount(TOP_ARC_PATH));
             assertEquals(0, mock.hitCount(NAV_PATH), "本地校验失败时连密钥都不该去取");

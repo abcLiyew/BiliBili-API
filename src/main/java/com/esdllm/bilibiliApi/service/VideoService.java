@@ -70,8 +70,11 @@ public class VideoService {
      * @throws BilibiliException {@code aid} 为空或 ≤ 0、网络异常、JSON 解析失败、业务码非 0
      */
     public VideoInfo getVideoInfo(Long aid) {
-        if (aid == null || aid <= 0) {
+        if (aid == null) {
             throw new BilibiliException("AV号不能为空");
+        }
+        if (aid <= 0) {
+            throw new BilibiliException("AV号必须大于0");
         }
         String url = BilibiliEndpoint.videoAvBaseUrl + aid;
         return doGet(url);
@@ -122,8 +125,11 @@ public class VideoService {
         if (bvid == null || bvid.isBlank()) {
             throw new BilibiliException("BV号不能为空");
         }
-        if (cid == null || cid <= 0) {
+        if (cid == null) {
             throw new BilibiliException("cid不能为空");
+        }
+        if (cid <= 0) {
+            throw new BilibiliException("cid必须大于0");
         }
         Map<String, String> params = new LinkedHashMap<>();
         params.put("bvid", bvid);
@@ -215,8 +221,11 @@ public class VideoService {
         if (bvid == null || bvid.isBlank()) {
             throw new BilibiliException("BV号不能为空");
         }
-        if (cid == null || cid <= 0) {
+        if (cid == null) {
             throw new BilibiliException("cid不能为空");
+        }
+        if (cid <= 0) {
+            throw new BilibiliException("cid必须大于0");
         }
         int qnValue = (qn == null || qn <= 0) ? 64 : qn;
         // 与 qn 用同一条口径（null 或 ≤0 都回落），别一个用 <0 一个用 ≤0：
@@ -320,8 +329,11 @@ public class VideoService {
         if (bvid == null || bvid.isBlank()) {
             throw new BilibiliException("BV号不能为空");
         }
-        if (cid == null || cid <= 0) {
+        if (cid == null) {
             throw new BilibiliException("cid不能为空");
+        }
+        if (cid <= 0) {
+            throw new BilibiliException("cid必须大于0");
         }
         String url = BilibiliEndpoint.onlineTotalUrl + "?bvid=" + bvid + "&cid=" + cid;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
@@ -410,7 +422,7 @@ public class VideoService {
      */
     public boolean isNoteForbidden(long aid) {
         if (aid <= 0) {
-            throw new BilibiliException("aid不能小于0");
+            throw new BilibiliException("aid必须大于0");
         }
         String url = BilibiliEndpoint.noteIsForbidUrl + "?aid=" + aid;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,

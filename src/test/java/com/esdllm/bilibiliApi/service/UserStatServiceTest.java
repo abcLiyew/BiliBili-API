@@ -116,7 +116,7 @@ class UserStatServiceTest {
         void badMid() {
             IOException e = assertThrows(IOException.class, () -> new UserSpace().getUpStat(0L));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("mid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(UPSTAT_PATH));
         }
     }
@@ -211,7 +211,7 @@ class UserStatServiceTest {
             IOException e = assertThrows(IOException.class,
                     () -> new UserSpace().getFollowers(0L, 1, 5));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("vmid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(FOLLOWERS_PATH));
         }
     }
@@ -293,7 +293,7 @@ class UserStatServiceTest {
             BilibiliException e = assertThrows(BilibiliException.class,
                     () -> UserService.INSTANCE.getRelationStat(0L));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("vmid必须大于0"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(RELSTAT_PATH));
         }
     }

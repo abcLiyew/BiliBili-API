@@ -62,6 +62,11 @@ public class Java2DImageRenderer implements DynamicImageRenderer {
 
     @Override
     public BufferedImage render(RenderModel model) {
+        if (model == null) {
+            // 显式契约：以前靠 `model.getBlocks()` 内部抛 NPE —— 那异常类型是**实现细节**不是契约，
+            // 而且排查时看不出是"调用方传错了"还是"渲染器内部炸了"。
+            throw new NullPointerException("model 不能为 null");
+        }
         int width = CONTENT_WIDTH + PADDING * 2;
         List<Cmd> cmds = new ArrayList<>();
         int height = layout(model, cmds, width);

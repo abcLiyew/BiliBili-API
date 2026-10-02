@@ -115,7 +115,7 @@ public class CommentService {
      */
     public CommentPage getReplies(long aid, int pn, int ps, int sort) {
         if (aid <= 0) {
-            throw new BilibiliException("aid不能小于0");
+            throw new BilibiliException("aid必须大于0");
         }
         int sortValue = (sort == SORT_TIME || sort == SORT_LIKE || sort == SORT_HOT) ? sort : SORT_HOT;
 
@@ -177,10 +177,10 @@ public class CommentService {
      */
     public SubReplyPage getSubReplies(long aid, long root, int pn, int ps) {
         if (aid <= 0) {
-            throw new BilibiliException("aid不能小于0");
+            throw new BilibiliException("aid必须大于0");
         }
         if (root <= 0) {
-            throw new BilibiliException("root不能小于0（它是一级评论的 rpid）");
+            throw new BilibiliException("root必须大于0（它是一级评论的 rpid）");
         }
 
         Map<String, String> params = new LinkedHashMap<>();
@@ -333,7 +333,7 @@ public class CommentService {
      */
     public MainReplyPage getMainReplies(long aid, int mode, int next, int ps) {
         if (aid <= 0) {
-            throw new BilibiliException("aid不能小于0");
+            throw new BilibiliException("aid必须大于0");
         }
         int modeValue = (mode == MAIN_MODE_HOT || mode == MAIN_MODE_HOT_AND_TIME || mode == MAIN_MODE_TIME)
                 ? mode : MAIN_MODE_HOT;
@@ -395,7 +395,7 @@ public class CommentService {
      */
     public ReplyCount getReplyCount(long aid) {
         if (aid <= 0) {
-            throw new BilibiliException("aid不能小于0");
+            throw new BilibiliException("aid必须大于0");
         }
         String url = BilibiliEndpoint.replyCountUrl + "?type=1&oid=" + aid;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,

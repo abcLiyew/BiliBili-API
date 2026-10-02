@@ -89,8 +89,11 @@ public class BilibiliClient {
      * 单槽缓存 + 委托 VideoService 取一次的统一入口（AV 号版）。
      */
     private VideoInfo resolve(Long aid) {
-        if (aid == null || aid <= 0) {
+        if (aid == null) {
             throw new BilibiliException("AV号不能为空");
+        }
+        if (aid <= 0) {
+            throw new BilibiliException("AV号必须大于0");
         }
         if (isCached(aid)) {
             return videoInfo;

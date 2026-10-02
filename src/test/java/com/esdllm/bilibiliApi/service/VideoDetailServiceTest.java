@@ -238,8 +238,10 @@ class VideoDetailServiceTest {
             assertTrue(e.getMessage().contains("cid不能为空"), "实际：" + e.getMessage());
             assertEquals(0, mock.hitCount(ONLINE_PATH));
 
-            assertThrows(BilibiliException.class,
+            // 0 不是"缺失"，是"不合法" ⇒ 文案必须不同（否则传 0 的人会去查"我哪儿传了 null"）
+            BilibiliException zero = assertThrows(BilibiliException.class,
                     () -> VideoService.INSTANCE.getOnlineTotal(BVID, 0L));
+            assertTrue(zero.getMessage().contains("cid必须大于0"), "实际：" + zero.getMessage());
             assertEquals(0, mock.hitCount(ONLINE_PATH));
         }
 

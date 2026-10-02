@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>重点覆盖两类此前无人守的分支：
  * <ol>
- *   <li><b>参数校验</b>：{@code null} 与 {@code <= 0} 的 uid 有不同文案（"不能为空" / "不能小于0"）；</li>
+ *   <li><b>参数校验</b>：{@code null} 与 {@code <= 0} 的 uid 有不同文案（"不能为空" / "必须大于0"）；</li>
  *   <li><b>失败路径</b>：业务码非 0、data 为空、非法 JSON 都必须抛 {@link BilibiliException}
  *       （runtime），而不是 NPE 或 fastjson 异常穿透。</li>
  * </ol>
@@ -68,15 +68,15 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("uid 为 0 或负数 → '不能小于0'（与 null 的文案区分开）")
+    @DisplayName("uid 为 0 或负数 → '必须大于0'（与 null 的文案区分开）")
     void uidInvalidNumber() {
         BilibiliException zero = assertThrows(BilibiliException.class,
                 () -> UserService.INSTANCE.getCard(0L));
-        assertTrue(zero.getMessage().contains("uid不能小于0"), "实际：" + zero.getMessage());
+        assertTrue(zero.getMessage().contains("uid必须大于0"), "实际：" + zero.getMessage());
 
         BilibiliException neg = assertThrows(BilibiliException.class,
                 () -> UserService.INSTANCE.getCard(-1L));
-        assertTrue(neg.getMessage().contains("uid不能小于0"));
+        assertTrue(neg.getMessage().contains("uid必须大于0"));
     }
 
     @Test

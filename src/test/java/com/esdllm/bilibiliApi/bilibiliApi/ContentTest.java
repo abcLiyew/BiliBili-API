@@ -420,7 +420,7 @@ class ContentTest {
         void badMid() {
             IOException e = assertThrows(IOException.class, () -> content.getFavoriteFolders(0L));
 
-            assertTrue(e.getMessage().contains("mid不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("up_mid必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(0, mock.hitCount(FAV_PATH));
         }
@@ -441,7 +441,7 @@ class ContentTest {
         void badMediaId() {
             IOException e = assertThrows(IOException.class, () -> content.getFolderInfo(0L));
 
-            assertTrue(e.getMessage().contains("media_id不能小于0"), "实际：" + e.getMessage());
+            assertTrue(e.getMessage().contains("media_id必须大于0"), "实际：" + e.getMessage());
             assertInstanceOf(BilibiliException.class, e.getCause());
             assertEquals(0, mock.hitCount(FOLDER_INFO_PATH));
 

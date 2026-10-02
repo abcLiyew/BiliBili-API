@@ -58,7 +58,7 @@ public class FavoriteService {
      */
     public FavFolderList getCreatedFolders(long upMid) {
         if (upMid <= 0) {
-            throw new BilibiliException("mid不能小于0");
+            throw new BilibiliException("up_mid必须大于0");
         }
         String url = BilibiliEndpoint.favFolderListAllUrl + "?up_mid=" + upMid;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
@@ -100,7 +100,7 @@ public class FavoriteService {
      */
     public FavFolderInfo getFolderInfo(long mediaId) {
         if (mediaId <= 0) {
-            throw new BilibiliException("media_id不能小于0");
+            throw new BilibiliException("media_id必须大于0");
         }
         String url = BilibiliEndpoint.favFolderInfoUrl + "?media_id=" + mediaId;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
@@ -144,7 +144,7 @@ public class FavoriteService {
      */
     public FavResourceList getResources(long mediaId, int pn, int ps) {
         if (mediaId <= 0) {
-            throw new BilibiliException("media_id不能小于0");
+            throw new BilibiliException("media_id必须大于0");
         }
         String url = BilibiliEndpoint.favResourceListUrl + "?media_id=" + mediaId
                 + "&pn=" + Math.max(1, pn)

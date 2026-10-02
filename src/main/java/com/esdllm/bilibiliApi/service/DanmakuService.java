@@ -68,7 +68,7 @@ public class DanmakuService {
      */
     public DanmakuXml getDanmaku(long cid) {
         if (cid <= 0) {
-            throw new BilibiliException("cid不能小于0");
+            throw new BilibiliException("cid必须大于0");
         }
         String url = BilibiliEndpoint.dmListUrl + "?oid=" + cid;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,

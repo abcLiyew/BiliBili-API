@@ -88,8 +88,11 @@ public class LiveService {
      *                           {@code data} 为空，或<b>服务端一条地址都没给</b>
      */
     public LiveStream getLiveStream(Long roomId, Integer qn) {
-        if (roomId == null || roomId <= 0) {
+        if (roomId == null) {
             throw new BilibiliException("房间号不能为空");
+        }
+        if (roomId <= 0) {
+            throw new BilibiliException("房间号必须大于0");
         }
         int qnValue = (qn == null || qn <= 0) ? 10000 : qn;
         String url = BilibiliEndpoint.liveStreamUrl
@@ -125,8 +128,11 @@ public class LiveService {
      * @throws BilibiliException {@code uid} 为空或 ≤ 0、网络失败、HTTP 非 2xx、业务码非 0、或 {@code data} 为空
      */
     public MasterInfo getMasterInfo(Long uid) {
-        if (uid == null || uid <= 0) {
+        if (uid == null) {
             throw new BilibiliException("uid不能为空");
+        }
+        if (uid <= 0) {
+            throw new BilibiliException("uid必须大于0");
         }
         String url = BilibiliEndpoint.liveMasterInfoUrl + "?uid=" + uid;
         HttpResponse<String> response = BilibiliHttp.get(url, BilibiliEndpoint.jsonAccept,
